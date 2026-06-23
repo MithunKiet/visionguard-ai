@@ -1,164 +1,458 @@
 # IMPLEMENTATION.md
 
-# VisionGuard AI - Implementation Plan
+# VisionGuard AI
 
-## Overview
-
-VisionGuard AI is an enterprise-grade factory safety monitoring platform that uses Computer Vision and Artificial Intelligence to monitor CCTV streams in real time and detect safety violations.
-
-The platform supports:
-
-* PPE Detection
-* Helmet Detection
-* Safety Vest Detection
-* Person Counting
-* Occupancy Monitoring
-* Overcrowding Alerts
-* Camera Health Monitoring
-* Real-Time Dashboard
-* Alert Management
-* Analytics & Reporting
-
-Target Scale:
-
-* Initial: 50 Cameras
-* Future: 200+ Cameras
+## Enterprise Factory Safety Monitoring Platform
 
 ---
 
-# Phase 1 - Foundation Setup
+# Architecture Overview
 
-## Duration
+## Architecture Style
 
-Week 1
+The platform follows:
 
-## Deliverables
+* Modular Monolith
+* Clean Architecture
+* Domain Driven Design (DDD)
+* Event Driven Communication
+* CQRS (Selective)
+* Vertical Slice Principles
 
-### Repository Setup
+This architecture is chosen because:
 
-Create repositories:
+* Easy development and deployment
+* Lower operational cost
+* Easier debugging
+* Scales to 100-200 cameras initially
+* AI workers can scale independently
+* Future migration path to microservices
+
+---
+
+# High Level Architecture
 
 ```text
-visionguard-ai
+┌────────────────────────────────────┐
+│          React Dashboard           │
+│                                    │
+│ Dashboard                          │
+│ Camera Monitoring                  │
+│ Occupancy Monitoring               │
+│ Alerts                             │
+│ Analytics                          │
+└────────────────┬───────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────┐
+│          FastAPI Backend           │
+│      Modular Monolith Core         │
+└────────────────┬───────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────┐
+│             RabbitMQ               │
+│         Event Communication        │
+└────────────────┬───────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────┐
+│           AI Worker Pool           │
+│ OpenCV + RT-DETR + ByteTrack       │
+└────────────────┬───────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────┐
+│           RTSP Cameras             │
+└────────────────────────────────────┘
+```
 
+---
+
+# Physical Architecture
+
+## Application Layer
+
+### Frontend
+
+Technology:
+
+* React
+* TypeScript
+* Vite
+* Material UI
+* AG Grid
+
+Responsibilities:
+
+* Monitoring Dashboard
+* Alert Dashboard
+* Camera Dashboard
+* Analytics
+* Reporting
+
+---
+
+### Backend
+
+Technology:
+
+* FastAPI
+* SQLAlchemy
+* Alembic
+* PostgreSQL
+
+Responsibilities:
+
+* Authentication
+* Business Rules
+* Alert Processing
+* Analytics
+* Reporting
+* Dashboard APIs
+
+---
+
+### AI Layer
+
+Technology:
+
+* OpenCV
+* RT-DETR
+* ByteTrack
+* PyTorch
+
+Responsibilities:
+
+* Person Detection
+* Helmet Detection
+* Vest Detection
+* Occupancy Counting
+* Tracking
+
+---
+
+# Modular Monolith Structure
+
+```text
 backend/
-frontend/
-ai-engine/
-infra/
-docs/
+
+src/
+
+modules/
+
+identity/
+factory/
+zone/
+camera/
+occupancy/
+ppe/
+alerts/
+notifications/
+analytics/
+reports/
+
+shared/
+database/
 ```
-
-### Environment Setup
-
-Install:
-
-* Python 3.12
-* PostgreSQL
-* Docker
-* Docker Compose
-* Node.js 22+
-* Git
-
-### Backend Setup
-
-Framework:
-
-FastAPI
-
-Packages:
-
-```bash
-fastapi
-uvicorn
-sqlalchemy
-alembic
-psycopg2
-pydantic
-python-jose
-passlib
-```
-
-### Frontend Setup
-
-Framework:
-
-React + TypeScript
-
-Packages:
-
-```bash
-vite
-react
-typescript
-material-ui
-ag-grid
-zustand
-tanstack-query
-```
-
-### Infrastructure
-
-Install:
-
-* PostgreSQL
-* RabbitMQ
-* MinIO
 
 ---
 
-# Phase 2 - Core Platform
+# Clean Architecture Structure
 
-## Duration
+Every module follows:
 
-Week 2
+```text
+module/
 
-## Deliverables
-
-### Authentication
-
-Implement:
-
-* Login
-* Logout
-* JWT Authentication
-
-### Role Management
-
-Roles:
-
-* Admin
-* Supervisor
-* Safety Officer
-* Viewer
-
-### User Management
-
-Features:
-
-* Create User
-* Edit User
-* Delete User
-* Assign Roles
+api/
+application/
+domain/
+infrastructure/
+contracts/
+```
 
 ---
 
-# Phase 3 - Factory Master Setup
+## API Layer
 
-## Duration
+Responsibilities:
 
-Week 2
+* REST Endpoints
+* Validation
+* Authentication
+* Request Processing
 
-## Deliverables
+Example:
 
-### Factory Module
+```text
+/api/v1/factories
+/api/v1/zones
+/api/v1/cameras
+/api/v1/alerts
+/api/v1/reports
+```
 
-Create:
+---
+
+## Application Layer
+
+Responsibilities:
+
+* Use Cases
+* Command Handlers
+* Query Handlers
+
+Examples:
+
+```text
+CreateZoneHandler
+
+CreateAlertHandler
+
+GenerateReportHandler
+
+CalculateOccupancyHandler
+```
+
+---
+
+## Domain Layer
+
+Contains:
+
+* Entities
+* Value Objects
+* Domain Events
+* Business Rules
+
+Examples:
 
 ```text
 Factory
+
+Zone
+
+OccupancyRule
+
+Violation
+
+Alert
 ```
 
-Fields:
+---
+
+## Infrastructure Layer
+
+Contains:
+
+* PostgreSQL
+* RabbitMQ
+* Redis
+* File Storage
+* External Services
+
+---
+
+# Event Driven Architecture
+
+AI workers NEVER access database.
+
+AI workers ONLY publish events.
+
+Backend consumes events.
+
+---
+
+## Event Flow
+
+```text
+Camera
+
+↓
+
+AI Detection
+
+↓
+
+Event Creation
+
+↓
+
+RabbitMQ
+
+↓
+
+Backend Consumer
+
+↓
+
+Database
+
+↓
+
+Dashboard
+```
+
+---
+
+## Events
+
+```text
+OccupancyUpdated
+
+HelmetMissingDetected
+
+VestMissingDetected
+
+OvercrowdingDetected
+
+CameraOfflineDetected
+
+AlertCreated
+```
+
+Example:
+
+```json
+{
+  "event": "helmet_missing",
+  "camera_id": "CAM-001",
+  "zone_id": "ZONE-01",
+  "timestamp": "2026-01-01T10:00:00"
+}
+```
+
+---
+
+# AI Architecture
+
+## Worker Design
+
+Each worker handles multiple cameras.
+
+Example:
+
+```text
+Worker-1 → 20 Cameras
+
+Worker-2 → 20 Cameras
+
+Worker-3 → 20 Cameras
+
+Worker-4 → 20 Cameras
+```
+
+---
+
+## Detection Pipeline
+
+```text
+RTSP Stream
+
+↓
+
+Frame Capture
+
+↓
+
+Frame Sampling
+
+↓
+
+RT-DETR Detection
+
+↓
+
+ByteTrack Tracking
+
+↓
+
+Occupancy Calculation
+
+↓
+
+PPE Validation
+
+↓
+
+Event Creation
+
+↓
+
+RabbitMQ
+```
+
+---
+
+## Frame Sampling
+
+To reduce GPU load:
+
+```text
+25 FPS Camera
+
+↓
+
+Process 2 FPS
+
+↓
+
+Detection
+
+↓
+
+Tracking
+```
+
+---
+
+# Database Architecture
+
+Database:
+
+PostgreSQL
+
+---
+
+## Schema Strategy
+
+```text
+identity
+
+factory
+
+zone
+
+camera
+
+occupancy
+
+ppe
+
+alerts
+
+analytics
+
+reports
+```
+
+---
+
+## Core Tables
+
+### identity.users
+
+```text
+Id
+Name
+Email
+PasswordHash
+RoleId
+Status
+```
+
+### factory.factories
 
 ```text
 Id
@@ -168,15 +462,7 @@ Location
 Status
 ```
 
-### Zone Module
-
-Create:
-
-```text
-Zone
-```
-
-Fields:
+### zone.zones
 
 ```text
 Id
@@ -186,15 +472,7 @@ MaxOccupancy
 SupervisorId
 ```
 
-### Camera Module
-
-Create:
-
-```text
-Camera
-```
-
-Fields:
+### camera.cameras
 
 ```text
 Id
@@ -204,342 +482,27 @@ RTSPUrl
 Status
 ```
 
-Features:
-
-* Add Camera
-* Edit Camera
-* Disable Camera
-* Test Connection
-
----
-
-# Phase 4 - AI Engine
-
-## Duration
-
-Week 3
-
-## Deliverables
-
-### Video Pipeline
-
-Flow:
-
-```text
-RTSP Camera
-↓
-Frame Capture
-↓
-Detection Engine
-↓
-Tracking Engine
-↓
-Rule Engine
-↓
-Event Bus
-```
-
-### Frame Capture
-
-Use:
-
-OpenCV
-
-Features:
-
-* Stream Reader
-* Reconnection Logic
-* FPS Monitoring
-
-### Object Detection
-
-Use:
-
-RT-DETR
-
-Detect:
-
-* Person
-* Helmet
-* Vest
-
-### Tracking
-
-Use:
-
-ByteTrack
-
-Purpose:
-
-* Prevent duplicate counting
-* Occupancy tracking
-
----
-
-# Phase 5 - Person Counting
-
-## Duration
-
-Week 4
-
-## Deliverables
-
-### Occupancy Service
-
-Count:
-
-* Current Persons
-* Entries
-* Exits
-
-Store:
-
-```text
-DetectionLogs
-```
-
-### Rule
-
-```python
-if current_persons > max_occupancy:
-    create_overcrowding_alert()
-```
-
-### Dashboard
-
-Display:
-
-* Current Occupancy
-* Maximum Occupancy
-* Zone Status
-
----
-
-# Phase 6 - Helmet Detection
-
-## Duration
-
-Week 4
-
-## Deliverables
-
-Rule:
-
-```python
-if helmet == False:
-    create_violation()
-```
-
-Store:
-
-```text
-Violation
-```
-
-Capture:
-
-* Snapshot
-* Camera ID
-* Timestamp
-
-Severity:
-
-High
-
----
-
-# Phase 7 - Alert Engine
-
-## Duration
-
-Week 5
-
-## Deliverables
-
-Alert Types:
-
-* Helmet Missing
-* Vest Missing
-* Overcrowding
-* Camera Offline
-
-### RabbitMQ Events
-
-```text
-HelmetMissingDetected
-OvercrowdingDetected
-CameraOfflineDetected
-```
-
-### Notification Service
-
-Send:
-
-* Email
-* Web Notification
-
----
-
-# Phase 8 - Real-Time Dashboard
-
-## Duration
-
-Week 5
-
-## Deliverables
-
-### Live Dashboard
-
-Display:
-
-* Total Cameras
-* Online Cameras
-* Offline Cameras
-* Active Alerts
-* PPE Violations
-
-### Live Alerts
-
-Use:
-
-WebSockets
-
-Refresh:
-
-Real Time
-
----
-
-# Phase 9 - Camera Health Monitoring
-
-## Duration
-
-Week 6
-
-## Deliverables
-
-Monitor:
-
-* Camera Online
-* Camera Offline
-* FPS
-* Stream Delay
-
-Alert:
-
-```text
-Camera Offline
-```
-
-After:
-
-60 Seconds
-
----
-
-# Phase 10 - Analytics
-
-## Duration
-
-Week 6
-
-## Deliverables
-
-Reports:
-
-### Occupancy Report
-
-Fields:
-
-```text
-Zone
-Date
-Peak Occupancy
-Average Occupancy
-```
-
-### PPE Report
-
-Fields:
-
-```text
-Zone
-Violations
-Compliance %
-```
-
-### Alert Report
-
-Fields:
-
-```text
-Alert Type
-Count
-Trend
-```
-
----
-
-# Database Tables
-
-## Users
-
-```text
-Id
-Name
-Email
-PasswordHash
-RoleId
-```
-
-## Factories
-
-```text
-Id
-Name
-Location
-```
-
-## Zones
-
-```text
-Id
-FactoryId
-Name
-MaxOccupancy
-```
-
-## Cameras
+### occupancy.logs
 
 ```text
 Id
 ZoneId
-RTSPUrl
-Status
-```
-
-## DetectionLogs
-
-```text
-Id
-CameraId
-ZoneId
-PersonCount
+CurrentCount
 Timestamp
 ```
 
-## Violations
+### ppe.violations
 
 ```text
 Id
-CameraId
 ZoneId
-Type
+CameraId
+ViolationType
 SnapshotPath
 CreatedOn
 ```
 
-## Alerts
+### alerts.alerts
 
 ```text
 Id
@@ -551,98 +514,272 @@ CreatedOn
 
 ---
 
-# Deployment Architecture
+# Dashboard Architecture
+
+## Executive Dashboard
+
+Displays:
+
+* Total Cameras
+* Active Alerts
+* PPE Compliance
+* Safety Score
+
+---
+
+## Safety Dashboard
+
+Displays:
+
+* Violations
+* Occupancy
+* Open Alerts
+
+---
+
+## Camera Dashboard
+
+Displays:
+
+* Camera Health
+* FPS
+* Online Status
+
+---
+
+## Analytics Dashboard
+
+Displays:
+
+* Trends
+* KPIs
+* Monthly Reports
+
+---
+
+# Security Architecture
+
+Authentication:
+
+JWT
+
+Authorization:
+
+Role Based Access Control
+
+Roles:
+
+* Admin
+* Supervisor
+* Safety Officer
+* Viewer
+
+---
+
+# Notification Architecture
+
+Channels:
+
+* Email
+* In-App Notifications
+* Web Notifications
+
+Flow:
 
 ```text
-Nginx
-   |
-React UI
-   |
-FastAPI
-   |
-RabbitMQ
-   |
-PostgreSQL
-   |
-MinIO
+Violation
 
-AI Workers
-   |
-RTSP Cameras
+↓
+
+Alert
+
+↓
+
+Notification
+
+↓
+
+Supervisor
 ```
 
 ---
 
-# Hardware Recommendation
+# Deployment Architecture
 
 ## Development
 
-CPU:
+```text
+Laptop
 
-8 Core
-
-RAM:
-
-16 GB
-
-GPU:
-
-RTX 3060
-
----
-
-## Production (50 Cameras)
-
-CPU:
-
-24 Core
-
-RAM:
-
-64 GB
-
-GPU:
-
-RTX 4090
-
-Storage:
-
-2 TB SSD
-
-OS:
-
-Ubuntu Server
+React
+FastAPI
+PostgreSQL
+RabbitMQ
+Redis
+AI Worker
+```
 
 ---
 
-# Future Roadmap
+## Production (100 Cameras)
 
-Phase 2
+### Server 1
 
-* Face Recognition
-* Restricted Area Detection
-* Visitor Tracking
+```text
+React
 
-Phase 3
+FastAPI
 
-* Fire Detection
-* Smoke Detection
-* Fall Detection
+PostgreSQL
 
-Phase 4
+RabbitMQ
 
-* Forklift Monitoring
-* Worker Safety Score
-* Predictive Safety Analytics
+Redis
+```
+
+### Server 2
+
+```text
+GPU Worker 1
+```
+
+### Server 3
+
+```text
+GPU Worker 2
+```
+
+### Server 4
+
+```text
+GPU Worker 3
+```
+
+### Server 5
+
+```text
+GPU Worker 4
+```
+
+---
+
+# Scaling Strategy
+
+## 100 Cameras
+
+```text
+1 Backend Server
+
+4 AI Workers
+```
+
+---
+
+## 200 Cameras
+
+```text
+2 Backend Servers
+
+8 AI Workers
+```
+
+---
+
+## 500 Cameras
+
+```text
+Backend Cluster
+
+Dedicated RabbitMQ Cluster
+
+Dedicated PostgreSQL Cluster
+
+20+ AI Workers
+```
+
+---
+
+## 1000 Cameras
+
+```text
+API Gateway
+
+Backend Cluster
+
+RabbitMQ Cluster
+
+PostgreSQL Cluster
+
+Redis Cluster
+
+50+ AI Workers
+```
+
+No rewrite required.
+
+Only horizontal scaling.
+
+---
+
+# Technology Stack
+
+Frontend
+
+* React
+* TypeScript
+* Material UI
+* AG Grid
+
+Backend
+
+* FastAPI
+* SQLAlchemy
+* Alembic
+
+Database
+
+* PostgreSQL
+
+Messaging
+
+* RabbitMQ
+
+Cache
+
+* Redis
+
+AI
+
+* OpenCV
+* RT-DETR
+* ByteTrack
+* PyTorch
+
+Monitoring
+
+* Prometheus
+* Grafana
+* Loki
+
+Deployment
+
+* Docker
+* Docker Compose
+
+Future
+
+* Kubernetes
 
 ---
 
 # Success Criteria
 
-* Helmet Detection Accuracy > 90%
-* Person Counting Accuracy > 95%
+* 100 Cameras Supported
 * Alert Latency < 5 Seconds
-* Camera Uptime Monitoring
-* Support 50+ Cameras
+* Occupancy Accuracy > 95%
+* PPE Accuracy > 90%
+* Horizontal Scaling Supported
 * Real-Time Dashboard
-* Enterprise Deployment Ready
+* Production Ready Architecture
+
+End of Document
