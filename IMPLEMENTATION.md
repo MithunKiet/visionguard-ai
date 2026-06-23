@@ -24,7 +24,7 @@ This architecture is chosen because:
 * Easy development and deployment
 * Lower operational cost
 * Easier debugging
-* Scales to 100-200 cameras initially
+* Scales to 100–200 cameras initially
 * AI workers can scale independently
 * Future migration path to microservices
 
@@ -47,23 +47,26 @@ This architecture is chosen because:
 ┌────────────────────────────────────┐
 │          FastAPI Backend           │
 │      Modular Monolith Core         │
+│      API Rate Limiting             │
 └────────────────┬───────────────────┘
                  │
                  ▼
 ┌────────────────────────────────────┐
 │             RabbitMQ               │
-│         Event Communication        │
+│    Event Communication + DLQ       │
 └────────────────┬───────────────────┘
                  │
                  ▼
 ┌────────────────────────────────────┐
 │           AI Worker Pool           │
 │ OpenCV + RT-DETR + ByteTrack       │
+│ Model Versioning + Thresholds      │
 └────────────────┬───────────────────┘
                  │
                  ▼
 ┌────────────────────────────────────┐
 │           RTSP Cameras             │
+│   Reconnect / Health Polling       │
 └────────────────────────────────────┘
 ```
 
@@ -110,6 +113,7 @@ Responsibilities:
 * Analytics
 * Reporting
 * Dashboard APIs
+* API Rate Limiting (per user / per role)
 
 ---
 
@@ -129,6 +133,8 @@ Responsibilities:
 * Vest Detection
 * Occupancy Counting
 * Tracking
+* Model Version Management
+* Confidence Threshold Evaluation
 
 ---
 
@@ -151,6 +157,8 @@ alerts/
 notifications/
 analytics/
 reports/
+config/          ← zone-level config pushed to workers
+audit/           ← compliance audit trail
 
 shared/
 database/
@@ -182,6 +190,7 @@ Responsibilities:
 * Validation
 * Authentication
 * Request Processing
+* Rate Limiting (per endpoint, per role)
 
 Example:
 
@@ -191,6 +200,8 @@ Example:
 /api/v1/cameras
 /api/v1/alerts
 /api/v1/reports
+/api/v1/config/zone/{zone_id}
+/api/v1/audit
 ```
 
 ---
@@ -207,12 +218,12 @@ Examples:
 
 ```text
 CreateZoneHandler
-
 CreateAlertHandler
-
 GenerateReportHandler
-
 CalculateOccupancyHandler
+ResolveAlertHandler
+PushZoneConfigHandler
+LogAuditEventHandler
 ```
 
 ---
@@ -230,14 +241,12 @@ Examples:
 
 ```text
 Factory
-
 Zone
-
 OccupancyRule
-
 Violation
-
 Alert
+ZoneConfig
+AuditEntry
 ```
 
 ---
@@ -247,9 +256,9 @@ Alert
 Contains:
 
 * PostgreSQL
-* RabbitMQ
+* RabbitMQ (with Dead Letter Queue)
 * Redis
-* File Storage
+* Object Storage (S3-compatible)
 * External Services
 
 ---
@@ -261,6 +270,8 @@ AI workers NEVER access database.
 AI workers ONLY publish events.
 
 Backend consumes events.
+
+Failed events go to Dead Letter Queue (DLQ) for retry or manual inspection.
 
 ---
 
@@ -279,9 +290,9 @@ Event Creation
 
 ↓
 
-RabbitMQ
+RabbitMQ (main queue)
 
-↓
+↓  (on failure)  →  Dead Letter Queue (DLQ)
 
 Backend Consumer
 
@@ -300,16 +311,14 @@ Dashboard
 
 ```text
 OccupancyUpdated
-
 HelmetMissingDetected
-
 VestMissingDetected
-
 OvercrowdingDetected
-
 CameraOfflineDetected
-
+CameraReconnected
 AlertCreated
+AlertResolved
+WorkerHeartbeat
 ```
 
 Example:
@@ -319,9 +328,28 @@ Example:
   "event": "helmet_missing",
   "camera_id": "CAM-001",
   "zone_id": "ZONE-01",
-  "timestamp": "2026-01-01T10:00:00"
+  "timestamp": "2026-01-01T10:00:00",
+  "confidence": 0.91,
+  "snapshot_key": "snapshots/ZONE-01/CAM-001/2026-01-01T10:00:00.jpg"
 }
 ```
+
+---
+
+## Dead Letter Queue (DLQ)
+
+Failed events that cannot be processed are routed to a DLQ.
+
+Retry policy:
+
+```text
+Attempt 1 → immediate
+Attempt 2 → 30 seconds
+Attempt 3 → 5 minutes
+Attempt 4 → DLQ (manual review)
+```
+
+A background job checks the DLQ periodically and alerts the operations team.
 
 ---
 
@@ -335,13 +363,12 @@ Example:
 
 ```text
 Worker-1 → 20 Cameras
-
 Worker-2 → 20 Cameras
-
 Worker-3 → 20 Cameras
-
 Worker-4 → 20 Cameras
 ```
+
+Workers receive zone-level configuration from the backend at startup and on config-change events. No hardcoded thresholds.
 
 ---
 
@@ -352,7 +379,7 @@ RTSP Stream
 
 ↓
 
-Frame Capture
+Frame Capture (with reconnect on failure)
 
 ↓
 
@@ -361,6 +388,10 @@ Frame Sampling
 ↓
 
 RT-DETR Detection
+
+↓
+
+Confidence Threshold Check
 
 ↓
 
@@ -373,6 +404,10 @@ Occupancy Calculation
 ↓
 
 PPE Validation
+
+↓
+
+Snapshot Capture (on violation)
 
 ↓
 
@@ -407,11 +442,94 @@ Tracking
 
 ---
 
+## Confidence Thresholds
+
+Thresholds are zone-configurable via the backend config API. Defaults:
+
+```text
+Person detection:   0.70
+Helmet detection:   0.75
+Vest detection:     0.75
+```
+
+Detections below threshold are discarded without generating an event.
+
+---
+
+## Model Versioning
+
+Models are versioned and stored in a model registry.
+
+```text
+models/
+  rt-detr/
+    v1.0/
+    v1.1/   ← active
+  ppe-classifier/
+    v2.3/   ← active
+```
+
+Workers load the active model version on startup.
+
+Hot-swap: the backend publishes a `ModelUpdated` event. Workers reload the new model without restarting the stream.
+
+---
+
+## RTSP Stream Resilience
+
+Workers handle camera disconnections without crashing:
+
+```text
+Stream lost
+
+↓
+
+Retry: 5 seconds
+Retry: 15 seconds
+Retry: 60 seconds
+
+↓ (still offline)
+
+Publish CameraOfflineDetected event
+
+↓
+
+Backend creates alert
+
+↓
+
+Supervisor notified
+```
+
+Workers continue processing other cameras during retry.
+
+---
+
+## Circuit Breaker
+
+If a worker fails repeatedly on a camera, it is isolated:
+
+```text
+3 consecutive processing failures
+
+↓
+
+Camera isolated from worker
+
+↓
+
+CameraOfflineDetected published
+
+↓
+
+Worker continues remaining cameras
+```
+
+---
+
 # Database Architecture
 
-Database:
-
-PostgreSQL
+Database: PostgreSQL
 
 ---
 
@@ -419,22 +537,17 @@ PostgreSQL
 
 ```text
 identity
-
 factory
-
 zone
-
 camera
-
 occupancy
-
 ppe
-
 alerts
-
+notifications
 analytics
-
 reports
+config
+audit
 ```
 
 ---
@@ -448,8 +561,18 @@ Id
 Name
 Email
 PasswordHash
-RoleId
+RoleId              FK → identity.roles
 Status
+CreatedOn
+LastLoginAt
+```
+
+### identity.roles
+
+```text
+Id
+Name              (Admin, Supervisor, SafetyOfficer, Viewer)
+Permissions       JSONB
 ```
 
 ### factory.factories
@@ -460,6 +583,7 @@ Name
 Code
 Location
 Status
+CreatedOn
 ```
 
 ### zone.zones
@@ -470,6 +594,8 @@ FactoryId
 Name
 MaxOccupancy
 SupervisorId
+Status
+CreatedOn
 ```
 
 ### camera.cameras
@@ -480,16 +606,39 @@ ZoneId
 Name
 RTSPUrl
 Status
+LastSeenAt
+WorkerId
+CreatedOn
 ```
+
+### config.zone_configs
+
+```text
+Id
+ZoneId
+PersonThreshold       DECIMAL
+HelmetThreshold       DECIMAL
+VestThreshold         DECIMAL
+MaxOccupancy          INT
+PPERequired           JSONB    (list of required PPE types)
+UpdatedBy             FK → identity.users
+UpdatedAt
+Version               INT
+```
+
+Workers pull zone config on startup and subscribe to `ConfigUpdated` events.
 
 ### occupancy.logs
 
 ```text
 Id
 ZoneId
+CameraId
 CurrentCount
 Timestamp
 ```
+
+Partition by month. Retain 12 months online, archive older data to cold storage.
 
 ### ppe.violations
 
@@ -498,7 +647,8 @@ Id
 ZoneId
 CameraId
 ViolationType
-SnapshotPath
+Confidence
+SnapshotKey           (object storage key, not local path)
 CreatedOn
 ```
 
@@ -508,9 +658,89 @@ CreatedOn
 Id
 ViolationId
 Severity
-Status
+Status              (Open, Acknowledged, Resolved)
+AssignedTo          FK → identity.users
 CreatedOn
+ResolvedOn
 ```
+
+### alerts.alert_history
+
+```text
+Id
+AlertId
+FromStatus
+ToStatus
+ChangedBy           FK → identity.users
+ChangedAt
+Comment
+```
+
+Tracks every status transition on an alert for compliance.
+
+### notifications.notification_log
+
+```text
+Id
+AlertId
+Channel             (Email, InApp, Web)
+RecipientId         FK → identity.users
+SentAt
+Status              (Sent, Failed, Delivered)
+FailureReason
+```
+
+### audit.audit_log
+
+```text
+Id
+UserId              FK → identity.users
+Action              (AlertResolved, ConfigChanged, UserCreated, etc.)
+EntityType
+EntityId
+OldValue            JSONB
+NewValue            JSONB
+IPAddress
+Timestamp
+```
+
+All sensitive actions (alert resolution, config change, user management) are recorded here.
+
+---
+
+# Snapshot Storage Architecture
+
+Violation snapshots are stored in an S3-compatible object store (MinIO for on-prem, AWS S3 for cloud).
+
+Key format:
+
+```text
+snapshots/{zone_id}/{camera_id}/{timestamp}.jpg
+```
+
+The backend serves pre-signed URLs to the frontend for snapshot viewing. Snapshots are never served from local disk.
+
+Retention:
+
+```text
+Active violations:   90 days online
+Archived:            1 year cold storage
+Purged:              after 1 year (configurable)
+```
+
+---
+
+# Data Retention Policy
+
+| Table | Online Retention | Archive | Purge |
+|---|---|---|---|
+| occupancy.logs | 12 months | 2 years cold | After 2 years |
+| ppe.violations | 24 months | 3 years cold | After 3 years |
+| alerts.alerts | 24 months | 3 years cold | After 3 years |
+| audit.audit_log | 36 months | 5 years cold | After 5 years |
+| snapshots | 90 days online | 1 year cold | After 1 year |
+
+Partitioning strategy: partition `occupancy.logs` and `ppe.violations` by month using PostgreSQL native partitioning.
 
 ---
 
@@ -534,6 +764,7 @@ Displays:
 * Violations
 * Occupancy
 * Open Alerts
+* Alert resolution trend
 
 ---
 
@@ -544,6 +775,8 @@ Displays:
 * Camera Health
 * FPS
 * Online Status
+* Last seen timestamp
+* Worker assignment
 
 ---
 
@@ -554,18 +787,40 @@ Displays:
 * Trends
 * KPIs
 * Monthly Reports
+* Violation heatmap by zone
+
+---
+
+# API Rate Limiting
+
+Rate limiting is applied at the backend per user and per role.
+
+Default limits:
+
+```text
+Viewer:          60 requests/minute
+Supervisor:      120 requests/minute
+Safety Officer:  120 requests/minute
+Admin:           300 requests/minute
+```
+
+Dashboard polling endpoints use server-sent events (SSE) or WebSockets to avoid polling overhead.
+
+Rate limit headers returned on every response:
+
+```text
+X-RateLimit-Limit
+X-RateLimit-Remaining
+X-RateLimit-Reset
+```
 
 ---
 
 # Security Architecture
 
-Authentication:
+Authentication: JWT
 
-JWT
-
-Authorization:
-
-Role Based Access Control
+Authorization: Role Based Access Control
 
 Roles:
 
@@ -573,6 +828,10 @@ Roles:
 * Supervisor
 * Safety Officer
 * Viewer
+
+All sensitive actions are logged to `audit.audit_log`.
+
+JWT tokens expire after 8 hours. Refresh tokens valid for 7 days.
 
 ---
 
@@ -582,7 +841,9 @@ Channels:
 
 * Email
 * In-App Notifications
-* Web Notifications
+* Web Push Notifications
+
+All notifications are logged to `notifications.notification_log` for delivery tracking and debugging.
 
 Flow:
 
@@ -595,12 +856,58 @@ Alert
 
 ↓
 
-Notification
+Notification (with delivery tracking)
 
 ↓
 
 Supervisor
 ```
+
+---
+
+# Zone Configuration Flow
+
+Zone-level PPE rules and occupancy limits are managed in the backend and pushed to AI workers.
+
+```text
+Admin updates zone config via API
+
+↓
+
+Saved to config.zone_configs
+
+↓
+
+ConfigUpdated event published to RabbitMQ
+
+↓
+
+AI workers subscribe to ConfigUpdated
+
+↓
+
+Workers reload config for affected zone
+
+↓
+
+No worker restart required
+```
+
+This means detection thresholds and PPE requirements can be changed at runtime without redeployment.
+
+---
+
+# Audit Trail
+
+Every sensitive action is recorded in `audit.audit_log`:
+
+* Alert acknowledged / resolved / reassigned
+* Zone config changed
+* User created / disabled
+* Camera added / removed
+* Role changed
+
+The audit log is immutable. No update or delete operations are permitted on audit records. Accessible only to Admin role.
 
 ---
 
@@ -616,6 +923,7 @@ FastAPI
 PostgreSQL
 RabbitMQ
 Redis
+MinIO (local object store)
 AI Worker
 ```
 
@@ -627,14 +935,11 @@ AI Worker
 
 ```text
 React
-
 FastAPI
-
 PostgreSQL
-
-RabbitMQ
-
+RabbitMQ (with DLQ configured)
 Redis
+MinIO or S3
 ```
 
 ### Server 2
@@ -669,7 +974,6 @@ GPU Worker 4
 
 ```text
 1 Backend Server
-
 4 AI Workers
 ```
 
@@ -679,7 +983,6 @@ GPU Worker 4
 
 ```text
 2 Backend Servers
-
 8 AI Workers
 ```
 
@@ -689,12 +992,10 @@ GPU Worker 4
 
 ```text
 Backend Cluster
-
 Dedicated RabbitMQ Cluster
-
 Dedicated PostgreSQL Cluster
-
 20+ AI Workers
+Dedicated Object Storage Cluster
 ```
 
 ---
@@ -703,70 +1004,68 @@ Dedicated PostgreSQL Cluster
 
 ```text
 API Gateway
-
 Backend Cluster
-
 RabbitMQ Cluster
-
 PostgreSQL Cluster
-
 Redis Cluster
-
+Object Storage Cluster
 50+ AI Workers
 ```
 
-No rewrite required.
-
-Only horizontal scaling.
+No rewrite required. Only horizontal scaling.
 
 ---
 
 # Technology Stack
 
-Frontend
+Frontend:
 
 * React
 * TypeScript
 * Material UI
 * AG Grid
 
-Backend
+Backend:
 
 * FastAPI
 * SQLAlchemy
 * Alembic
 
-Database
+Database:
 
-* PostgreSQL
+* PostgreSQL (with table partitioning)
 
-Messaging
+Messaging:
 
-* RabbitMQ
+* RabbitMQ (with Dead Letter Queue)
 
-Cache
+Cache:
 
 * Redis
 
-AI
+Object Storage:
+
+* MinIO (on-prem) / AWS S3 (cloud)
+
+AI:
 
 * OpenCV
 * RT-DETR
 * ByteTrack
 * PyTorch
 
-Monitoring
+Monitoring:
 
 * Prometheus
 * Grafana
 * Loki
 
-Deployment
+Deployment:
 
 * Docker
 * Docker Compose
 
-Future
+Future:
 
 * Kubernetes
 
@@ -781,5 +1080,12 @@ Future
 * Horizontal Scaling Supported
 * Real-Time Dashboard
 * Production Ready Architecture
+* Zero data loss on worker crash (DLQ)
+* Audit trail for all sensitive actions
+* Zone config changes take effect without redeployment
+* Snapshot retention policy enforced automatically
+* Camera disconnection detected and alerted within 30 seconds
+
+---
 
 End of Document
