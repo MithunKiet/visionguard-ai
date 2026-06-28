@@ -1535,3 +1535,324 @@ All open source. Zero licensing cost for self-hosted deployment.
 ---
 
 *End of Document*
+
+---
+
+# 32. Enterprise Hierarchy Architecture
+
+## 5-Level Hierarchy
+
+```
+Platform (VisionGuard AI)
+    └── Enterprise          ← Haier, Tata Motors, Maruti (tenant)
+            └── Factory     ← AC Factory, WM Factory, Fridge Factory
+                    └── Department  ← Assembly, Welding, QC, Packaging
+                            └── Zone        ← Zone A, Zone B, Zone C
+                                    └── Camera  ← CAM-001, CAM-002
+```
+
+This hierarchy is the core structural model of the entire platform. Every entity — user, alert, violation, config, report — belongs to a node in this tree.
+
+---
+
+## Why Department Level
+
+BRD v1.0 had only Factory → Zone. Department is added because:
+
+- Large factories have 10–20 zones grouped under departments
+- Department Head needs isolated visibility (only their dept)
+- Analytics must aggregate at department level (not just zone or factory)
+- Alert routing differs per department (Welding dept head ≠ QC dept head)
+
+---
+
+## Database — New Tables
+
+### enterprises
+```
+id                UUID PK
+name              VARCHAR          (Haier, Tata Motors)
+code              VARCHAR UNIQUE
+industry          VARCHAR
+contact_person    VARCHAR
+contact_email     VARCHAR
+status            ENUM (Active, Inactive)
+created_on        TIMESTAMPTZ
+```
+
+### departments
+```
+id                UUID PK
+factory_id        FK → factories
+name              VARCHAR
+code              VARCHAR
+head_user_id      FK → users
+status            ENUM
+created_on        TIMESTAMPTZ
+```
+
+### Updated: factories
+```
+enterprise_id     FK → enterprises   ← NEW
+```
+
+### Updated: zones
+```
+department_id     FK → departments   ← NEW
+```
+
+### Updated: ALL tables (users, alerts, violations, occupancy, audit...)
+```
+enterprise_id     FK → enterprises   ← NEW (for tenant isolation)
+```
+
+---
+
+## Tenant Isolation Strategy
+
+Every table carries `enterprise_id`. PostgreSQL Row Level Security (RLS) enforces isolation:
+
+```sql
+-- Enable RLS on every table
+ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
+
+-- Policy: users only see their enterprise's data
+CREATE POLICY enterprise_isolation ON alerts
+  USING (enterprise_id = current_setting('app.current_enterprise_id')::uuid);
+```
+
+Backend middleware sets this on every DB connection:
+
+```python
+# Middleware — runs on every authenticated request
+async def set_tenant_context(db: Session, user: User):
+    db.execute(
+        text("SET LOCAL app.current_enterprise_id = :eid"),
+        {"eid": str(user.enterprise_id)}
+    )
+    # HO Admin: no filter — sees all factories
+    # Factory Admin: additional factory_id filter applied in queries
+```
+
+---
+
+## Access Control — Scope per Role
+
+| Role | Enterprise Scope | Factory Scope | Department Scope | Zone Scope |
+|---|---|---|---|---|
+| **HO Admin** | All factories | All | All | All |
+| **Factory Admin** | Own enterprise | Own factory only | All in factory | All in factory |
+| **Department Head** | Own enterprise | Own factory | Own department | All in dept |
+| **Safety Officer** | Own enterprise | Own factory | All in factory | All in factory |
+| **Supervisor** | Own enterprise | Own factory | Own department | Assigned zones |
+| **Viewer** | Own enterprise | Assigned factory | Assigned scope | Assigned scope |
+
+### Middleware Enforcement
+
+```python
+class ScopeMiddleware:
+
+    def filter_query(self, query, user: User, model):
+
+        # HO Admin — no additional filter needed (RLS handles enterprise)
+        if user.role == Role.HO_ADMIN:
+            return query
+
+        # Factory Admin — filter by factory
+        if user.role == Role.FACTORY_ADMIN:
+            return query.filter(model.factory_id == user.factory_id)
+
+        # Department Head — filter by department
+        if user.role == Role.DEPT_HEAD:
+            return query.filter(model.department_id == user.department_id)
+
+        # Supervisor — filter by assigned zones
+        if user.role == Role.SUPERVISOR:
+            return query.filter(model.zone_id.in_(user.assigned_zone_ids))
+
+        # Viewer — filter by assigned scope
+        return query.filter(model.factory_id == user.factory_id)
+```
+
+---
+
+## Cross-Factory Dashboard (HO Admin)
+
+HO Admin sees an enterprise-wide summary — aggregated across all factories:
+
+```
+Enterprise Dashboard API:
+GET /api/v1/enterprise/dashboard
+
+Response:
+{
+  "enterprise": "Haier",
+  "factories": [
+    {
+      "id": "...",
+      "name": "AC Factory",
+      "safety_score": 94,
+      "active_alerts": 2,
+      "cameras_online": 18,
+      "cameras_offline": 0,
+      "ppe_compliance": 96.2,
+      "violations_today": 3
+    },
+    {
+      "id": "...",
+      "name": "WM Factory",
+      "safety_score": 87,
+      "active_alerts": 7,
+      "cameras_online": 22,
+      "cameras_offline": 2,
+      "ppe_compliance": 89.1,
+      "violations_today": 14
+    }
+  ],
+  "enterprise_totals": {
+    "safety_score": 91,
+    "active_alerts": 10,
+    "total_cameras": 54,
+    "ppe_compliance": 92.8
+  }
+}
+```
+
+Factory Admin hitting the same endpoint sees **only their factory** in the response — same API, different data based on role.
+
+---
+
+## Multi-Enterprise Support (Supplying to Other Clients)
+
+Platform supports multiple enterprise clients:
+
+```
+Client 1 → enterprise_id: uuid-haier
+               └── AC Factory (factory_id: uuid-ac)
+               └── WM Factory (factory_id: uuid-wm)
+
+Client 2 → enterprise_id: uuid-tata
+               └── Pune Plant  (factory_id: uuid-pune)
+               └── Jamshedpur  (factory_id: uuid-jam)
+```
+
+**Isolation guarantee:**
+- RLS policy ensures `enterprise_id = current_enterprise_id` on every query
+- Haier's HO Admin cannot see Tata's data even if they share the same platform deployment
+- AI workers are assigned per factory — no cross-enterprise camera sharing
+
+### Super Admin (Your Internal Team)
+
+A `SUPER_ADMIN` role exists for the VisionGuard platform team:
+
+```
+Super Admin
+→ Can view all enterprises (for support/debugging)
+→ Can create / suspend enterprises
+→ Can impersonate any org admin (audit-logged)
+→ Never appears in client-facing audit logs
+→ Access via separate /superadmin/ URL with extra MFA
+```
+
+Super Admin bypasses RLS using a master DB connection (separate pool, separate credentials).
+
+---
+
+## Updated Module List
+
+Two new modules added:
+
+### Module: Enterprise
+```
+api/          → GET /api/v1/enterprise/dashboard
+               GET /api/v1/enterprise/factories
+               GET /api/v1/enterprise/analytics
+application/  → GetEnterpriseDashboardQuery
+               GetCrossFactoryAnalyticsQuery
+domain/       → Enterprise entity
+infrastructure/ → EnterpriseRepository
+```
+
+### Module: Department
+```
+api/          → CRUD /api/v1/departments
+               GET /api/v1/departments/{id}/zones
+application/  → CreateDepartmentCommand
+               GetDepartmentDashboardQuery
+domain/       → Department entity
+infrastructure/ → DepartmentRepository
+```
+
+---
+
+## Updated Folder Structure
+
+```
+backend/src/modules/
+
+├── enterprise/     ← NEW — cross-factory dashboard, enterprise mgmt
+├── department/     ← NEW — department CRUD, dept-level analytics
+├── identity/       ← updated — HO_ADMIN, FACTORY_ADMIN, DEPT_HEAD roles
+├── factory/        ← updated — enterprise_id FK added
+├── zone/           ← updated — department_id FK added
+└── ... (all other modules unchanged)
+```
+
+---
+
+## API URL Structure (Updated)
+
+```
+# Enterprise level (HO Admin only)
+GET  /api/v1/enterprise/dashboard
+GET  /api/v1/enterprise/factories
+GET  /api/v1/enterprise/analytics
+GET  /api/v1/enterprise/alerts
+
+# Factory level
+GET  /api/v1/factories
+GET  /api/v1/factories/{id}/dashboard
+GET  /api/v1/factories/{id}/departments
+
+# Department level (NEW)
+GET  /api/v1/departments
+POST /api/v1/departments
+GET  /api/v1/departments/{id}/zones
+GET  /api/v1/departments/{id}/dashboard
+
+# Zone, Camera, Alerts — unchanged
+# But all filtered by user scope automatically
+```
+
+---
+
+## Data Flow — Alert Creation with Hierarchy
+
+```
+AI Worker detects helmet violation on CAM-001
+    ↓
+Event published: {camera_id, zone_id, factory_id, enterprise_id}
+    ↓
+Backend consumer creates alert with full hierarchy context:
+  enterprise_id = uuid-haier
+  factory_id    = uuid-ac-factory
+  department_id = uuid-assembly-dept
+  zone_id       = uuid-zone-a
+  camera_id     = uuid-cam-001
+    ↓
+Alert routing:
+  Zone Supervisor     → notified (zone scope)
+  Department Head     → notified (dept scope)
+  Factory Safety Officer → notified (factory scope)
+  HO Admin            → visible on enterprise dashboard
+    ↓
+Each user sees the alert only within their scope
+HO Admin sees it in cross-factory view
+Factory Admin sees it in factory dashboard
+Dept Head sees it in department dashboard
+Supervisor sees it in zone dashboard
+```
+
+---
+
+*End of Enterprise Hierarchy Section*
