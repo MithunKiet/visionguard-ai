@@ -559,3 +559,65 @@ No code changes required — horizontal scaling only.
 MIT License — see [LICENSE](./LICENSE) for details.
 
 All dependencies are open source. See [`IMPLEMENTATION.md`](./IMPLEMENTATION.md) for per-component license details.
+
+---
+
+## Enterprise Hierarchy
+
+VisionGuard AI follows a 5-level enterprise hierarchy:
+
+```
+Enterprise (e.g. Haier)
+    └── Factory (AC Factory / WM Factory / Fridge Factory)
+            └── Department (Assembly / Welding / QC)
+                    └── Zone (Zone A / Zone B)
+                            └── Camera (CAM-001 / CAM-002)
+```
+
+This allows a single platform deployment to centrally monitor all factories of an enterprise, while keeping each factory's data completely isolated from others.
+
+---
+
+## Multi-Factory Access Control
+
+| Role | Scope | What They See |
+|---|---|---|
+| **HO Admin** | Enterprise-wide | All factories, all data, cross-factory analytics |
+| **Factory Admin** | Single factory | Only their factory — zones, cameras, alerts, users |
+| **Department Head** | Single department | Only their department's zones and cameras |
+| **Safety Officer** | Single factory | Factory alerts, violations, reports |
+| **Supervisor** | Assigned zones | Only their assigned zones |
+| **Viewer** | Assigned scope | Read-only dashboard |
+
+> A Factory Admin of AC Factory will **never** see data from WM Factory — enforced at middleware level on every API request.
+
+---
+
+## Cross-Factory Enterprise Dashboard (HO Admin Only)
+
+```
+┌─────────────────────────────────────────────────────┐
+│         Haier Enterprise — Safety Overview          │
+├──────────────┬───────────────┬──────────────────────┤
+│  AC Factory  │  WM Factory   │  Fridge Factory      │
+│  Score: 94%  │  Score: 87%   │  Score: 91%          │
+│  Alerts: 2   │  Alerts: 7    │  Alerts: 1           │
+│  Cameras: 18 │  Cameras: 24  │  Cameras: 12         │
+└──────────────┴───────────────┴──────────────────────┘
+```
+
+HO Admin can drill down into any factory from this view.
+
+---
+
+## Supply to Multiple Enterprises
+
+VisionGuard AI is designed to be supplied to multiple enterprise clients:
+
+```
+Client 1 → Haier        (4 factories, 200 cameras)
+Client 2 → Tata Motors  (6 factories, 350 cameras)
+Client 3 → Maruti       (3 factories, 150 cameras)
+```
+
+Each enterprise is a completely isolated tenant. One enterprise cannot see another enterprise's data — enforced via `enterprise_id` scoping on every database query.
