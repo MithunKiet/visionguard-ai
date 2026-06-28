@@ -1617,3 +1617,448 @@ Config change logged to audit.
 ---
 
 *End of Document — VisionGuard AI BRD v2.0 Enterprise Edition*
+
+---
+
+# 21. Enterprise Hierarchy & Multi-Factory Architecture
+
+## 21.1 Overview
+
+VisionGuard AI is not a single-factory monitoring tool. It is an **Enterprise Platform** designed to centrally manage multiple factories under one organization (Enterprise), while keeping each factory's data, users, and configurations completely isolated.
+
+**Real-world example:**
+
+```
+Enterprise: Haier India
+    ├── AC Factory          (Greater Noida)
+    ├── Washing Machine Factory  (Pune)
+    ├── Refrigerator Factory     (Chennai)
+    └── E-commerce Factory       (Delhi)
+```
+
+All four factories are managed from a single VisionGuard AI deployment. The Head Office (HO) System Administrator can monitor all factories centrally. Each Factory Admin sees only their own factory.
+
+---
+
+## 21.2 5-Level Hierarchy
+
+```
+Level 1 → Enterprise        Haier India
+Level 2 → Factory           AC Factory
+Level 3 → Department        Assembly Department
+Level 4 → Zone              Zone A (Main Assembly Line)
+Level 5 → Camera            CAM-001, CAM-002
+```
+
+### Why Department Level
+
+The original BRD had only Factory → Zone. Department is a required addition because:
+
+- Large factories have 10–20 zones — grouping under departments is essential
+- Department Head needs isolated visibility (only their department)
+- Alert routing must reach Department Head, not just Zone Supervisor
+- Analytics must aggregate at department level
+- Different departments have different PPE requirements (Welding ≠ Packaging)
+
+---
+
+## 21.3 Enterprise Structure Example
+
+```
+Enterprise: Haier India
+│
+├── Factory: AC Factory (Greater Noida)
+│     ├── Department: Assembly
+│     │     ├── Zone: Main Assembly Line     (Max: 10) [3 cameras]
+│     │     ├── Zone: Sub-Assembly Area      (Max: 8)  [2 cameras]
+│     │     └── Zone: Component Store        (Max: 5)  [1 camera]
+│     ├── Department: Welding
+│     │     ├── Zone: Welding Bay A          (Max: 5)  [2 cameras]
+│     │     └── Zone: Welding Bay B          (Max: 5)  [2 cameras]
+│     ├── Department: Quality Control
+│     │     └── Zone: QC Lab                (Max: 6)  [2 cameras]
+│     └── Department: Packaging
+│           └── Zone: Packing Line           (Max: 8)  [2 cameras]
+│
+├── Factory: Washing Machine Factory (Pune)
+│     ├── Department: Drum Assembly
+│     └── Department: Final Assembly
+│
+├── Factory: Refrigerator Factory (Chennai)
+│     └── ...
+│
+└── Factory: E-commerce Factory (Delhi)
+      └── ...
+```
+
+---
+
+## 21.4 User Roles — Updated for Enterprise
+
+### Role 1 — HO System Administrator (Head Office Admin)
+
+**Scope:** Entire Enterprise — all factories.
+
+**Responsibilities:**
+- View enterprise-wide dashboard (all factories at a glance)
+- Cross-factory analytics and comparison
+- Manage all factories, departments, zones, cameras
+- Manage all users across all factories
+- View all alerts across all factories
+- Generate enterprise-level compliance reports
+- Access full audit trail across all factories
+- Manage AI worker assignments
+- Configure enterprise-wide settings
+
+**Key Differentiator:** Only role that sees cross-factory data.
+
+---
+
+### Role 2 — Factory Admin
+
+**Scope:** Single assigned factory only.
+
+**Responsibilities:**
+- Manage departments, zones, cameras within their factory
+- Manage users within their factory
+- View factory-level dashboard, alerts, analytics
+- Generate factory-level reports
+- Configure factory-level detection rules
+
+**Restriction:** Cannot see any data from other factories — even if they belong to the same enterprise.
+
+---
+
+### Role 3 — Department Head
+
+**Scope:** Single assigned department within a factory.
+
+**Responsibilities:**
+- Monitor all zones within their department
+- View department-level dashboard and analytics
+- Acknowledge and resolve alerts in their department
+- View department compliance reports
+
+**Restriction:** Cannot see zones or alerts outside their department.
+
+---
+
+### Role 4 — Safety Officer
+
+**Scope:** Single factory.
+
+**Responsibilities:**
+- Review and investigate all alerts in their factory
+- Generate safety compliance reports
+- View factory-wide analytics
+
+---
+
+### Role 5 — Supervisor
+
+**Scope:** Assigned zones only (within a department).
+
+**Responsibilities:**
+- Monitor assigned zones in real time
+- Acknowledge and resolve alerts for assigned zones
+- Take corrective actions
+
+---
+
+### Role 6 — Viewer
+
+**Scope:** Assigned dashboard scope (read-only).
+
+---
+
+## 21.5 Access Control Matrix
+
+| Feature | HO Admin | Factory Admin | Dept Head | Safety Officer | Supervisor | Viewer |
+|---|---|---|---|---|---|---|
+| Enterprise Dashboard | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| All Factories View | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Own Factory Dashboard | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Other Factory Data | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Dept Dashboard | ✅ | ✅ | ✅ (own) | ✅ | ❌ | ❌ |
+| Zone Dashboard | ✅ | ✅ | ✅ (own dept) | ✅ | ✅ (assigned) | ✅ (assigned) |
+| User Management | ✅ (all) | ✅ (own factory) | ❌ | ❌ | ❌ | ❌ |
+| Alert Management | ✅ | ✅ | ✅ (own dept) | ✅ | ✅ (own zones) | ❌ |
+| Config Management | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Enterprise Reports | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Factory Reports | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Audit Log | ✅ (all) | ✅ (own factory) | ❌ | ✅ (own actions) | ❌ | ❌ |
+
+---
+
+## 21.6 Enterprise Dashboard — HO Admin View
+
+The Enterprise Dashboard is exclusive to HO Admin. It provides a bird's-eye view of all factories simultaneously.
+
+### Dashboard Panels
+
+**Factory Comparison Panel:**
+
+| Factory | Safety Score | Active Alerts | Cameras Online | PPE Compliance | Violations Today |
+|---|---|---|---|---|---|
+| AC Factory | 94% | 2 | 18/18 | 96.2% | 3 |
+| WM Factory | 87% | 7 | 22/24 | 89.1% | 14 |
+| Fridge Factory | 91% | 1 | 12/12 | 93.5% | 5 |
+| E-comm Factory | 96% | 0 | 8/8 | 98.1% | 1 |
+
+**Enterprise Totals:**
+- Overall Safety Score: 92%
+- Total Active Alerts: 10
+- Total Cameras: 60 (58 online, 2 offline)
+- Enterprise PPE Compliance: 94.2%
+
+**Charts (Enterprise Level):**
+- Safety score trend per factory (last 30 days — line chart, one line per factory)
+- Violations by factory (bar chart — today)
+- Worst performing zones across all factories (top 10 ranking)
+- Alert volume heatmap (factory × day of week)
+
+**Drill-down:** HO Admin can click any factory card to enter that factory's dashboard.
+
+---
+
+## 21.7 Factory Isolation Rules
+
+**FR-ENT-001:** A Factory Admin shall only see data belonging to their assigned factory.
+
+**FR-ENT-002:** System shall enforce factory isolation at the database query level — not just at the UI level.
+
+**FR-ENT-003:** API shall return HTTP 403 if a Factory Admin attempts to access another factory's data — even within the same enterprise.
+
+**FR-ENT-004:** All alert notifications shall only be sent to users within the correct factory scope.
+
+**FR-ENT-005:** Reports generated by a Factory Admin shall only contain data from their factory.
+
+**FR-ENT-006:** Audit log entries shall be visible to Factory Admin only for their own factory's actions.
+
+---
+
+## 21.8 Cross-Factory Analytics (HO Admin Only)
+
+HO Admin has access to analytics that span all factories:
+
+**Cross-Factory PPE Comparison:**
+- Helmet compliance % per factory — bar chart
+- Vest compliance % per factory — bar chart
+- Which factory has the worst PPE compliance this month?
+
+**Cross-Factory Alert Analysis:**
+- Alert volume per factory per week
+- Average alert resolution time per factory
+- Which factory has the most SLA breaches?
+
+**Safety Score Ranking:**
+- Factory ranking by safety score (best to worst)
+- Month-over-month improvement per factory
+- Which department across all factories has the most violations?
+
+**Enterprise KPI Summary (Monthly Report):**
+- Total violations across all factories
+- Total incidents
+- Enterprise-wide PPE compliance %
+- Enterprise safety score
+- Factory-wise breakdown
+
+---
+
+## 21.9 Multi-Enterprise Support
+
+VisionGuard AI is designed to be supplied to multiple enterprise clients. Each enterprise client gets complete data isolation:
+
+```
+Enterprise 1: Haier India
+    → enterprise_id: uuid-haier
+    → 4 factories, 60 cameras
+
+Enterprise 2: Tata Motors
+    → enterprise_id: uuid-tata
+    → 6 factories, 350 cameras
+
+Enterprise 3: Maruti Suzuki
+    → enterprise_id: uuid-maruti
+    → 3 factories, 150 cameras
+```
+
+**Isolation guarantee:**
+- Haier's HO Admin cannot access Tata's data
+- Enforced via PostgreSQL Row Level Security (RLS)
+- Every table carries `enterprise_id` — every query is scoped to it
+
+### Super Admin (VisionGuard Internal Team)
+
+A `SUPER_ADMIN` role exists for the VisionGuard platform operations team:
+
+**Capabilities:**
+- Create and manage enterprise accounts
+- Activate / suspend enterprise access
+- View platform health across all enterprises
+- Access any enterprise for support purposes (audit-logged)
+- Manage platform-wide configurations
+
+**Security:**
+- Accessed via separate `/superadmin/` URL
+- Requires MFA
+- Every Super Admin action is logged in a separate immutable platform audit log
+- Super Admin actions are never visible in client-facing audit logs
+
+---
+
+## 21.10 New Functional Requirements
+
+### FR-ENT-001 to FR-ENT-010 — Enterprise Management
+
+**FR-ENT-001:** System shall support multiple enterprises on a single platform deployment.
+
+**FR-ENT-002:** Each enterprise shall have complete data isolation from all other enterprises.
+
+**FR-ENT-003:** HO Admin shall see all factories within their enterprise from a single dashboard.
+
+**FR-ENT-004:** Factory Admin shall only see their own factory's data — no cross-factory visibility.
+
+**FR-ENT-005:** System shall enforce access scope at the API middleware level on every request.
+
+**FR-ENT-006:** Alert notifications shall be scoped to the correct factory — a Factory Admin from AC Factory shall not receive alerts from WM Factory.
+
+**FR-ENT-007:** Reports shall be scoped to the requesting user's access level automatically.
+
+**FR-ENT-008:** Audit log shall be scoped per factory for Factory Admin, and enterprise-wide for HO Admin.
+
+**FR-ENT-009:** Super Admin shall be able to create, activate, and suspend enterprise accounts.
+
+**FR-ENT-010:** Super Admin access to any enterprise shall be logged in a separate immutable platform audit log.
+
+### FR-DEPT-001 to FR-DEPT-005 — Department Management
+
+**FR-DEPT-001:** Admin shall create departments within a factory with:
+- Department Name
+- Department Code (unique within factory)
+- Department Head (linked user)
+- Description
+- Status (Active / Inactive)
+
+**FR-DEPT-002:** Department shall group multiple zones.
+
+**FR-DEPT-003:** Department Head shall receive alerts for all zones within their department.
+
+**FR-DEPT-004:** Department dashboard shall show:
+- All zones in department with live occupancy
+- Active alerts for department
+- Department PPE compliance %
+- Department safety score
+
+**FR-DEPT-005:** Analytics shall be available at department level:
+- Violations by zone within department
+- Department compliance trend
+- Department vs factory average comparison
+
+---
+
+## 21.11 Updated Database Tables
+
+### enterprises (new)
+```
+id                UUID PK
+name              VARCHAR          (Haier India)
+code              VARCHAR UNIQUE   (HAIER-IN)
+industry          VARCHAR
+contact_person    VARCHAR
+contact_email     VARCHAR
+status            ENUM (Active, Inactive, Suspended)
+created_on        TIMESTAMPTZ
+created_by        UUID
+```
+
+### departments (new)
+```
+id                UUID PK
+enterprise_id     FK → enterprises
+factory_id        FK → factories
+name              VARCHAR
+code              VARCHAR (unique within factory)
+head_user_id      FK → users
+description       TEXT
+status            ENUM
+created_on        TIMESTAMPTZ
+created_by        UUID
+modified_by       UUID
+version           INT DEFAULT 1
+deleted_at        TIMESTAMPTZ
+```
+
+### factories (updated)
+```
+enterprise_id     FK → enterprises   ← ADDED
+```
+
+### zones (updated)
+```
+department_id     FK → departments   ← ADDED
+```
+
+### All other tables (updated)
+```
+enterprise_id     FK → enterprises   ← ADDED to every table
+                                        for RLS enforcement
+```
+
+---
+
+## 21.12 Updated Workflow Scenarios
+
+### Scenario 6 — HO Admin Cross-Factory Monitoring
+
+```
+HO Admin logs in to VisionGuard AI.
+Enterprise dashboard loads showing all 4 factories.
+WM Factory shows: Safety Score 87%, Active Alerts 7, 2 cameras offline.
+HO Admin notices WM Factory is underperforming vs others.
+HO Admin clicks WM Factory → enters WM Factory dashboard.
+Sees: 7 open alerts, Welding Dept has 5 of them.
+HO Admin contacts WM Factory Admin via platform notification.
+WM Factory Admin acknowledges and begins investigation.
+HO Admin returns to enterprise dashboard — monitors resolution.
+```
+
+---
+
+### Scenario 7 — Factory Admin Isolation
+
+```
+AC Factory Admin logs in.
+Dashboard shows only AC Factory data.
+AC Factory Admin tries to access:
+  GET /api/v1/factories/uuid-wm-factory/alerts
+System returns: 403 Forbidden
+Audit log entry created: UnauthorizedAccess
+AC Factory Admin has no visibility into WM Factory.
+```
+
+---
+
+### Scenario 8 — Department Head Alert Routing
+
+```
+Worker in Welding Bay A (AC Factory > Welding Dept > Zone A) missing helmet.
+Alert created with full hierarchy:
+  enterprise_id = uuid-haier
+  factory_id    = uuid-ac-factory
+  department_id = uuid-welding-dept
+  zone_id       = uuid-zone-a
+
+Notifications sent:
+  Zone Supervisor (Welding Bay A) → In-App + Email
+  Department Head (Welding Dept)  → In-App + Email
+  Factory Safety Officer          → In-App
+  HO Admin                        → Visible on enterprise dashboard
+
+AC Factory Admin → sees it on factory dashboard
+WM Factory Admin → does NOT receive this alert (different factory)
+```
+
+---
+
+*End of Enterprise Hierarchy & Multi-Factory Architecture Section*
