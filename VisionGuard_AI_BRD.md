@@ -288,9 +288,9 @@ Organization (Tenant)
 ## Example
 
 ```
-Organization: ABC Manufacturing Ltd.
+Organization: {Enterprise Name}
 
-├── Factory: Greater Noida Plant
+├── Factory: {Factory Name 1}
 │     ├── Zone: Assembly Area        (Max: 10 people) [3 cameras]
 │     ├── Zone: Welding Area         (Max: 5 people)  [2 cameras]
 │     ├── Zone: Paint Shop           (Max: 3 people)  [2 cameras]
@@ -301,7 +301,7 @@ Organization: ABC Manufacturing Ltd.
 │     ├── Zone: Boiler Area          (Max: 2 people)  [1 camera]
 │     └── Zone: Loading Dock         (Max: 4 people)  [2 cameras]
 │
-└── Factory: Pune Plant
+└── Factory: {Factory Name 2}
       ├── Zone: CNC Machining        (Max: 8 people)  [2 cameras]
       └── Zone: Quality Control      (Max: 6 people)  [2 cameras]
 ```
@@ -1629,11 +1629,11 @@ VisionGuard AI is not a single-factory monitoring tool. It is an **Enterprise Pl
 **Real-world example:**
 
 ```
-Enterprise: Haier India
-    ├── AC Factory          (Greater Noida)
-    ├── Washing Machine Factory  (Pune)
-    ├── Refrigerator Factory     (Chennai)
-    └── E-commerce Factory       (Delhi)
+Enterprise: {Enterprise Name}
+    ├── AC Factory          ({City A})
+    ├── Washing Machine Factory  ({City B})
+    ├── Refrigerator Factory     ({City C})
+    └── E-commerce Factory       ({City D})
 ```
 
 All four factories are managed from a single VisionGuard AI deployment. The Head Office (HO) System Administrator can monitor all factories centrally. Each Factory Admin sees only their own factory.
@@ -1643,7 +1643,7 @@ All four factories are managed from a single VisionGuard AI deployment. The Head
 ## 21.2 5-Level Hierarchy
 
 ```
-Level 1 → Enterprise        Haier India
+Level 1 → Enterprise        {Enterprise Name}
 Level 2 → Factory           AC Factory
 Level 3 → Department        Assembly Department
 Level 4 → Zone              Zone A (Main Assembly Line)
@@ -1665,9 +1665,9 @@ The original BRD had only Factory → Zone. Department is a required addition be
 ## 21.3 Enterprise Structure Example
 
 ```
-Enterprise: Haier India
+Enterprise: {Enterprise Name}
 │
-├── Factory: AC Factory (Greater Noida)
+├── Factory: AC Factory ({City A})
 │     ├── Department: Assembly
 │     │     ├── Zone: Main Assembly Line     (Max: 10) [3 cameras]
 │     │     ├── Zone: Sub-Assembly Area      (Max: 8)  [2 cameras]
@@ -1680,14 +1680,14 @@ Enterprise: Haier India
 │     └── Department: Packaging
 │           └── Zone: Packing Line           (Max: 8)  [2 cameras]
 │
-├── Factory: Washing Machine Factory (Pune)
+├── Factory: Washing Machine Factory ({City B})
 │     ├── Department: Drum Assembly
 │     └── Department: Final Assembly
 │
-├── Factory: Refrigerator Factory (Chennai)
+├── Factory: Refrigerator Factory ({City C})
 │     └── ...
 │
-└── Factory: E-commerce Factory (Delhi)
+└── Factory: E-commerce Factory ({City D})
       └── ...
 ```
 
@@ -1870,21 +1870,21 @@ HO Admin has access to analytics that span all factories:
 VisionGuard AI is designed to be supplied to multiple enterprise clients. Each enterprise client gets complete data isolation:
 
 ```
-Enterprise 1: Haier India
-    → enterprise_id: uuid-haier
+Enterprise 1: {Enterprise Name}
+    → enterprise_id: uuid-enterprise-1
     → 4 factories, 60 cameras
 
-Enterprise 2: Tata Motors
-    → enterprise_id: uuid-tata
+Enterprise 2: {Enterprise Name 2}
+    → enterprise_id: uuid-enterprise-2
     → 6 factories, 350 cameras
 
-Enterprise 3: Maruti Suzuki
-    → enterprise_id: uuid-maruti
+Enterprise 3: {Enterprise Name 3}
+    → enterprise_id: uuid-enterprise-3
     → 3 factories, 150 cameras
 ```
 
 **Isolation guarantee:**
-- Haier's HO Admin cannot access Tata's data
+- {Enterprise Name}'s HO Admin cannot access Tata's data
 - Enforced via PostgreSQL Row Level Security (RLS)
 - Every table carries `enterprise_id` — every query is scoped to it
 
@@ -1962,7 +1962,7 @@ A `SUPER_ADMIN` role exists for the VisionGuard platform operations team:
 ### enterprises (new)
 ```
 id                UUID PK
-name              VARCHAR          (Haier India)
+name              VARCHAR          ({Enterprise Name})
 code              VARCHAR UNIQUE   (HAIER-IN)
 industry          VARCHAR
 contact_person    VARCHAR
@@ -2031,7 +2031,7 @@ HO Admin returns to enterprise dashboard — monitors resolution.
 AC Factory Admin logs in.
 Dashboard shows only AC Factory data.
 AC Factory Admin tries to access:
-  GET /api/v1/factories/uuid-wm-factory/alerts
+  GET /api/v1/factories/uuid-factory-2/alerts
 System returns: 403 Forbidden
 Audit log entry created: UnauthorizedAccess
 AC Factory Admin has no visibility into WM Factory.
@@ -2044,8 +2044,8 @@ AC Factory Admin has no visibility into WM Factory.
 ```
 Worker in Welding Bay A (AC Factory > Welding Dept > Zone A) missing helmet.
 Alert created with full hierarchy:
-  enterprise_id = uuid-haier
-  factory_id    = uuid-ac-factory
+  enterprise_id = uuid-enterprise-1
+  factory_id    = uuid-factory-1
   department_id = uuid-welding-dept
   zone_id       = uuid-zone-a
 
@@ -2062,3 +2062,74 @@ WM Factory Admin → does NOT receive this alert (different factory)
 ---
 
 *End of Enterprise Hierarchy & Multi-Factory Architecture Section*
+
+---
+
+# 22. Dynamic Branding Requirements
+
+## 22.1 Core Rule
+
+**No company name, logo, or brand asset shall be hardcoded anywhere in the VisionGuard AI platform.**
+
+This applies to:
+- All UI screens (dashboard, login, alerts, reports, settings)
+- All email notifications
+- All PDF and Excel reports
+- All export filenames
+- All audit log display text
+- All notification templates
+
+Every piece of branding must be loaded dynamically from the database at runtime, based on the logged-in user's enterprise.
+
+## 22.2 Enterprise Branding Fields
+
+| Field | Type | Purpose |
+|---|---|---|
+| `name` | VARCHAR | Shown in UI headers, emails, PDF reports |
+| `code` | VARCHAR | Used in export filenames |
+| `logo_url` | VARCHAR | MinIO path — served as pre-signed URL |
+| `favicon_url` | VARCHAR | Browser tab icon |
+| `primary_color` | VARCHAR | Hex color for UI theme |
+| `secondary_color` | VARCHAR | Secondary brand color |
+| `tagline` | VARCHAR | Optional subtitle on login page |
+
+## 22.3 Functional Requirements
+
+**FR-BRD-001:** System shall display enterprise name dynamically from database on all UI screens.
+
+**FR-BRD-002:** System shall display enterprise logo dynamically from MinIO storage on login page, dashboard header, and all PDF reports.
+
+**FR-BRD-003:** System shall apply enterprise primary color as UI theme color dynamically.
+
+**FR-BRD-004:** All email notification subjects and bodies shall use enterprise name from database — no hardcoded company names.
+
+**FR-BRD-005:** All generated PDF reports shall include enterprise name and logo from database in header and footer.
+
+**FR-BRD-006:** All export filenames shall use enterprise code from database (e.g. `{enterprise_code}_report_2026.pdf`).
+
+**FR-BRD-007:** Enterprise Admin shall be able to upload and update logo via platform settings.
+
+**FR-BRD-008:** Super Admin shall be able to set branding for any enterprise on their behalf.
+
+**FR-BRD-009:** Logo shall be stored in MinIO under `logos/{enterprise_id}/logo.png` and served via pre-signed URL.
+
+**FR-BRD-010:** Browser tab favicon shall be set dynamically from `enterprise.favicon_url`.
+
+## 22.4 Where Branding Appears
+
+| Location | Dynamic Value |
+|---|---|
+| Browser tab | `{enterprise.name} — VisionGuard AI` |
+| Login page logo | `enterprise.logo_url` |
+| Login page heading | `enterprise.name` |
+| Dashboard header | `enterprise.logo_url` + `enterprise.name` |
+| UI accent color | `enterprise.primary_color` |
+| Email subject | `[{enterprise.name}] Alert — {violation_type}` |
+| Email header | `enterprise.logo_url` + `enterprise.name` |
+| PDF report header | `enterprise.name` + `enterprise.logo_url` |
+| PDF report footer | `enterprise.name` |
+| Export filename | `{enterprise.code}_safety_report_2026.pdf` |
+
+---
+
+*End of Dynamic Branding Requirements Section*
