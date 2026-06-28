@@ -1544,7 +1544,7 @@ All open source. Zero licensing cost for self-hosted deployment.
 
 ```
 Platform (VisionGuard AI)
-    └── Enterprise          ← Haier, Tata Motors, Maruti (tenant)
+    └── Enterprise          ← {Enterprise Name}, {Enterprise Name 2}, {Enterprise Name 3} (tenant)
             └── Factory     ← AC Factory, WM Factory, Fridge Factory
                     └── Department  ← Assembly, Welding, QC, Packaging
                             └── Zone        ← Zone A, Zone B, Zone C
@@ -1571,7 +1571,7 @@ BRD v1.0 had only Factory → Zone. Department is added because:
 ### enterprises
 ```
 id                UUID PK
-name              VARCHAR          (Haier, Tata Motors)
+name              VARCHAR          ({Enterprise Name}, {Enterprise Name 2})
 code              VARCHAR UNIQUE
 industry          VARCHAR
 contact_person    VARCHAR
@@ -1686,7 +1686,7 @@ GET /api/v1/enterprise/dashboard
 
 Response:
 {
-  "enterprise": "Haier",
+  "enterprise": "{Enterprise Name}",
   "factories": [
     {
       "id": "...",
@@ -1727,18 +1727,18 @@ Factory Admin hitting the same endpoint sees **only their factory** in the respo
 Platform supports multiple enterprise clients:
 
 ```
-Client 1 → enterprise_id: uuid-haier
-               └── AC Factory (factory_id: uuid-ac)
-               └── WM Factory (factory_id: uuid-wm)
+Client 1 → enterprise_id: uuid-enterprise-1
+               └── AC Factory (factory_id: uuid-factory-1)
+               └── WM Factory (factory_id: uuid-factory-2)
 
-Client 2 → enterprise_id: uuid-tata
-               └── Pune Plant  (factory_id: uuid-pune)
-               └── Jamshedpur  (factory_id: uuid-jam)
+Client 2 → enterprise_id: uuid-enterprise-2
+               └── {Factory Name 2}  (factory_id: uuid-factory-3)
+               └── {City B}  (factory_id: uuid-factory-4)
 ```
 
 **Isolation guarantee:**
 - RLS policy ensures `enterprise_id = current_enterprise_id` on every query
-- Haier's HO Admin cannot see Tata's data even if they share the same platform deployment
+- {Enterprise Name}'s HO Admin cannot see Tata's data even if they share the same platform deployment
 - AI workers are assigned per factory — no cross-enterprise camera sharing
 
 ### Super Admin (Your Internal Team)
@@ -1834,8 +1834,8 @@ AI Worker detects helmet violation on CAM-001
 Event published: {camera_id, zone_id, factory_id, enterprise_id}
     ↓
 Backend consumer creates alert with full hierarchy context:
-  enterprise_id = uuid-haier
-  factory_id    = uuid-ac-factory
+  enterprise_id = uuid-enterprise-1
+  factory_id    = uuid-factory-1
   department_id = uuid-assembly-dept
   zone_id       = uuid-zone-a
   camera_id     = uuid-cam-001
@@ -1856,3 +1856,124 @@ Supervisor sees it in zone dashboard
 ---
 
 *End of Enterprise Hierarchy Section*
+
+---
+
+# 33. Dynamic Branding Architecture
+
+## Core Rule
+
+No company name, logo, or brand asset shall be hardcoded anywhere in the platform — UI, emails, PDFs, reports, or filenames. All branding is loaded dynamically from the database at runtime.
+
+## Enterprise Branding Fields
+
+```sql
+enterprises table:
+  name              VARCHAR    → shown in UI headers, emails, reports
+  code              VARCHAR    → used in export filenames
+  logo_url          VARCHAR    → MinIO path, served as pre-signed URL
+  favicon_url       VARCHAR    → browser tab icon
+  primary_color     VARCHAR    → hex color for UI theme (e.g. #E31837)
+  secondary_color   VARCHAR    → secondary brand color
+  tagline           VARCHAR    → optional subtitle on login page
+```
+
+## Where Branding is Applied
+
+| Location | Field Used |
+|---|---|
+| Browser tab title | `{enterprise.name} — VisionGuard AI` |
+| Login page logo | `enterprise.logo_url` |
+| Login page title | `enterprise.name` |
+| Dashboard header logo | `enterprise.logo_url` |
+| Dashboard header title | `enterprise.name` |
+| UI primary color (theme) | `enterprise.primary_color` |
+| Email subject | `{enterprise.name} — Alert Notification` |
+| Email header logo | `enterprise.logo_url` |
+| PDF report header | `enterprise.name` + `enterprise.logo_url` |
+| PDF report footer | `enterprise.name` |
+| Export filenames | `{enterprise.code}_safety_report_2026.pdf` |
+| Audit log entries | `enterprise.name` |
+| Notification templates | `{enterprise_name}` placeholder |
+
+## Logo Storage
+
+Logos are uploaded by Super Admin or Enterprise Admin and stored in MinIO:
+
+```
+logos/{enterprise_id}/logo.png
+logos/{enterprise_id}/favicon.ico
+```
+
+Served to frontend as pre-signed URLs with 1-hour expiry — same pattern as violation snapshots.
+
+## Frontend Implementation
+
+```typescript
+// On app load — fetch enterprise context
+const { data: enterprise } = useQuery({
+  queryKey: ['enterprise'],
+  queryFn: () => api.get('/api/v1/enterprise/branding')
+})
+
+// Apply dynamically everywhere
+<title>{enterprise?.name} — VisionGuard AI</title>
+<img src={enterprise?.logo_url} alt={enterprise?.name} />
+<h1>{enterprise?.name} Safety Dashboard</h1>
+```
+
+## Theme Color Application
+
+```typescript
+// Apply enterprise brand color as CSS variable
+useEffect(() => {
+  if (enterprise?.primary_color) {
+    document.documentElement.style.setProperty(
+      '--brand-primary', enterprise.primary_color
+    )
+  }
+}, [enterprise])
+```
+
+## Email Template Example
+
+```
+Subject: [{enterprise.name}] High Alert — Helmet Missing — {zone.name}
+
+Header: [enterprise.logo_url]  {enterprise.name} Safety Platform
+
+Body:   A helmet violation was detected at {zone.name}...
+```
+
+No company name is hardcoded in any template — `{enterprise.name}` is resolved at send time from DB.
+
+## PDF Report Header
+
+```python
+# Server-side PDF generation
+def generate_report_header(enterprise: Enterprise):
+    logo = minio.get_presigned_url(enterprise.logo_url)
+    return {
+        "logo": logo,
+        "company_name": enterprise.name,      # from DB
+        "report_title": f"{enterprise.name} — Monthly Safety Report",
+        "generated_by": "VisionGuard AI Platform"
+    }
+```
+
+## Branding API
+
+```
+GET  /api/v1/enterprise/branding
+→ Returns: name, logo_url, favicon_url, primary_color, secondary_color, tagline
+
+POST /api/v1/enterprise/branding/logo
+→ Upload new logo (Super Admin / Enterprise Admin only)
+
+PUT  /api/v1/enterprise/branding
+→ Update colors, tagline, name
+```
+
+---
+
+*End of Dynamic Branding Architecture Section*
