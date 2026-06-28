@@ -1,17 +1,136 @@
 # VisionGuard AI
 
-Enterprise Factory Safety Monitoring Platform
+**Enterprise Factory Safety Monitoring Platform**
+
+VisionGuard AI is a real-time computer vision platform that monitors factory floors for PPE compliance (helmets, vests), occupancy violations, and camera health — and alerts supervisors instantly via dashboard, email, and web push notifications.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React, TypeScript, Vite, Material UI, AG Grid |
+| Backend | FastAPI, SQLAlchemy, Alembic, PostgreSQL |
+| AI | OpenCV, RT-DETR, ByteTrack, PyTorch |
+| Messaging | RabbitMQ (with Dead Letter Queue) |
+| Cache | Redis |
+| Storage | MinIO (S3-compatible) |
+| Monitoring | Prometheus, Grafana, Loki |
+| Deployment | Docker, Docker Compose |
+
+---
+
+## Architecture
+
+```
+React Dashboard
+      │
+      ▼
+FastAPI Backend  ──────────────────────────────────────────┐
+(JWT Auth, RBAC, WebSocket, Redis Cache, Rate Limiting)    │
+      │                                                    │
+      ▼                                                    │
+RabbitMQ  ◄─────────────────────────────────────────────  │
+(Events + Dead Letter Queue)                               │
+      │                                                    │
+      ▼                                                    │
+AI Worker Pool                                             │
+(RT-DETR + ByteTrack + OpenCV)                            │
+      │                                                    │
+      ▼                                                    │
+RTSP Cameras  ─────────────────────────────────────────────┘
+```
+
+AI workers **never access the database directly** — they only publish events to RabbitMQ. The backend consumes events, writes to PostgreSQL, invalidates Redis cache, and pushes real-time updates to the dashboard via WebSocket.
+
+Full architecture details → [`IMPLEMENTATION.md`](./IMPLEMENTATION.md)
+
+---
+
+## Features
+
+- **PPE Detection** — helmet and vest compliance per zone, configurable confidence thresholds
+- **Occupancy Monitoring** — real-time person count with zone-level max occupancy rules
+- **Instant Alerts** — < 5 second latency from violation to supervisor notification
+- **Real-Time Dashboard** — WebSocket-driven, no polling
+- **Camera Health** — auto-detects offline cameras within 30 seconds, circuit breaker per camera
+- **Snapshot Storage** — violation snapshots stored in MinIO, served via pre-signed URLs
+- **Audit Trail** — every sensitive action logged immutably
+- **Role Based Access** — Admin, Supervisor, Safety Officer, Viewer
+- **Zone Config Hot-Swap** — change detection thresholds at runtime without restarting workers
+- **Model Hot-Swap** — update AI models without restarting camera streams
+- **Scales to 1000+ cameras** — horizontal scaling with no rewrite
+
+---
+
+## Project Structure
+
+```
+visionguard-ai/
+│
+├── backend/                        FastAPI modular monolith
+│   └── src/
+│       ├── main.py                 Entrypoint
+│       ├── shared/                 Database, Redis, middleware, config
+│       │   ├── database/
+│       │   ├── cache/              Redis client + helpers
+│       │   └── realtime/           WebSocket connection manager
+│       └── modules/
+│           ├── identity/           Auth, users, roles, JWT
+│           ├── factory/            Factory management
+│           ├── zone/               Zone management
+│           ├── camera/             Camera registry
+│           ├── occupancy/          Occupancy tracking
+│           ├── ppe/                PPE violation records
+│           ├── alerts/             Alert lifecycle
+│           ├── notifications/      Email, in-app, web push
+│           ├── analytics/          Trends, KPIs, reports
+│           ├── config/             Zone-level config for workers
+│           └── audit/              Immutable audit log
+│
+├── ai-worker/                      Python AI detection workers
+│   └── src/
+│       ├── main.py                 Entrypoint
+│       ├── pipeline/               CameraWorker — detection loop
+│       ├── events/                 RabbitMQ publisher
+│       └── config/                 Settings + zone config sync
+│
+├── frontend/                       React + TypeScript
+│   └── src/
+│       ├── App.tsx
+│       ├── pages/                  Dashboard, Alerts, Cameras, Analytics
+│       └── components/             Layout, shared components
+│
+├── docker-compose.yml
+├── .env.example
+├── IMPLEMENTATION.md               Full architecture document
+└── README.md
+```
+
+Each backend module follows Clean Architecture:
+
+```
+module/
+├── api/            REST + WebSocket endpoints
+├── application/    Use cases, command/query handlers
+├── domain/         Entities, value objects, business rules
+├── infrastructure/ DB repos, external services
+└── contracts/      Shared interfaces
+```
 
 ---
 
 ## Prerequisites
 
-Make sure these are installed:
+| Tool | Version | Purpose |
+|---|---|---|
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Latest | Run all infrastructure |
+| [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) | Latest | GPU support for AI workers |
+| [Node.js](https://nodejs.org/) | 20+ | Frontend development |
+| [Python](https://www.python.org/) | 3.11+ | Backend / AI worker local dev |
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (with WSL2 on Windows)
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (for GPU support)
-- [Node.js 20+](https://nodejs.org/) (for frontend)
-- [Python 3.11+](https://www.python.org/) (for local dev without Docker)
+> Docker Desktop with WSL2 is required on Windows for GPU passthrough.
 
 ---
 
@@ -20,11 +139,11 @@ Make sure these are installed:
 ### 1. Clone and configure
 
 ```bash
-git clone <your-repo-url>
-cd visionguard
+git clone https://github.com/MithunKiet/visionguard-ai.git
+cd visionguard-ai
 
-# Copy env file and fill in your values
 cp .env.example .env
+# Edit .env and fill in your values
 ```
 
 ### 2. Start infrastructure
@@ -32,8 +151,6 @@ cp .env.example .env
 ```bash
 docker compose up postgres rabbitmq redis minio -d
 ```
-
-Services available at:
 
 | Service | URL |
 |---|---|
@@ -50,7 +167,7 @@ pip install -r requirements.txt
 uvicorn src.main:app --reload --port 8000
 ```
 
-API docs: `http://localhost:8000/docs`
+API docs (Swagger): `http://localhost:8000/docs`
 
 ### 4. Start AI worker (CPU mode for dev)
 
@@ -58,11 +175,10 @@ API docs: `http://localhost:8000/docs`
 cd ai-worker
 pip install -r requirements.txt
 
-# For CPU-only testing (no camera needed)
 DEVICE=cpu python -m src.main
 ```
 
-> For real cameras, update the `CAMERAS` list in `ai-worker/src/main.py` with your RTSP URLs.
+> For real cameras, add your RTSP URLs to the `CAMERAS` list in `ai-worker/src/config/settings.py`
 
 ### 5. Start frontend
 
@@ -76,45 +192,13 @@ Frontend: `http://localhost:5173`
 
 ---
 
-## Start everything with Docker
+## Start Everything with Docker
 
 ```bash
 docker compose up --build
 ```
 
-> GPU workers require NVIDIA Container Toolkit. On Windows, make sure WSL2 is configured with GPU passthrough.
-
----
-
-## Project Structure
-
-```
-visionguard/
-├── backend/              FastAPI modular monolith
-│   └── src/
-│       ├── main.py       Entrypoint
-│       ├── shared/       Database, middleware, config
-│       └── modules/      identity, factory, zone, camera,
-│                         occupancy, ppe, alerts, notifications,
-│                         analytics, reports, config, audit
-│
-├── ai-worker/            Python AI detection workers
-│   └── src/
-│       ├── main.py       Entrypoint
-│       ├── pipeline/     CameraWorker — detection loop
-│       ├── events/       RabbitMQ publisher
-│       └── config/       Settings
-│
-├── frontend/             React + TypeScript + Material UI
-│   └── src/
-│       ├── App.tsx
-│       ├── pages/        Dashboard, Alerts, Cameras, Analytics
-│       └── components/   Layout, shared components
-│
-├── docker-compose.yml
-├── .env.example
-└── IMPLEMENTATION.md
-```
+> GPU workers require NVIDIA Container Toolkit. CPU mode is used automatically if no GPU is detected.
 
 ---
 
@@ -122,22 +206,33 @@ visionguard/
 
 Copy `.env.example` to `.env` and update:
 
-| Variable | Description |
-|---|---|
-| `POSTGRES_PASSWORD` | Database password |
-| `RABBITMQ_PASSWORD` | RabbitMQ password |
-| `JWT_SECRET_KEY` | Long random string for JWT signing |
-| `DEVICE` | `cuda` for GPU, `cpu` for testing |
-| `WORKER_ID` | Unique ID per worker instance |
+| Variable | Description | Example |
+|---|---|---|
+| `POSTGRES_PASSWORD` | PostgreSQL password | `strongpassword` |
+| `RABBITMQ_PASSWORD` | RabbitMQ password | `strongpassword` |
+| `JWT_SECRET_KEY` | Long random string for JWT signing | `openssl rand -hex 32` |
+| `REFRESH_TOKEN_SECRET` | Secret for refresh token signing | `openssl rand -hex 32` |
+| `MINIO_ROOT_PASSWORD` | MinIO root password | `strongpassword` |
+| `DEVICE` | AI inference device | `cuda` or `cpu` |
+| `WORKER_ID` | Unique ID per worker instance | `worker-1` |
+| `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
 
 ---
 
-## RabbitMQ
+## Default Credentials
 
-Management UI: `http://localhost:15672`  
-Default login: `visionguard` / `visionguard123`
+| Service | URL | Username | Password |
+|---|---|---|---|
+| RabbitMQ | `http://localhost:15672` | `visionguard` | `visionguard123` |
+| MinIO | `http://localhost:9001` | `visionguard` | `visionguard123` |
 
-Events published by workers:
+> Change all default credentials before deploying to production.
+
+---
+
+## RabbitMQ Events
+
+AI workers publish these events:
 
 | Event | Routing Key |
 |---|---|
@@ -145,29 +240,114 @@ Events published by workers:
 | Vest missing | `events.vest_missing_detected` |
 | Overcrowding | `events.overcrowding_detected` |
 | Camera offline | `events.camera_offline_detected` |
+| Camera reconnected | `events.camera_reconnected` |
 | Occupancy update | `events.occupancy_updated` |
+| Worker heartbeat | `events.worker_heartbeat` |
+
+Failed events are routed to the Dead Letter Queue (DLQ) with automatic retry (3 attempts) before manual review.
 
 ---
 
-## MinIO
+## API Overview
 
-Console: `http://localhost:9001`  
-Default login: `visionguard` / `visionguard123`
+```
+POST   /api/v1/auth/login
+POST   /api/v1/auth/refresh
+POST   /api/v1/auth/logout
 
-Violation snapshots are stored under:
+GET    /api/v1/factories
+GET    /api/v1/zones
+GET    /api/v1/cameras
+GET    /api/v1/alerts
+PATCH  /api/v1/alerts/{id}/acknowledge
+PATCH  /api/v1/alerts/{id}/resolve
+
+GET    /api/v1/analytics/violations
+GET    /api/v1/analytics/occupancy
+GET    /api/v1/reports
+
+GET    /api/v1/config/zone/{zone_id}
+PUT    /api/v1/config/zone/{zone_id}
+
+GET    /api/v1/audit
+
+WS     /ws/dashboard
+WS     /ws/alerts
+```
+
+Full API docs available at `http://localhost:8000/docs` when backend is running.
+
+---
+
+## Roles & Permissions
+
+| Role | Alerts | Cameras | Config | Users | Audit |
+|---|---|---|---|---|---|
+| Admin | Full | Full | Full | Full | Full |
+| Supervisor | Acknowledge, Resolve | View | — | — | — |
+| Safety Officer | View | View | — | — | — |
+| Viewer | View | View | — | — | — |
+
+---
+
+## Snapshot Storage
+
+Violation snapshots are stored in MinIO under:
 
 ```
 snapshots/{zone_id}/{camera_id}/{timestamp}.jpg
 ```
 
+The backend serves time-limited pre-signed URLs to the frontend. Snapshots are never served directly from disk.
+
+Retention:
+
+| Storage | Duration |
+|---|---|
+| Online (MinIO) | 90 days |
+| Cold archive | 1 year |
+| Purged | After 1 year |
+
 ---
 
-## Next Steps
+## Monitoring
 
-- [ ] Implement JWT auth in identity module
-- [ ] Wire backend RabbitMQ consumer to process AI events
-- [ ] Implement actual RT-DETR inference in `ai-worker/src/pipeline/camera_worker.py`
-- [ ] Implement MinIO snapshot upload in `_save_snapshot()`
-- [ ] Add Alembic migrations
-- [ ] Build React dashboard pages
-- [ ] Add Prometheus + Grafana monitoring
+Start Prometheus + Grafana:
+
+```bash
+docker compose up prometheus grafana loki -d
+```
+
+| Service | URL |
+|---|---|
+| Grafana | `http://localhost:3000` |
+| Prometheus | `http://localhost:9090` |
+
+Pre-built dashboards:
+
+- System Overview (API health, latency, error rate)
+- AI Worker Health (inference latency, frame rate, queue depth)
+- Alert Operations (volume, resolution time, open alerts by zone)
+- Camera Health (online/offline, reconnection rate)
+- DLQ Monitor (failed event depth over time)
+
+---
+
+## Scaling
+
+| Cameras | Backend | AI Workers |
+|---|---|---|
+| 100 | 1 server | 4 GPU workers |
+| 200 | 2 servers | 8 GPU workers |
+| 500 | 3–5 node cluster | 20+ GPU workers |
+| 1000+ | API Gateway + cluster | 50+ workers + Kubernetes |
+
+No rewrite required — horizontal scaling only.
+
+---
+
+## License
+
+MIT License — see [LICENSE](./LICENSE) for details.
+
+All dependencies are open source. See [`IMPLEMENTATION.md`](./IMPLEMENTATION.md) for license details per component.
