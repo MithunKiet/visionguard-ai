@@ -567,7 +567,7 @@ All dependencies are open source. See [`IMPLEMENTATION.md`](./IMPLEMENTATION.md)
 VisionGuard AI follows a 5-level enterprise hierarchy:
 
 ```
-Enterprise (e.g. Haier)
+Enterprise (e.g. {Enterprise Name})
     └── Factory (AC Factory / WM Factory / Fridge Factory)
             └── Department (Assembly / Welding / QC)
                     └── Zone (Zone A / Zone B)
@@ -597,7 +597,7 @@ This allows a single platform deployment to centrally monitor all factories of a
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│         Haier Enterprise — Safety Overview          │
+│         {Enterprise Name} Enterprise — Safety Overview          │
 ├──────────────┬───────────────┬──────────────────────┤
 │  AC Factory  │  WM Factory   │  Fridge Factory      │
 │  Score: 94%  │  Score: 87%   │  Score: 91%          │
@@ -615,9 +615,28 @@ HO Admin can drill down into any factory from this view.
 VisionGuard AI is designed to be supplied to multiple enterprise clients:
 
 ```
-Client 1 → Haier        (4 factories, 200 cameras)
-Client 2 → Tata Motors  (6 factories, 350 cameras)
-Client 3 → Maruti       (3 factories, 150 cameras)
+Client 1 → {Enterprise Name}        (4 factories, 200 cameras)
+Client 2 → {Enterprise Name 2}  (6 factories, 350 cameras)
+Client 3 → {Enterprise Name 3}       (3 factories, 150 cameras)
 ```
 
 Each enterprise is a completely isolated tenant. One enterprise cannot see another enterprise's data — enforced via `enterprise_id` scoping on every database query.
+
+---
+
+## Dynamic Branding
+
+VisionGuard AI contains **zero hardcoded company names or logos** anywhere in the platform.
+
+All branding is loaded dynamically from the database at runtime:
+
+| Element | Source |
+|---|---|
+| Company name (UI, emails, PDFs) | `enterprise.name` from DB |
+| Logo (header, login, reports) | `enterprise.logo_url` → MinIO |
+| UI theme color | `enterprise.primary_color` from DB |
+| Browser tab title | `{enterprise.name} — VisionGuard AI` |
+| Export filenames | `{enterprise.code}_report_2026.pdf` |
+| Email subjects | `[{enterprise.name}] Alert Notification` |
+
+Each enterprise client sees their own branding automatically — the platform adapts to whoever is logged in.
