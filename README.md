@@ -640,3 +640,153 @@ All branding is loaded dynamically from the database at runtime:
 | Email subjects | `[{enterprise.name}] Alert Notification` |
 
 Each enterprise client sees their own branding automatically — the platform adapts to whoever is logged in.
+
+---
+
+## First Time Setup — Onboarding Flow
+
+### Phase 1 — Super Admin (VisionGuard Team)
+
+```
+1. Super Admin logs in (MFA required)
+2. Creates enterprise account (name, logo, colors)
+3. Creates first HO Admin user
+4. System sends Welcome Email with temporary password
+```
+
+### Phase 2 — HO Admin (Client)
+
+```
+5. HO Admin receives Welcome Email
+6. Logs in → forced password change
+7. Auto-redirected to Setup Wizard
+```
+
+### Setup Wizard (4 Steps)
+
+```
+Step 1 → Create Factory     (name, code, location)
+Step 2 → Add Department     (name, department head)
+Step 3 → Configure Zone     (max occupancy, PPE rules)
+Step 4 → Connect Camera     (RTSP URL + test connection)
+         ↓
+         ✅ Dashboard goes live
+```
+
+> Setup Wizard progress is saved at each step — if admin closes browser midway, they resume from where they left off.
+
+---
+
+## Complete Feature List
+
+### Security
+- JWT + Refresh Token Rotation
+- Two Factor Authentication (2FA/TOTP)
+- Role Based Access Control (RBAC)
+- Session Timeout per role
+- IP Whitelisting per enterprise
+- Password expiry + history
+- Token blacklisting on logout
+- Account lockout (5 failed attempts)
+- Immutable audit trail
+
+### AI Detection
+- Helmet, Vest, Gloves, Shoes, Mask detection
+- Real-time occupancy counting
+- Unauthorized zone entry detection
+- ByteTrack multi-person tracking
+- Configurable confidence thresholds per zone
+- AI model hot-swap (no stream restart)
+- False positive marking + tracking
+- Circuit breaker per camera
+
+### Alert Management
+- Full lifecycle: Open → Acknowledged → In Progress → Closed
+- 5-level escalation matrix (configurable)
+- Alert deduplication + cooldown
+- Alert snooze per camera
+- Bulk alert actions (ack/assign/close)
+- False positive marking
+- Resolution note templates
+- SLA tracking per severity
+
+### Dashboard
+- Executive Dashboard (HO Admin — all factories)
+- Safety Dashboard (Safety Officer)
+- Zone Dashboard (Supervisor)
+- Camera Dashboard
+- Worker Dashboard
+- Real-time Activity Feed
+- Full screen mode (control room)
+- Dark mode
+- WebSocket-driven (zero polling)
+
+### Notifications
+- Email, In-App, Web Push, Slack, Teams, Webhook, SMS
+- Notification digest (15min / 1hr / daily)
+- Do Not Disturb hours
+- Per-user channel preferences per severity
+- Read/unread tracking
+- Retry on delivery failure
+
+### Reports
+- Daily, Weekly, Monthly (auto-scheduled)
+- Custom date range
+- Comparative (this month vs last month)
+- Zone-wise, Camera-wise, Shift-wise
+- PDF + Excel export
+- CSV raw data export
+- Automated email delivery
+
+### Configuration
+- Zone-level PPE detection config
+- Fully configurable rules engine (duration + cooldown)
+- Config history + restore
+- Config copy between zones
+- Config templates
+- Bulk config update
+- All changes hot-applied to AI workers (no restart)
+
+### Shift Management
+- Morning / Evening / Night shift configuration
+- Shift-wise violation analytics
+- Peak violation shift identification
+- Shift-wise reports
+
+### Camera Maintenance
+- Maintenance mode (no alerts during maintenance)
+- Preventive maintenance scheduling
+- Maintenance history per camera
+- Overdue maintenance warnings
+
+### User Management
+- Bulk user import via CSV
+- User groups + group notifications
+- Temporary access with auto-expiry
+- User activity log
+- 2FA enforcement per role
+
+### Announcements
+- Enterprise / Factory / Department scope
+- Urgent banners + normal notice board
+- Read receipts per user
+- Auto-expiry
+
+### Client API Access
+- API keys with configurable permissions
+- Webhook support for external integrations
+- API usage logging
+- Instant key revocation
+
+### Dynamic Branding
+- Enterprise name, logo, colors from database
+- Zero hardcoded company names anywhere
+- Per-enterprise theme color
+- Dynamic PDF/email branding
+
+### Onboarding
+- Super Admin creates enterprise + first admin
+- Setup Wizard (4 steps: Factory → Dept → Zone → Camera)
+- RTSP connection test
+- Progress saved — resume if browser closed
+- Auto AI worker assignment on completion
