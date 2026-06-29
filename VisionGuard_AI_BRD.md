@@ -2133,3 +2133,1061 @@ Every piece of branding must be loaded dynamically from the database at runtime,
 ---
 
 *End of Dynamic Branding Requirements Section*
+
+---
+
+# 23. First Time Setup & Onboarding Flow
+
+## 23.1 Overview
+
+When VisionGuard AI is deployed for a new enterprise client, the system must guide administrators through a structured onboarding process. No factory, department, zone, or camera data exists initially — the platform must be configured before monitoring can begin.
+
+There are two onboarding actors:
+
+| Actor | Role | Responsibility |
+|---|---|---|
+| Super Admin | VisionGuard internal team | Creates enterprise + first HO Admin user |
+| HO Admin (Enterprise Admin) | Client's head office admin | Creates factories, departments, zones, cameras |
+
+---
+
+## 23.2 Complete Onboarding Flow
+
+```
+PHASE 1 — Super Admin Setup (VisionGuard Team)
+
+Step 1 → Super Admin logs in
+         (Platform default credentials, MFA required)
+         ↓
+Step 2 → Creates Enterprise account
+         Fields: Enterprise Name, Code, Industry,
+                 Logo, Primary Color, Contact Person,
+                 Contact Email, Status
+         ↓
+Step 3 → Creates first HO Admin user for enterprise
+         Fields: Full Name, Email, Temporary Password
+         Role: HO_ADMIN
+         ↓
+Step 4 → System sends Welcome Email to HO Admin
+         Contains: Login URL, Temporary Password,
+                   Password reset link (expires 24h)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 2 — HO Admin First Login
+
+Step 5 → HO Admin receives Welcome Email
+         ↓
+Step 6 → HO Admin clicks login link
+         Prompted to set new password (mandatory)
+         ↓
+Step 7 → System detects: is_first_login = true
+                          setup_completed = false
+         Redirects to Setup Wizard automatically
+         ↓
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 3 — Setup Wizard (HO Admin completes)
+
+Step 8  → Screen 1: Welcome Screen
+Step 9  → Screen 2: Create First Factory
+Step 10 → Screen 3: Create First Department
+Step 11 → Screen 4: Create First Zone + PPE Config
+Step 12 → Screen 5: Add First Camera (RTSP URL)
+Step 13 → Screen 6: Summary + Launch Dashboard
+          ↓
+Step 14 → setup_completed = true saved to DB
+          ↓
+Step 15 → AI Worker auto-assigned to cameras
+          ↓
+Step 16 → Dashboard goes live ✅
+```
+
+---
+
+## 23.3 Setup Wizard — Screen Details
+
+### Screen 1 — Welcome
+
+```
+┌──────────────────────────────────────────┐
+│                                          │
+│   [Enterprise Logo]                      │
+│                                          │
+│   Welcome to VisionGuard AI              │
+│   {enterprise.name}                      │
+│                                          │
+│   Let's set up your safety monitoring    │
+│   platform in a few simple steps.        │
+│                                          │
+│   ● Create Factory                       │
+│   ● Add Departments                      │
+│   ● Configure Zones                      │
+│   ● Connect Cameras                      │
+│                                          │
+│              [Get Started →]             │
+│                                          │
+└──────────────────────────────────────────┘
+```
+
+---
+
+### Screen 2 — Create First Factory
+
+```
+┌──────────────────────────────────────────┐
+│  Step 1 of 4 — Factory Details           │
+│  ████░░░░░░░░░░ 25%                      │
+│                                          │
+│  Factory Name *    [________________]    │
+│  Factory Code *    [________________]    │
+│  Location          [________________]    │
+│  Plant Head        [Select User ▼]       │
+│  Description       [________________]    │
+│                                          │
+│  [← Back]              [Save & Next →]   │
+└──────────────────────────────────────────┘
+```
+
+**Validation:**
+- Factory Name: required, max 100 chars
+- Factory Code: required, unique within enterprise, alphanumeric + hyphen only
+- Plant Head: optional at this stage (can be assigned later)
+
+---
+
+### Screen 3 — Create First Department
+
+```
+┌──────────────────────────────────────────┐
+│  Step 2 of 4 — Department Details        │
+│  ████████░░░░░░ 50%                      │
+│                                          │
+│  Factory: {selected factory name}        │
+│                                          │
+│  Department Name * [________________]    │
+│  Department Code * [________________]    │
+│  Department Head   [Select User ▼]       │
+│  Description       [________________]    │
+│                                          │
+│  + Add Another Department                │
+│                                          │
+│  [← Back]              [Save & Next →]   │
+└──────────────────────────────────────────┘
+```
+
+---
+
+### Screen 4 — Create First Zone + PPE Config
+
+```
+┌──────────────────────────────────────────┐
+│  Step 3 of 4 — Zone Configuration        │
+│  ████████████░░ 75%                      │
+│                                          │
+│  Department: {selected dept name}        │
+│                                          │
+│  Zone Name *       [________________]    │
+│  Zone Code *       [________________]    │
+│  Max Occupancy *   [____]                │
+│  Supervisor        [Select User ▼]       │
+│  Restricted Zone   [ ] Yes               │
+│                                          │
+│  PPE Requirements:                       │
+│  [✓] Helmet   [✓] Safety Vest            │
+│  [ ] Gloves   [ ] Safety Shoes           │
+│  [ ] Face Mask                           │
+│                                          │
+│  + Add Another Zone                      │
+│                                          │
+│  [← Back]              [Save & Next →]   │
+└──────────────────────────────────────────┘
+```
+
+---
+
+### Screen 5 — Add First Camera
+
+```
+┌──────────────────────────────────────────┐
+│  Step 4 of 4 — Camera Setup              │
+│  ████████████████ 100%                   │
+│                                          │
+│  Zone: {selected zone name}              │
+│                                          │
+│  Camera Name *     [________________]    │
+│  Camera Code *     [________________]    │
+│  RTSP URL *        [________________]    │
+│  Camera Type       [Fixed ▼]             │
+│  Position          [________________]    │
+│                                          │
+│  [Test Connection]  ← validates RTSP URL │
+│                                          │
+│  + Add Another Camera                    │
+│                                          │
+│  [← Back]          [Complete Setup →]    │
+└──────────────────────────────────────────┘
+```
+
+**RTSP Test Connection:**
+- System attempts to connect to RTSP URL
+- Shows: ✅ Connected (FPS: 25) or ❌ Connection Failed
+- Admin can still save even if test fails (camera may be offline temporarily)
+
+---
+
+### Screen 6 — Setup Complete
+
+```
+┌──────────────────────────────────────────┐
+│                                          │
+│           ✅ Setup Complete!             │
+│                                          │
+│   Your VisionGuard AI platform is ready. │
+│                                          │
+│   Summary:                               │
+│   • 1 Factory created                    │
+│   • 1 Department configured              │
+│   • 1 Zone configured                    │
+│   • 1 Camera connected                   │
+│   • AI Worker assigned automatically     │
+│                                          │
+│   You can add more factories, zones,     │
+│   and cameras from the Admin panel.      │
+│                                          │
+│         [Go to Dashboard →]              │
+│                                          │
+└──────────────────────────────────────────┘
+```
+
+---
+
+## 23.4 First Login Detection
+
+System tracks two flags per user:
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `is_first_login` | BOOLEAN | true | Has user logged in before? |
+| `setup_completed` | BOOLEAN | false | Has setup wizard been completed? |
+
+**Behavior:**
+
+```
+User logs in
+    ↓
+is_first_login = true?
+    → Force password change screen
+    → Set is_first_login = false
+    ↓
+setup_completed = false AND role = HO_ADMIN?
+    → Redirect to Setup Wizard
+    ↓
+setup_completed = true?
+    → Normal dashboard
+```
+
+---
+
+## 23.5 Post-Setup — What HO Admin Can Do Next
+
+After setup wizard completes, HO Admin can:
+
+- Add more factories (no limit based on subscription)
+- Add more departments to any factory
+- Add more zones to any department
+- Add more cameras to any zone
+- Create additional users and assign roles
+- Upload enterprise logo and configure branding
+- Configure detection rules per zone
+- Set up notification preferences
+- Invite Factory Admins for each factory
+
+---
+
+## 23.6 Factory Admin Onboarding (After HO Admin Creates Them)
+
+```
+HO Admin creates Factory Admin user
+    ↓
+System sends Welcome Email to Factory Admin
+    ↓
+Factory Admin logs in → forced password change
+    ↓
+is_first_login = false (no wizard for Factory Admin)
+    ↓
+Factory Admin lands on their Factory Dashboard
+    ↓
+If factory has no departments/zones yet →
+    Show banner: "Your factory has no zones configured.
+                  Contact your HO Admin or add zones now."
+```
+
+---
+
+## 23.7 Functional Requirements — Onboarding
+
+**FR-ONB-001:** Super Admin shall be able to create a new enterprise with name, code, logo, colors, and contact details.
+
+**FR-ONB-002:** Super Admin shall create the first HO Admin user for each enterprise during enterprise creation.
+
+**FR-ONB-003:** System shall send a Welcome Email to newly created HO Admin with a one-time password setup link (expires in 24 hours).
+
+**FR-ONB-004:** System shall detect first login (`is_first_login = true`) and force password change before any other action.
+
+**FR-ONB-005:** System shall redirect HO Admin to Setup Wizard automatically if `setup_completed = false`.
+
+**FR-ONB-006:** Setup Wizard shall guide HO Admin through: Factory → Department → Zone → Camera in sequence.
+
+**FR-ONB-007:** Setup Wizard shall show progress indicator (step X of 4).
+
+**FR-ONB-008:** Each step of the Setup Wizard shall validate inputs before proceeding to the next step.
+
+**FR-ONB-009:** Camera screen shall provide a "Test Connection" button to validate RTSP URL before saving.
+
+**FR-ONB-010:** Setup Wizard shall allow adding multiple factories, departments, zones, and cameras before completing.
+
+**FR-ONB-011:** On Setup Wizard completion, system shall set `setup_completed = true` and redirect to dashboard.
+
+**FR-ONB-012:** AI Worker shall be auto-assigned to cameras upon setup completion.
+
+**FR-ONB-013:** Setup Wizard progress shall be saved at each step — if admin closes browser midway, they resume from last completed step on next login.
+
+**FR-ONB-014:** HO Admin shall be able to re-access Setup Wizard from Admin Settings if they wish to add more entities post-setup.
+
+**FR-ONB-015:** Factory Admin shall not see Setup Wizard — they land directly on their factory dashboard.
+
+---
+
+## 23.8 Database Fields — Onboarding Tracking
+
+### Updated: identity.users
+
+```
+is_first_login       BOOLEAN DEFAULT true
+setup_completed      BOOLEAN DEFAULT false
+password_changed_at  TIMESTAMPTZ
+invited_by           FK → identity.users
+invited_at           TIMESTAMPTZ
+```
+
+### New: onboarding.setup_progress
+
+```
+id                   UUID PK
+user_id              FK → identity.users
+enterprise_id        FK → enterprises
+last_completed_step  INT DEFAULT 0
+factory_id           FK → factories (nullable — step 1 result)
+department_id        FK → departments (nullable — step 2 result)
+zone_id              FK → zones (nullable — step 3 result)
+camera_id            FK → cameras (nullable — step 4 result)
+completed_at         TIMESTAMPTZ
+```
+
+This allows resuming wizard from last completed step if admin closes browser midway.
+
+---
+
+## 23.9 Welcome Email Template
+
+```
+Subject: Welcome to {enterprise.name} — VisionGuard AI
+
+[Enterprise Logo]
+{enterprise.name} Safety Monitoring Platform
+
+Hello {user.name},
+
+Your VisionGuard AI account has been created.
+
+Login URL:  {platform_url}/login
+Email:      {user.email}
+Password:   {temporary_password}
+
+This password expires in 24 hours.
+You will be prompted to set a new password on first login.
+
+If you did not expect this email, please contact your system administrator.
+
+— VisionGuard AI Platform
+```
+
+---
+
+*End of First Time Setup & Onboarding Flow Section*
+
+---
+
+# 24. Security Enhancements
+
+## 24.1 Two Factor Authentication (2FA)
+
+**FR-SEC-001:** System shall support optional 2FA for all user roles via TOTP (Google Authenticator / Authy).
+
+**FR-SEC-002:** 2FA shall be mandatory for Super Admin and HO Admin roles.
+
+**FR-SEC-003:** User shall be able to enable/disable 2FA from their profile settings (except mandatory roles).
+
+**FR-SEC-004:** On 2FA enable, system shall show QR code for authenticator app setup.
+
+**FR-SEC-005:** Backup codes (8 codes) shall be generated on 2FA setup for account recovery.
+
+## 24.2 Session Management
+
+**FR-SEC-006:** System shall auto-logout idle users after configurable timeout (default: 30 minutes).
+
+**FR-SEC-007:** Admin shall configure session timeout per role:
+
+| Role | Default Timeout |
+|---|---|
+| Super Admin | 15 minutes |
+| HO Admin | 30 minutes |
+| Factory Admin | 60 minutes |
+| Supervisor | 120 minutes |
+| Viewer | 240 minutes |
+
+**FR-SEC-008:** User shall see a warning popup 2 minutes before session expiry with option to extend.
+
+**FR-SEC-009:** On session expiry, user shall be redirected to login page with message "Session expired. Please login again."
+
+## 24.3 IP Whitelisting
+
+**FR-SEC-010:** Enterprise Admin shall configure allowed IP ranges for their enterprise.
+
+**FR-SEC-011:** Login attempts from non-whitelisted IPs shall be blocked and logged to audit.
+
+**FR-SEC-012:** IP whitelist shall support individual IPs and CIDR ranges (e.g. 192.168.1.0/24).
+
+**FR-SEC-013:** Super Admin shall bypass IP whitelist (for support access).
+
+## 24.4 Password Expiry
+
+**FR-SEC-014:** System shall enforce password expiry after configurable period (default: 90 days).
+
+**FR-SEC-015:** User shall receive email reminder 7 days before password expiry.
+
+**FR-SEC-016:** On password expiry, user shall be forced to change password before accessing platform.
+
+**FR-SEC-017:** Last 5 passwords shall not be reusable.
+
+---
+
+# 25. Alert Management Enhancements
+
+## 25.1 Full Escalation Matrix
+
+**FR-ALT-020:** System shall support a configurable multi-level escalation matrix per severity:
+
+| Level | Trigger | Notify |
+|---|---|---|
+| Level 1 | Alert created | Zone Supervisor |
+| Level 2 | No ack in 5 min (High) | Department Head |
+| Level 3 | No ack in 15 min (High) | Safety Officer |
+| Level 4 | No ack in 30 min (High) | Factory Admin |
+| Level 5 | No ack in 60 min (High) | HO Admin |
+
+**FR-ALT-021:** Escalation matrix shall be fully configurable per enterprise per severity level.
+
+**FR-ALT-022:** Each escalation event shall be logged to audit trail.
+
+**FR-ALT-023:** Escalation shall stop as soon as alert is acknowledged at any level.
+
+## 25.2 Alert Bulk Actions
+
+**FR-ALT-024:** Supervisor shall be able to select multiple alerts and perform bulk actions:
+- Bulk Acknowledge
+- Bulk Assign (to a user)
+- Bulk Close (with mandatory comment)
+
+**FR-ALT-025:** Bulk actions shall be logged individually in alert history (each alert gets its own history entry).
+
+**FR-ALT-026:** Bulk action limit: maximum 100 alerts at once.
+
+## 25.3 False Positive Marking
+
+**FR-ALT-027:** Supervisor shall be able to mark an alert as "False Positive" with a reason.
+
+**FR-ALT-028:** False positive alerts shall be excluded from compliance % calculations.
+
+**FR-ALT-029:** False positive rate shall be tracked per camera — high false positive rate triggers AI model review recommendation.
+
+**FR-ALT-030:** False positive reasons shall be stored and used for model improvement reporting.
+
+False positive reasons (configurable):
+- Poor lighting
+- Camera angle obstruction
+- Reflection / glare
+- Worker bending (helmet not visible)
+- Other (free text)
+
+## 25.4 Alert Snooze
+
+**FR-ALT-031:** Supervisor shall be able to snooze alerts for a specific camera for a defined period:
+- 15 minutes
+- 30 minutes
+- 1 hour
+- 2 hours
+- Custom duration
+
+**FR-ALT-032:** Snooze reason shall be mandatory.
+
+**FR-ALT-033:** During snooze period, no new alerts of the same type shall be created for that camera.
+
+**FR-ALT-034:** Snooze shall auto-expire at the configured time and alerts shall resume.
+
+**FR-ALT-035:** Snooze actions shall be logged to audit trail.
+
+## 25.5 Alert Templates (Resolution Notes)
+
+**FR-ALT-036:** Admin shall configure common resolution note templates:
+- "Worker warned and PPE provided"
+- "Worker removed from zone"
+- "Camera obstruction cleared"
+- "False alarm — lighting issue"
+
+**FR-ALT-037:** Supervisor shall select a template when closing an alert (or write custom note).
+
+---
+
+# 26. Dashboard Enhancements
+
+## 26.1 Full Screen Mode
+
+**FR-DASH-010:** Dashboard shall support full screen mode for control room TV displays.
+
+**FR-DASH-011:** Full screen mode shall auto-rotate between:
+- Enterprise overview
+- Factory 1 dashboard
+- Factory 2 dashboard
+- Alert feed
+
+**FR-DASH-012:** Rotation interval shall be configurable (default: 30 seconds per screen).
+
+## 26.2 Dark Mode
+
+**FR-DASH-013:** Platform shall support Dark Mode toggle.
+
+**FR-DASH-014:** User preference (dark/light) shall be saved per user in DB.
+
+**FR-DASH-015:** Control room full screen mode shall default to Dark Mode.
+
+## 26.3 Activity Feed
+
+**FR-DASH-016:** Dashboard shall show a real-time Activity Feed panel showing last 20 events:
+
+```
+[2 min ago]  Alert resolved — Helmet Missing — Zone A — by Ravi Kumar
+[5 min ago]  Zone B occupancy exceeded (8/5)
+[8 min ago]  Camera CAM-003 came back online
+[12 min ago] Config updated — Welding Zone threshold changed
+[15 min ago] New alert — Vest Missing — Zone C
+```
+
+**FR-DASH-017:** Activity feed shall update in real time via WebSocket.
+
+**FR-DASH-018:** Activity feed items shall be clickable — click navigates to relevant entity.
+
+## 26.4 Dashboard Auto-Refresh
+
+**FR-DASH-019:** User shall configure dashboard auto-refresh interval:
+- Real-time (WebSocket — default)
+- Every 30 seconds
+- Every 1 minute
+- Every 5 minutes
+
+---
+
+# 27. Notification Enhancements
+
+## 27.1 SMS Notifications
+
+**FR-NOT-010:** System shall support SMS notifications via configurable SMS gateway (Twilio / local provider).
+
+**FR-NOT-011:** SMS shall be sent for Critical and High severity alerts only (to avoid spam).
+
+**FR-NOT-012:** SMS template shall be concise (160 chars max):
+```
+[{enterprise_code}] {severity} Alert: {violation_type} at {zone_name}. 
+View: {short_url}
+```
+
+## 27.2 Notification Digest
+
+**FR-NOT-013:** User shall configure notification digest instead of individual notifications:
+- Real-time (default)
+- Every 15 minutes summary
+- Every 1 hour summary
+- Daily digest (end of day)
+
+**FR-NOT-014:** Digest shall group alerts by severity and show count:
+```
+Last 1 hour summary:
+  Critical: 0
+  High: 3 (2 Helmet Missing, 1 Overcrowding)
+  Medium: 7
+  Low: 2
+View all: {dashboard_url}
+```
+
+**FR-NOT-015:** Critical alerts shall always be sent immediately regardless of digest setting.
+
+## 27.3 Do Not Disturb (DND)
+
+**FR-NOT-016:** User shall configure DND hours (e.g. 10 PM — 6 AM).
+
+**FR-NOT-017:** During DND, only Critical alerts shall bypass DND and notify immediately.
+
+**FR-NOT-018:** Non-critical alerts during DND shall be queued and delivered as a digest at DND end time.
+
+## 27.4 Notification Read/Unread Tracking
+
+**FR-NOT-019:** In-app notifications shall show unread count badge on notification bell icon.
+
+**FR-NOT-020:** User shall mark individual notifications as read or mark all as read.
+
+**FR-NOT-021:** Unread notifications older than 7 days shall be auto-marked as read.
+
+---
+
+# 28. Reports Enhancements
+
+## 28.1 Scheduled Email Reports
+
+**FR-RPT-010:** Admin shall configure scheduled reports with:
+- Report type
+- Frequency (Daily / Weekly / Monthly)
+- Delivery time
+- Recipients (email list)
+- Format (PDF / Excel / Both)
+
+**FR-RPT-011:** System shall auto-generate and email scheduled reports at configured time.
+
+**FR-RPT-012:** Failed report delivery shall retry 3 times and notify admin on all retries fail.
+
+## 28.2 Custom Date Range Reports
+
+**FR-RPT-013:** User shall generate reports for any custom date range (not just daily/weekly/monthly).
+
+**FR-RPT-014:** Maximum date range for a single report: 90 days.
+
+## 28.3 Comparative Reports
+
+**FR-RPT-015:** System shall generate comparative reports:
+- This month vs Last month
+- This week vs Last week
+- Factory A vs Factory B (HO Admin only)
+- Zone A vs Zone B (within same factory)
+
+**FR-RPT-016:** Comparative report shall show % change with up/down indicators.
+
+## 28.4 Zone-wise & Camera-wise Reports
+
+**FR-RPT-017:** User shall generate reports filtered by specific zone.
+
+**FR-RPT-018:** User shall generate reports filtered by specific camera.
+
+## 28.5 Data Export (CSV)
+
+**FR-RPT-019:** User shall export raw data as CSV for:
+- Violations list
+- Occupancy logs
+- Alert history
+- Audit log
+
+**FR-RPT-020:** CSV export shall respect user's access scope (Factory Admin gets only their factory's data).
+
+**FR-RPT-021:** CSV filenames shall use enterprise code: `{enterprise_code}_violations_2026-01.csv`
+
+---
+
+# 29. Configuration Enhancements
+
+## 29.1 Config History
+
+**FR-CFG-010:** System shall maintain full history of zone config changes:
+- What changed (old value → new value)
+- Who changed it
+- When it was changed
+
+**FR-CFG-011:** Admin shall view config history per zone from settings page.
+
+**FR-CFG-012:** Admin shall restore a previous config version with one click.
+
+## 29.2 Config Copy
+
+**FR-CFG-013:** Admin shall copy zone configuration from one zone to another.
+
+**FR-CFG-014:** Admin shall copy zone configuration to multiple zones at once (bulk copy).
+
+**FR-CFG-015:** Before copy, system shall show preview of what will change.
+
+## 29.3 Config Templates
+
+**FR-CFG-016:** Admin shall save a zone config as a named template:
+- "Welding Zone Standard"
+- "Chemical Storage High Security"
+- "General Assembly Standard"
+
+**FR-CFG-017:** Admin shall apply a saved template to any zone.
+
+**FR-CFG-018:** Templates shall be available enterprise-wide (not factory-specific).
+
+## 29.4 Bulk Config Update
+
+**FR-CFG-019:** Admin shall select multiple zones and update a specific setting for all at once.
+
+Example: Update helmet threshold from 0.75 to 0.80 for all welding zones across all factories.
+
+**FR-CFG-020:** Bulk config update shall show confirmation with list of affected zones before applying.
+
+---
+
+# 30. User Management Enhancements
+
+## 30.1 User Activity Log
+
+**FR-USR-010:** System shall track per-user activity:
+- Last login timestamp
+- Last active timestamp
+- Last action performed
+- Total alerts resolved (count)
+- Total logins (count)
+
+**FR-USR-011:** Admin shall view user activity report from user management page.
+
+## 30.2 Bulk User Import
+
+**FR-USR-012:** Admin shall import users via CSV file with columns:
+```
+name, email, role, factory_code, department_code, zone_codes
+```
+
+**FR-USR-013:** System shall validate CSV before import and show error report for invalid rows.
+
+**FR-USR-014:** On successful import, system shall send Welcome Email to all imported users.
+
+**FR-USR-015:** Maximum bulk import: 500 users per file.
+
+## 30.3 User Groups
+
+**FR-USR-016:** Admin shall create user groups (e.g. "Welding Supervisors", "Night Shift Team").
+
+**FR-USR-017:** Notifications shall be sendable to a user group instead of individual users.
+
+**FR-USR-018:** Alert routing shall support assigning to a user group (any member can acknowledge).
+
+## 30.4 Temporary Access
+
+**FR-USR-019:** Admin shall grant temporary access to a user with auto-expiry date.
+
+**FR-USR-020:** On expiry, account shall be auto-deactivated.
+
+**FR-USR-021:** Admin shall receive email reminder 1 day before temporary access expires.
+
+---
+
+# 31. Camera & Infrastructure Enhancements
+
+## 31.1 On-Demand Snapshot
+
+**FR-CAM-010:** User shall request an on-demand snapshot from any active camera.
+
+**FR-CAM-011:** On-demand snapshot shall be captured by AI worker and stored in MinIO within 5 seconds.
+
+**FR-CAM-012:** Snapshot shall be viewable directly in dashboard and downloadable.
+
+## 31.2 Camera Maintenance Mode
+
+**FR-CAM-013:** Admin shall put a camera into "Maintenance Mode":
+- No alerts generated during maintenance
+- No offline alerts triggered
+- Dashboard shows "Under Maintenance" badge
+
+**FR-CAM-014:** Maintenance mode shall require:
+- Start time
+- Expected end time
+- Reason
+
+**FR-CAM-015:** On maintenance end time, camera shall auto-exit maintenance mode.
+
+**FR-CAM-016:** Maintenance mode actions shall be logged to audit trail.
+
+## 31.3 Camera Grouping / Views
+
+**FR-CAM-017:** User shall create custom camera groups (e.g. "North Wing Cameras", "Entry Gates").
+
+**FR-CAM-018:** Dashboard shall support multi-camera grid view (2×2, 3×3, 4×4) for grouped cameras.
+
+**FR-CAM-019:** Full screen multi-camera view shall be available for control room use.
+
+## 31.4 Bulk Camera Import
+
+**FR-CAM-020:** Admin shall import cameras via CSV:
+```
+name, code, rtsp_url, zone_code, camera_type, position
+```
+
+**FR-CAM-021:** System shall validate RTSP URL format for all rows before import.
+
+**FR-CAM-022:** Maximum bulk import: 200 cameras per file.
+
+---
+
+# 32. Shift Management
+
+## 32.1 Shift Configuration
+
+**FR-SHF-001:** Admin shall configure shifts per factory:
+
+| Field | Example |
+|---|---|
+| Shift Name | Morning Shift |
+| Start Time | 06:00 AM |
+| End Time | 02:00 PM |
+| Days | Monday to Saturday |
+
+**FR-SHF-002:** Factory shall support up to 3 shifts (Morning / Evening / Night).
+
+**FR-SHF-003:** Shifts shall be configurable per factory — different factories can have different shift timings.
+
+## 32.2 Shift-wise Analytics
+
+**FR-SHF-004:** All violations, alerts, and occupancy data shall be tagged with the active shift at time of detection.
+
+**FR-SHF-005:** Analytics shall show shift-wise breakdown:
+- Violations per shift
+- Compliance % per shift
+- Alert volume per shift
+- Peak occupancy per shift
+
+**FR-SHF-006:** Dashboard shall show currently active shift name and time remaining.
+
+**FR-SHF-007:** System shall identify highest-risk shift (most violations) and highlight it in analytics.
+
+## 32.3 Shift-wise Reports
+
+**FR-SHF-008:** Reports shall be generatable per shift.
+
+**FR-SHF-009:** Daily report shall include shift-wise breakdown section.
+
+---
+
+# 33. Camera Maintenance Management
+
+## 33.1 Maintenance Schedule
+
+**FR-MNT-001:** Admin shall schedule preventive maintenance for cameras:
+- Camera
+- Scheduled date
+- Maintenance type (Cleaning / Calibration / Hardware check)
+- Assigned technician
+- Notes
+
+**FR-MNT-002:** System shall send reminder notifications 24 hours before scheduled maintenance.
+
+**FR-MNT-003:** Technician shall mark maintenance as completed with:
+- Completion timestamp
+- Work performed (notes)
+- Next maintenance due date
+
+## 33.2 Maintenance History
+
+**FR-MNT-004:** System shall maintain full maintenance history per camera.
+
+**FR-MNT-005:** Camera detail page shall show:
+- Last maintenance date
+- Next maintenance due
+- Maintenance history log
+
+**FR-MNT-006:** Cameras overdue for maintenance (> 90 days since last maintenance) shall show warning badge.
+
+---
+
+# 34. Announcements / Notice Board
+
+## 34.1 Factory Announcements
+
+**FR-ANN-001:** Factory Admin / HO Admin shall post announcements visible to all users in scope:
+
+| Scope | Who Sees It |
+|---|---|
+| Enterprise-wide | All users in enterprise |
+| Factory-wide | All users in that factory |
+| Department-wide | All users in that department |
+
+**FR-ANN-002:** Announcement fields:
+- Title
+- Message (rich text)
+- Scope (Enterprise / Factory / Department)
+- Priority (Normal / Urgent)
+- Expiry date (auto-hides after expiry)
+
+**FR-ANN-003:** Urgent announcements shall appear as a banner on top of dashboard.
+
+**FR-ANN-004:** Normal announcements shall appear in a Notice Board panel on dashboard.
+
+**FR-ANN-005:** Users shall acknowledge announcements (read receipt).
+
+---
+
+# 35. API Access for Clients
+
+## 35.1 Client API Keys
+
+**FR-API-001:** Enterprise Admin shall generate API keys for external integrations.
+
+**FR-API-002:** API key shall have configurable permissions (read-only / read-write per module).
+
+**FR-API-003:** API key shall have configurable expiry date.
+
+**FR-API-004:** All API key usage shall be logged (endpoint, timestamp, IP).
+
+**FR-API-005:** Admin shall revoke API keys instantly.
+
+## 35.2 Webhook Support
+
+**FR-API-006:** Enterprise Admin shall configure webhooks for events:
+- Alert Created
+- Alert Resolved
+- Violation Detected
+- Camera Offline
+
+**FR-API-007:** Webhook payload shall be JSON with full event details.
+
+**FR-API-008:** Failed webhook deliveries shall retry 3 times.
+
+**FR-API-009:** Webhook delivery log shall be viewable from settings.
+
+---
+
+# 36. Shift Management DB Tables
+
+## shifts
+```
+id                UUID PK
+factory_id        FK → factories
+enterprise_id     FK → enterprises
+name              VARCHAR        (Morning Shift)
+start_time        TIME           (06:00:00)
+end_time          TIME           (14:00:00)
+days              JSONB          (["MON","TUE","WED","THU","FRI","SAT"])
+status            ENUM           (Active / Inactive)
+created_on        TIMESTAMPTZ
+created_by        FK → users
+```
+
+## camera_maintenance
+```
+id                UUID PK
+camera_id         FK → cameras
+enterprise_id     FK → enterprises
+scheduled_date    DATE
+maintenance_type  ENUM (Cleaning / Calibration / Hardware)
+assigned_to       FK → users
+status            ENUM (Scheduled / InProgress / Completed / Overdue)
+notes             TEXT
+completed_at      TIMESTAMPTZ
+completed_by      FK → users
+completion_notes  TEXT
+next_due_date     DATE
+created_on        TIMESTAMPTZ
+created_by        FK → users
+```
+
+## announcements
+```
+id                UUID PK
+enterprise_id     FK → enterprises
+factory_id        FK → factories (nullable — enterprise-wide if null)
+department_id     FK → departments (nullable)
+title             VARCHAR
+message           TEXT
+priority          ENUM (Normal / Urgent)
+scope             ENUM (Enterprise / Factory / Department)
+expires_at        TIMESTAMPTZ
+created_by        FK → users
+created_on        TIMESTAMPTZ
+```
+
+## announcement_reads
+```
+id                UUID PK
+announcement_id   FK → announcements
+user_id           FK → users
+read_at           TIMESTAMPTZ
+```
+
+## alert_snooze
+```
+id                UUID PK
+camera_id         FK → cameras
+zone_id           FK → zones
+violation_type    ENUM
+snoozed_by        FK → users
+snooze_reason     TEXT
+snoozed_until     TIMESTAMPTZ
+created_on        TIMESTAMPTZ
+```
+
+## config_history
+```
+id                UUID PK
+zone_id           FK → zones
+enterprise_id     FK → enterprises
+changed_by        FK → users
+old_config        JSONB
+new_config        JSONB
+change_reason     TEXT
+changed_at        TIMESTAMPTZ
+```
+
+## config_templates
+```
+id                UUID PK
+enterprise_id     FK → enterprises
+name              VARCHAR        (Welding Zone Standard)
+description       TEXT
+config_data       JSONB
+created_by        FK → users
+created_on        TIMESTAMPTZ
+```
+
+## user_groups
+```
+id                UUID PK
+enterprise_id     FK → enterprises
+factory_id        FK → factories
+name              VARCHAR        (Night Shift Supervisors)
+description       TEXT
+created_by        FK → users
+created_on        TIMESTAMPTZ
+```
+
+## user_group_members
+```
+id                UUID PK
+group_id          FK → user_groups
+user_id           FK → users
+added_by          FK → users
+added_on          TIMESTAMPTZ
+```
+
+## api_keys
+```
+id                UUID PK
+enterprise_id     FK → enterprises
+name              VARCHAR
+key_hash          VARCHAR        (SHA-256, never plaintext)
+permissions       JSONB
+expires_at        TIMESTAMPTZ
+last_used_at      TIMESTAMPTZ
+status            ENUM (Active / Revoked)
+created_by        FK → users
+created_on        TIMESTAMPTZ
+```
+
+---
+
+*End of Enhancement Sections*
