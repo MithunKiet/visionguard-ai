@@ -1977,3 +1977,645 @@ PUT  /api/v1/enterprise/branding
 ---
 
 *End of Dynamic Branding Architecture Section*
+
+---
+
+# 34. First Time Setup & Onboarding Architecture
+
+## 34.1 Two-Phase Onboarding
+
+```
+Phase 1 — Super Admin (VisionGuard team)
+    Creates enterprise + HO Admin user
+
+Phase 2 — HO Admin (Client)
+    Completes Setup Wizard:
+    Factory → Department → Zone → Camera
+```
+
+## 34.2 First Login Detection Flow
+
+```python
+# Login API response
+{
+  "access_token": "...",
+  "refresh_token": "...",
+  "user": {
+    "id": "uuid",
+    "name": "Admin User",
+    "email": "admin@company.com",
+    "role": "HO_ADMIN",
+    "is_first_login": true,       ← force password change
+    "setup_completed": false,     ← redirect to wizard
+    "enterprise": {
+      "id": "uuid",
+      "name": "{Enterprise Name}",
+      "logo_url": "...",
+      "primary_color": "#1976D2"
+    }
+  }
+}
+```
+
+## 34.3 Frontend Routing Logic
+
+```typescript
+// After login — check flags
+const handleLoginSuccess = (response: LoginResponse) => {
+  const { user } = response
+
+  // Step 1: Force password change on first login
+  if (user.is_first_login) {
+    navigate('/change-password', {
+      state: { required: true }
+    })
+    return
+  }
+
+  // Step 2: Setup wizard for HO Admin
+  if (!user.setup_completed && user.role === 'HO_ADMIN') {
+    navigate('/setup-wizard')
+    return
+  }
+
+  // Step 3: Normal dashboard
+  navigate('/dashboard')
+}
+```
+
+## 34.4 Setup Wizard — State Management
+
+```typescript
+// Zustand store for wizard progress
+interface SetupWizardStore {
+  currentStep: number          // 1-4
+  factoryId: string | null     // created in step 1
+  departmentId: string | null  // created in step 2
+  zoneId: string | null        // created in step 3
+  cameraId: string | null      // created in step 4
+
+  setStep: (step: number) => void
+  setFactoryId: (id: string) => void
+  setDepartmentId: (id: string) => void
+  setZoneId: (id: string) => void
+  setCameraId: (id: string) => void
+}
+```
+
+## 34.5 Setup Progress — Resume from Last Step
+
+```python
+# Backend: GET /api/v1/setup/progress
+# Returns last saved step so wizard can resume
+
+class SetupProgressResponse(BaseModel):
+    last_completed_step: int
+    factory_id: Optional[str]
+    department_id: Optional[str]
+    zone_id: Optional[str]
+    camera_id: Optional[str]
+    completed_at: Optional[datetime]
+```
+
+## 34.6 RTSP Test Connection Endpoint
+
+```python
+# POST /api/v1/cameras/test-connection
+# Called from Setup Wizard Step 4
+
+class RTSPTestRequest(BaseModel):
+    rtsp_url: str
+
+class RTSPTestResponse(BaseModel):
+    connected: bool
+    fps: Optional[float]
+    resolution: Optional[str]
+    error_message: Optional[str]
+
+# Backend uses OpenCV to test:
+async def test_rtsp_connection(rtsp_url: str) -> RTSPTestResponse:
+    cap = cv2.VideoCapture(rtsp_url)
+    if not cap.isOpened():
+        return RTSPTestResponse(connected=False,
+                                error_message="Cannot connect to stream")
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    w   = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+    h   = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    cap.release()
+    return RTSPTestResponse(
+        connected=True,
+        fps=fps,
+        resolution=f"{int(w)}x{int(h)}"
+    )
+```
+
+## 34.7 Setup Wizard API Endpoints
+
+```
+GET  /api/v1/setup/progress
+     → Returns last completed step + created entity IDs
+
+POST /api/v1/setup/factory
+     → Creates factory, saves step 1 progress
+
+POST /api/v1/setup/department
+     → Creates department, saves step 2 progress
+
+POST /api/v1/setup/zone
+     → Creates zone + PPE config, saves step 3 progress
+
+POST /api/v1/setup/camera
+     → Creates camera, saves step 4 progress
+
+POST /api/v1/setup/complete
+     → Sets setup_completed = true
+     → Triggers AI worker auto-assignment
+     → Returns dashboard redirect URL
+
+POST /api/v1/cameras/test-connection
+     → Tests RTSP URL, returns FPS + resolution
+```
+
+## 34.8 Auto AI Worker Assignment
+
+```python
+# On setup completion — auto assign workers to cameras
+
+async def auto_assign_workers(factory_id: str):
+    cameras = camera_repo.get_by_factory(factory_id)
+    workers = worker_repo.get_available_workers()
+
+    if not workers:
+        # No workers online — cameras queued
+        # Will be assigned when worker comes online
+        return
+
+    # Round-robin assignment
+    for i, camera in enumerate(cameras):
+        worker = workers[i % len(workers)]
+        camera.worker_id = worker.id
+        camera_repo.save(camera)
+
+    # Publish config to assigned workers
+    for worker in workers:
+        rabbitmq.publish(
+            routing_key="config.worker_cameras_updated",
+            body={"worker_id": worker.id,
+                  "cameras": get_worker_cameras(worker.id)}
+        )
+```
+
+## 34.9 Updated DB Fields
+
+```sql
+-- identity.users — add onboarding flags
+ALTER TABLE identity.users ADD COLUMN is_first_login BOOLEAN DEFAULT true;
+ALTER TABLE identity.users ADD COLUMN setup_completed BOOLEAN DEFAULT false;
+ALTER TABLE identity.users ADD COLUMN password_changed_at TIMESTAMPTZ;
+ALTER TABLE identity.users ADD COLUMN invited_by UUID REFERENCES identity.users(id);
+ALTER TABLE identity.users ADD COLUMN invited_at TIMESTAMPTZ;
+
+-- New table: onboarding.setup_progress
+CREATE TABLE onboarding.setup_progress (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             UUID NOT NULL REFERENCES identity.users(id),
+    enterprise_id       UUID NOT NULL REFERENCES enterprises(id),
+    last_completed_step INT DEFAULT 0,
+    factory_id          UUID REFERENCES factory.factories(id),
+    department_id       UUID REFERENCES department.departments(id),
+    zone_id             UUID REFERENCES zone.zones(id),
+    camera_id           UUID REFERENCES camera.cameras(id),
+    completed_at        TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+---
+
+*End of Onboarding Architecture Section*
+
+---
+
+# 35. Security Enhancements Architecture
+
+## 35.1 Two Factor Authentication (TOTP)
+
+```python
+# Libraries: pyotp + qrcode
+
+class TOTPService:
+
+    def generate_secret(self, user_id: str) -> str:
+        secret = pyotp.random_base32()
+        # Store encrypted in identity.totp_secrets
+        totp_repo.save(user_id, encrypt(secret))
+        return secret
+
+    def generate_qr_code(self, user: User, secret: str) -> str:
+        totp = pyotp.TOTP(secret)
+        uri = totp.provisioning_uri(
+            name=user.email,
+            issuer_name="VisionGuard AI"
+        )
+        return generate_qr_image(uri)   # base64 PNG
+
+    def verify_token(self, user_id: str, token: str) -> bool:
+        secret = decrypt(totp_repo.get(user_id))
+        totp = pyotp.TOTP(secret)
+        return totp.verify(token, valid_window=1)
+
+    def generate_backup_codes(self) -> List[str]:
+        return [secrets.token_hex(4).upper() for _ in range(8)]
+```
+
+## 35.2 Session Timeout
+
+```python
+# Redis key: session:active:{user_id}
+# TTL = configured timeout per role
+
+class SessionManager:
+
+    def refresh_session(self, user_id: str, role: str):
+        ttl = SESSION_TIMEOUTS[role]   # role → seconds
+        redis.setex(f"session:active:{user_id}", ttl, "1")
+
+    def is_session_valid(self, user_id: str) -> bool:
+        return redis.exists(f"session:active:{user_id}")
+
+    def invalidate_session(self, user_id: str):
+        redis.delete(f"session:active:{user_id}")
+```
+
+Frontend sends keepalive ping every 5 minutes if user is active.
+If no keepalive → session expires → WebSocket sends `session_expired` event → frontend redirects to login.
+
+## 35.3 IP Whitelisting
+
+```python
+# Middleware — runs before every request
+class IPWhitelistMiddleware:
+
+    async def __call__(self, request: Request, call_next):
+        user_ip = request.client.host
+        enterprise_id = get_enterprise_from_token(request)
+
+        if enterprise_id:
+            allowed_ranges = ip_whitelist_repo.get(enterprise_id)
+            if allowed_ranges and not is_ip_allowed(user_ip, allowed_ranges):
+                audit_log(action="UnauthorizedIPAccess", ip=user_ip)
+                raise HTTPException(status_code=403,
+                                    detail="Access denied from this IP")
+        return await call_next(request)
+```
+
+---
+
+# 36. Alert Enhancements Architecture
+
+## 36.1 Escalation Engine
+
+```python
+# Background job — runs every minute
+class EscalationEngine:
+
+    async def run(self):
+        open_alerts = alert_repo.get_unacknowledged()
+
+        for alert in open_alerts:
+            matrix = escalation_repo.get_matrix(
+                enterprise_id=alert.enterprise_id,
+                severity=alert.severity
+            )
+            elapsed = (now() - alert.created_on).seconds / 60
+
+            for level in matrix.levels:
+                if elapsed >= level.trigger_minutes:
+                    if not already_escalated(alert.id, level.level):
+                        notify_users(level.notify_roles, alert)
+                        log_escalation(alert.id, level.level)
+                        audit_log(action="AlertEscalated", alert_id=alert.id)
+```
+
+## 36.2 False Positive Tracking
+
+```python
+# When supervisor marks false positive:
+class MarkFalsePositiveCommand:
+    alert_id: str
+    reason: str
+    reason_detail: Optional[str]
+
+# Effect:
+# 1. Alert status → Closed (FalsePositive)
+# 2. violation.is_false_positive = True
+# 3. Camera false_positive_count += 1
+# 4. Excluded from compliance % calculation
+# 5. Audit log entry
+# 6. If camera FP rate > 20% → recommendation event published
+```
+
+## 36.3 Alert Snooze Implementation
+
+```python
+# Redis key: snooze:{camera_id}:{violation_type}
+# TTL = snooze duration
+
+class AlertSnoozeService:
+
+    def snooze(self, camera_id: str, violation_type: str,
+                duration_minutes: int, reason: str, user_id: str):
+
+        key = f"snooze:{camera_id}:{violation_type}"
+        redis.setex(key, duration_minutes * 60, user_id)
+
+        # Save to DB for audit + history
+        snooze_repo.save(AlertSnooze(
+            camera_id=camera_id,
+            violation_type=violation_type,
+            snoozed_by=user_id,
+            snooze_reason=reason,
+            snoozed_until=now() + timedelta(minutes=duration_minutes)
+        ))
+        audit_log(action="AlertSnoozed", camera_id=camera_id)
+
+    def is_snoozed(self, camera_id: str, violation_type: str) -> bool:
+        return redis.exists(f"snooze:{camera_id}:{violation_type}")
+```
+
+AI worker checks snooze before publishing event:
+```python
+if not snooze_service.is_snoozed(camera_id, violation_type):
+    rabbitmq.publish(event)
+```
+
+---
+
+# 37. Shift Management Architecture
+
+## 37.1 Active Shift Detection
+
+```python
+class ShiftService:
+
+    def get_active_shift(self, factory_id: str) -> Optional[Shift]:
+        now_time = datetime.now().time()
+        now_day  = datetime.now().strftime("%a").upper()  # MON, TUE...
+
+        shifts = shift_repo.get_by_factory(factory_id)
+
+        for shift in shifts:
+            if now_day in shift.days:
+                if shift.start_time <= now_time <= shift.end_time:
+                    return shift
+        return None
+```
+
+## 37.2 Violation Tagging with Shift
+
+```python
+# AI worker event → backend consumer
+# On violation save:
+
+active_shift = shift_service.get_active_shift(factory_id)
+
+violation = Violation(
+    zone_id=zone_id,
+    camera_id=camera_id,
+    violation_type=violation_type,
+    shift_id=active_shift.id if active_shift else None,   # ← tag
+    ...
+)
+```
+
+All analytics queries can then GROUP BY shift_id.
+
+---
+
+# 38. Camera Maintenance Architecture
+
+## 38.1 Maintenance Mode
+
+```python
+# Redis key: maintenance:{camera_id}
+# When camera enters maintenance mode:
+
+class MaintenanceModeService:
+
+    def enable(self, camera_id: str, until: datetime,
+                reason: str, user_id: str):
+        # Set Redis flag
+        ttl = (until - now()).seconds
+        redis.setex(f"maintenance:{camera_id}", ttl, "1")
+
+        # Update DB
+        camera_repo.set_maintenance_mode(camera_id, True, until, reason)
+        audit_log(action="CameraMaintenanceEnabled",
+                  camera_id=camera_id, user_id=user_id)
+
+    def is_in_maintenance(self, camera_id: str) -> bool:
+        return redis.exists(f"maintenance:{camera_id}")
+```
+
+AI worker checks before publishing any alert:
+```python
+if not maintenance_service.is_in_maintenance(camera_id):
+    rabbitmq.publish(event)
+```
+
+---
+
+# 39. Notification Enhancements Architecture
+
+## 39.1 SMS via Twilio
+
+```python
+from twilio.rest import Client
+
+class SMSNotificationAdapter:
+
+    def send(self, phone: str, message: str) -> bool:
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        try:
+            msg = client.messages.create(
+                body=message[:160],          # SMS limit
+                from_=TWILIO_FROM_NUMBER,
+                to=phone
+            )
+            return msg.status in ("queued", "sent")
+        except Exception as e:
+            log.error(f"SMS failed: {e}")
+            return False
+```
+
+## 39.2 Notification Digest
+
+```python
+# Background job — runs every 15 min / 1 hour based on user preference
+class DigestJob:
+
+    async def run(self):
+        users_with_digest = user_repo.get_digest_preference_users()
+
+        for user in users_with_digest:
+            pending = notification_queue_repo.get_pending(user.id)
+            if not pending:
+                continue
+
+            digest = build_digest(pending)
+            email_adapter.send(user.email, digest)
+            notification_queue_repo.mark_sent(user.id)
+```
+
+## 39.3 DND Implementation
+
+```python
+class DNDService:
+
+    def is_dnd_active(self, user: User) -> bool:
+        if not user.dnd_enabled:
+            return False
+        now_time = datetime.now().time()
+        return user.dnd_start <= now_time or now_time <= user.dnd_end
+
+    def should_notify(self, user: User,
+                      severity: AlertSeverity) -> bool:
+        # Critical always bypasses DND
+        if severity == AlertSeverity.CRITICAL:
+            return True
+        return not self.is_dnd_active(user)
+```
+
+---
+
+# 40. Config Enhancements Architecture
+
+## 40.1 Config History Tracking
+
+```python
+# Every zone config save:
+class SaveZoneConfigCommand:
+
+    async def handle(self, zone_id: str,
+                     new_config: ZoneConfig, user_id: str):
+
+        old_config = config_repo.get(zone_id)
+
+        # Save new config
+        new_config.version = old_config.version + 1
+        config_repo.save(new_config)
+
+        # Save history
+        config_history_repo.save(ConfigHistory(
+            zone_id=zone_id,
+            changed_by=user_id,
+            old_config=old_config.to_dict(),
+            new_config=new_config.to_dict(),
+            changed_at=now()
+        ))
+
+        # Publish to AI workers
+        rabbitmq.publish("config.zone_config_updated", {
+            "zone_id": zone_id,
+            "version": new_config.version,
+            "config": new_config.to_dict()
+        })
+```
+
+## 40.2 Config Templates
+
+```python
+# Apply template to zone
+class ApplyConfigTemplateCommand:
+
+    async def handle(self, template_id: str,
+                     zone_ids: List[str], user_id: str):
+
+        template = template_repo.get(template_id)
+
+        for zone_id in zone_ids:
+            # Apply template config to each zone
+            await save_zone_config(zone_id,
+                                   template.config_data, user_id)
+```
+
+---
+
+# 41. New Modules Added
+
+## Module: shifts
+```
+api/          → CRUD /api/v1/shifts
+               GET /api/v1/shifts/active (current shift)
+application/  → CreateShiftCommand, GetActiveShiftQuery
+domain/       → Shift entity
+infrastructure/ → ShiftRepository
+```
+
+## Module: maintenance
+```
+api/          → CRUD /api/v1/maintenance
+               POST /api/v1/cameras/{id}/maintenance/enable
+               POST /api/v1/cameras/{id}/maintenance/complete
+application/  → EnableMaintenanceModeCommand
+               CompleteMaintenanceCommand
+domain/       → CameraMaintenance entity
+infrastructure/ → MaintenanceRepository
+```
+
+## Module: announcements
+```
+api/          → CRUD /api/v1/announcements
+               POST /api/v1/announcements/{id}/read
+application/  → CreateAnnouncementCommand
+               MarkAnnouncementReadCommand
+domain/       → Announcement entity
+infrastructure/ → AnnouncementRepository
+```
+
+## Module: api_keys
+```
+api/          → POST /api/v1/api-keys
+               GET /api/v1/api-keys
+               DELETE /api/v1/api-keys/{id}
+application/  → GenerateApiKeyCommand, RevokeApiKeyCommand
+domain/       → ApiKey entity
+infrastructure/ → ApiKeyRepository
+```
+
+---
+
+# 42. Updated Complete Module List
+
+```
+backend/src/modules/
+
+├── identity/          Auth, JWT, 2FA, sessions, users, roles
+├── organization/      Multi-tenant support
+├── enterprise/        Cross-factory dashboard, branding
+├── factory/           Factory management
+├── department/        Department management
+├── zone/              Zone management
+├── camera/            Camera registry, health, maintenance mode
+├── worker/            AI worker registry, heartbeat, model mgmt
+├── occupancy/         Real-time occupancy tracking
+├── ppe/               PPE violation records
+├── alerts/            Alert lifecycle, escalation, snooze, bulk actions
+├── incidents/         Incident management
+├── notifications/     Email, SMS, in-app, push, Slack, Teams, webhook
+├── analytics/         KPIs, trends, heatmaps, shift analytics
+├── dashboard/         Dashboard aggregation, activity feed
+├── reports/           PDF, Excel, scheduled, comparative
+├── config/            Zone config, templates, history, bulk update
+├── audit/             Immutable audit log
+├── health/            Readiness, liveness, system status
+├── shifts/            Shift management           ← NEW
+├── maintenance/       Camera maintenance         ← NEW
+├── announcements/     Notice board               ← NEW
+└── api_keys/          Client API access          ← NEW
+```
+
+---
+
+*End of Enhancement Architecture Sections*
