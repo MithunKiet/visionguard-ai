@@ -38,6 +38,7 @@
 29. [Future Integrations](#29-future-integrations)
 30. [Technology Stack](#30-technology-stack)
 31. [Success Criteria](#31-success-criteria)
+43. [Risk Mitigation Architecture](#43-risk-mitigation-architecture)
 
 ---
 
@@ -2619,3 +2620,242 @@ backend/src/modules/
 ---
 
 *End of Enhancement Architecture Sections*
+
+---
+
+# 43. Risk Mitigation Architecture
+
+## Risk 1 — PPE Detection Accuracy in Real Factory Conditions
+
+**Problem:** Generic YOLO models trained on COCO data drop below 90% accuracy in real factory environments due to variable lighting, occlusion, and wide camera angles.
+
+### Fix 1: Fine-Tuned YOLO Model
+
+Do not ship with a COCO-pretrained model. Fine-tune on factory-specific PPE data before deployment.
+
+**Recommended datasets:**
+- RoboFlow Universe — PPE Detection datasets (public, labeled)
+- Open Images v7 — helmet/vest/gloves classes
+- Client-collected footage — 500–2,000 labeled images per PPE class
+
+```python
+# Training config (YOLOv8)
+# ultralytics/yolov8n-ppe.yaml
+
+model: yolov8n.pt          # base checkpoint
+data: ppe_factory.yaml     # custom dataset
+epochs: 100
+imgsz: 640
+batch: 16
+classes:
+  0: helmet
+  1: no_helmet
+  2: vest
+  3: no_vest
+  4: gloves
+  5: no_gloves
+  6: safety_shoes
+  7: no_safety_shoes
+```
+
+### Fix 2: Preprocessing Pipeline for Low-Light / Glare
+
+```python
+import cv2
+import numpy as np
+
+class FramePreprocessor:
+
+    def enhance(self, frame: np.ndarray) -> np.ndarray:
+        # Convert to LAB color space
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+
+        # Apply CLAHE on L channel (luminance)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l_enhanced = clahe.apply(l)
+
+        # Merge and convert back
+        enhanced = cv2.merge([l_enhanced, a, b])
+        return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+```
+
+CLAHE dramatically improves detection accuracy in:
+- Low-light factory floors
+- High-glare welding zones
+- Flickering fluorescent lighting
+
+### Fix 3: Multi-Frame Voting (Eliminate False Alarms)
+
+Never trigger an alert on a single frame detection. Require N consecutive positive frames.
+
+```python
+class ViolationTracker:
+    # track_id → consecutive_violation_frame_count
+    _frame_counts: Dict[str, int] = {}
+
+    REQUIRED_CONSECUTIVE_FRAMES = 3   # configurable per zone
+
+    def record_frame(self, track_id: str, violation: bool) -> bool:
+        if violation:
+            self._frame_counts[track_id] = \
+                self._frame_counts.get(track_id, 0) + 1
+        else:
+            self._frame_counts[track_id] = 0   # reset on clean frame
+
+        return self._frame_counts[track_id] >= self.REQUIRED_CONSECUTIVE_FRAMES
+```
+
+This eliminates motion-blur and occlusion false positives entirely.
+
+### Fix 4: Per-Zone Confidence Thresholds
+
+```python
+class ZoneDetectionConfig(BaseModel):
+    helmet_confidence_threshold: float = 0.70    # adjust per zone
+    vest_confidence_threshold:   float = 0.65
+    low_confidence_action: str = "review"        # "alert" | "review" | "ignore"
+
+# In AI worker:
+if detection.confidence >= zone_config.helmet_confidence_threshold:
+    tracker.record_frame(track_id, violation=True)
+elif detection.confidence >= LOW_CONFIDENCE_FLOOR:
+    publish_review_event(detection, snapshot)    # human reviews snapshot
+```
+
+### Fix 5: Camera Placement Requirements (Installation Spec)
+
+Bad placement kills accuracy more than a bad model. Define minimum requirements:
+
+| Parameter | Requirement |
+|---|---|
+| Camera height | 3 – 5 meters |
+| Tilt angle | 30° – 45° downward |
+| Zone overlap | ≥ 15% overlap between adjacent cameras |
+| Resolution | Minimum 1080p at 15 FPS |
+| IR / Night Vision | Required for 24/7 shifts |
+| Lighting (LUX) | ≥ 150 LUX in monitored zones |
+
+Document this as a mandatory pre-installation checklist.
+
+---
+
+## Risk 2 — No Prototype to Validate Core Assumptions
+
+**Problem:** 40+ architecture sections are planned with zero working code. Core assumptions (RTSP reliability, YOLO throughput on target hardware, WebSocket latency) are unvalidated.
+
+### Fix: Build a Vertical Slice First
+
+Before building any module beyond the minimum, prove the full data path end-to-end:
+
+```
+One RTSP Camera
+    → AI Worker (YOLO detects violation)
+    → RabbitMQ publishes PPEViolationDetected event
+    → Backend consumer stores violation + creates alert
+    → WebSocket pushes alert to React dashboard
+    → Supervisor sees alert < 5 seconds
+```
+
+This single slice validates:
+- RTSP ingestion is stable at target FPS on target hardware
+- YOLO inference speed is acceptable (target: ≥ 10 FPS per camera stream)
+- RabbitMQ event flow is correct
+- Backend consumer + DB write pipeline works
+- WebSocket push latency is ≤ 5 seconds end-to-end
+- React dashboard renders live data correctly
+
+**Vertical Slice Milestone Plan:**
+
+| Week | Deliverable | Validates |
+|---|---|---|
+| 1 | RTSP capture + YOLO inference loop running | Hardware feasibility |
+| 2 | RabbitMQ event publishing from AI worker | Event-driven pipeline |
+| 3 | Backend consumer + PostgreSQL persistence | Data model correctness |
+| 4 | WebSocket push to React dashboard | Real-time latency |
+| 5 | End-to-end test on real factory camera | Real-world accuracy baseline |
+| 6+ | Expand to full module list | Build on proven foundation |
+
+**Only after the slice is verified do full module builds begin.**
+
+---
+
+## Risk 3 — Scope Too Large for Greenfield Build
+
+**Problem:** 24 backend modules, AI worker, and full React frontend is a high-risk greenfield scope. Attempting to build everything in parallel leads to integration delays and unstable foundations.
+
+### Fix: Three-Phase Delivery
+
+#### Phase 1 — Core Safety MVP (~8 weeks)
+
+Build only what a supervisor needs on Day 1:
+
+| Module | Scope |
+|---|---|
+| `identity` | Auth, JWT, RBAC (no 2FA yet) |
+| `camera` | Camera registry, RTSP health check |
+| `worker` | AI worker registry, heartbeat |
+| `ppe` | PPE violation records |
+| `occupancy` | Real-time occupancy tracking |
+| `alerts` | Alert create → acknowledge → close |
+| `notifications` | Email + In-App only |
+| `dashboard` | Supervisor dashboard (WebSocket) |
+
+**Cut from Phase 1:** `announcements`, `api_keys`, `maintenance`, `shifts`, `reports`, `analytics`, `audit`, `config templates`, 2FA, IP whitelisting, dynamic branding.
+
+#### Phase 2 — Operations (~6 weeks)
+
+| Module | Scope |
+|---|---|
+| `config` | Zone config hot-swap, history |
+| `shifts` | Shift management + violation tagging |
+| `maintenance` | Camera maintenance mode |
+| `audit` | Immutable audit trail |
+| `notifications` | SMS, Slack, Teams, webhooks added |
+| `identity` | 2FA, IP whitelisting |
+| `reports` | PDF/Excel export |
+
+#### Phase 3 — Enterprise (~6 weeks)
+
+| Module | Scope |
+|---|---|
+| `enterprise` | Multi-tenant isolation, dynamic branding |
+| `analytics` | KPIs, heatmaps, shift analytics |
+| `reports` | Scheduled reports, comparative |
+| `api_keys` | Client API access |
+| `announcements` | Notice board |
+| `onboarding` | Setup wizard |
+
+### Module Priority Matrix
+
+| Priority | Module | Phase |
+|---|---|---|
+| P0 (MVP blocker) | identity, camera, worker, ppe, occupancy, alerts | 1 |
+| P1 (operational) | config, shifts, maintenance, audit, notifications+ | 2 |
+| P2 (enterprise) | enterprise, analytics, api_keys, announcements | 3 |
+
+### Success Gate Per Phase
+
+Each phase ends with a gate review before Phase N+1 begins:
+
+```
+Phase 1 Gate:
+  ✓ 1 real camera stream running end-to-end
+  ✓ PPE violation detected, alert created, supervisor notified < 5s
+  ✓ Helmet accuracy ≥ 85% on client camera footage
+  ✓ API test coverage ≥ 80% for Phase 1 modules
+
+Phase 2 Gate:
+  ✓ 10 cameras running simultaneously
+  ✓ Zone config changed at runtime, AI worker picks up within 30s
+  ✓ Audit log records all sensitive actions
+
+Phase 3 Gate:
+  ✓ Multi-tenant isolation verified (enterprise A cannot see enterprise B data)
+  ✓ 50 cameras stable at target hardware spec
+  ✓ Full system availability ≥ 99.5% over 7-day soak test
+```
+
+---
+
+*End of Risk Mitigation Architecture Section*

@@ -35,6 +35,7 @@ Built as a **Modular Monolith** following **Clean Architecture** and **Domain Dr
 - [Monitoring](#monitoring)
 - [Scaling](#scaling)
 - [Roadmap](#roadmap)
+- [Risk Mitigation](#risk-mitigation)
 - [License](#license)
 
 ---
@@ -528,29 +529,81 @@ No code changes required — horizontal scaling only.
 
 ## Roadmap
 
-**Phase 1 (Current)**
-- Helmet + vest detection
+**Phase 1 — Core Safety MVP (~8 weeks)**
+- Helmet + vest detection (fine-tuned YOLO)
 - Occupancy monitoring
-- Real-time alerts
-- Core dashboard
+- Real-time alerts + WebSocket dashboard
+- Core supervisor dashboard
+- Email + in-app notifications
 
-**Phase 2**
+**Phase 2 — Operations (~6 weeks)**
+- Gloves + shoes detection
+- Zone config hot-swap
+- Shift management
+- Camera maintenance mode
+- SMS, Slack, Teams notifications
+- Audit trail
+- PDF/Excel reports
+
+**Phase 3 — Enterprise (~6 weeks)**
+- Multi-tenant isolation + dynamic branding
 - Face recognition
 - Visitor tracking
+- Analytics + KPI dashboards
+- Scheduled reports + comparative analytics
+- Client API keys + webhooks
 - Attendance integration
-- Gloves + shoes detection
 
-**Phase 3**
+**Phase 4 — Advanced AI**
 - Fire & smoke detection
 - Fall detection
-- SAP / HRMS integration
-
-**Phase 4**
 - Forklift monitoring
 - Unsafe behavior detection
 - Predictive safety analytics
 - AI Risk Scoring
 - Digital safety audits
+- SAP / HRMS integration
+
+---
+
+## Risk Mitigation
+
+### Risk 1 — PPE Detection Accuracy
+
+**Challenge:** Generic YOLO models drop below 90% in real factory conditions (variable lighting, occlusion, wide angles).
+
+**Mitigations:**
+- Fine-tune YOLO on factory-specific PPE datasets before deployment (500–2,000 labeled images per PPE class)
+- Apply CLAHE preprocessing on every frame to improve low-light and glare accuracy
+- Require 3 consecutive positive frames before triggering a violation (eliminates motion-blur false alarms)
+- Per-zone confidence thresholds — low-confidence detections go to human review queue instead of firing alerts
+- Mandatory camera placement spec: 3–5m height, 30–45° tilt, ≥1080p @ 15FPS, ≥150 LUX, IR for night shifts
+
+### Risk 2 — No Prototype Yet
+
+**Challenge:** Full architecture is planned with zero working code — core assumptions are unvalidated.
+
+**Mitigation:** Build a vertical slice before any other module:
+```
+RTSP Camera → YOLO → RabbitMQ → Backend → WebSocket → Dashboard
+```
+This proves RTSP stability, YOLO throughput, event flow correctness, and WebSocket latency (≤5s) on real hardware before committing to the full build.
+
+**Milestone gate:** Slice must pass on a real factory camera before Phase 1 module build begins.
+
+### Risk 3 — Scope Too Large
+
+**Challenge:** 24 backend modules + AI worker + full React frontend is high-risk for a greenfield project.
+
+**Mitigation:** Three-phase delivery with gates between phases:
+
+| Phase | Duration | Focus |
+|---|---|---|
+| Phase 1 — MVP | 8 weeks | 8 core modules only — camera, ppe, occupancy, alerts, dashboard |
+| Phase 2 — Operations | 6 weeks | Config, shifts, maintenance, audit, extended notifications |
+| Phase 3 — Enterprise | 6 weeks | Multi-tenant, analytics, branding, API keys |
+
+Each phase ends with a gate review before the next phase starts. See [`IMPLEMENTATION.md` — Section 43](./IMPLEMENTATION.md) for full details.
 
 ---
 
