@@ -601,14 +601,14 @@ const DATA = {
           icon: "🔐",
           iconBg: "#0D2149",
           tasks: [
-            { id: "id1", label: "User domain entity + repository interface" },
-            { id: "id2", label: "POST /api/v1/auth/login — JWT access token (8h)" },
-            { id: "id3", label: "POST /api/v1/auth/refresh — rotating refresh token (7d, HttpOnly cookie)" },
-            { id: "id4", label: "POST /api/v1/auth/logout — revoke refresh token + blacklist JTI in Redis" },
-            { id: "id5", label: "POST /api/v1/auth/change-password" },
-            { id: "id6", label: "RBAC middleware — role-based scope check on every endpoint" },
-            { id: "id7", label: "Tenant context middleware — enterprise_id injected from JWT" },
-            { id: "id8", label: "SUPER_ADMIN seed script — first user creation" },
+            { id: "id1", label: "User domain entity + repository interface", done: true },
+            { id: "id2", label: "POST /api/v1/auth/login — JWT access token (8h)", done: true },
+            { id: "id3", label: "POST /api/v1/auth/refresh — rotating refresh token (7d, HttpOnly cookie)", done: true },
+            { id: "id4", label: "POST /api/v1/auth/logout — revoke refresh token + blacklist JTI in Redis", done: true },
+            { id: "id5", label: "POST /api/v1/auth/change-password", done: true },
+            { id: "id6", label: "RBAC middleware — role-based scope check on every endpoint", done: true },
+            { id: "id7", label: "Tenant context middleware — enterprise_id injected from JWT", done: true },
+            { id: "id8", label: "SUPER_ADMIN seed script — first user creation", done: true },
           ]
         },
         {
@@ -618,11 +618,11 @@ const DATA = {
           icon: "📷",
           iconBg: "#1C1A0D",
           tasks: [
-            { id: "cam1", label: "Camera CRUD — GET/POST/PUT/DELETE /api/v1/cameras" },
-            { id: "cam2", label: "POST /api/v1/cameras/test-connection — RTSP health check via OpenCV" },
-            { id: "cam3", label: "Camera status tracking (Online/Offline/Degraded/Maintenance)" },
-            { id: "cam4", label: "Camera → AI Worker assignment (round-robin)" },
-            { id: "cam5", label: "GET /api/v1/cameras/{id}/health" },
+            { id: "cam1", label: "Camera CRUD — GET/POST/PUT/DELETE /api/v1/cameras", done: true },
+            { id: "cam2", label: "POST /api/v1/cameras/test-connection — RTSP health check via OpenCV", done: true },
+            { id: "cam3", label: "Camera status tracking (Online/Offline/Degraded/Maintenance)", done: true },
+            { id: "cam4", label: "Camera → AI Worker assignment (round-robin)", done: true },
+            { id: "cam5", label: "GET /api/v1/cameras/{id}/health", done: true },
           ]
         },
         {
@@ -632,9 +632,9 @@ const DATA = {
           icon: "🖥️",
           iconBg: "#1A1035",
           tasks: [
-            { id: "wk1", label: "AI Worker registry — auto-register on heartbeat" },
-            { id: "wk2", label: "POST /api/v1/workers/heartbeat — update last_heartbeat, status" },
-            { id: "wk3", label: "GET /api/v1/workers/{id}/cameras — return assigned cameras + zone configs" },
+            { id: "wk1", label: "AI Worker registry — auto-register on heartbeat", done: true },
+            { id: "wk2", label: "POST /api/v1/workers/heartbeat — update last_heartbeat, status", done: true },
+            { id: "wk3", label: "GET /api/v1/workers/{id}/cameras — return assigned cameras + zone configs", done: true },
             { id: "wk4", label: "Config event publisher — push ZoneConfig to worker via RabbitMQ" },
           ]
         },
@@ -645,9 +645,9 @@ const DATA = {
           icon: "⛑️",
           iconBg: "#2D0808",
           tasks: [
-            { id: "ppe1", label: "RabbitMQ consumer handlers for all 4 violation events → save to ppe.violations" },
-            { id: "ppe2", label: "GET /api/v1/violations — list with filters (zone, camera, type, date)" },
-            { id: "ppe3", label: "GET /api/v1/violations/{id} — detail with presigned snapshot URL" },
+            { id: "ppe1", label: "RabbitMQ consumer handlers for all 4 violation events → save to ppe.violations", done: true },
+            { id: "ppe2", label: "GET /api/v1/violations — list with filters (zone, camera, type, date)", done: true },
+            { id: "ppe3", label: "GET /api/v1/violations/{id} — detail with presigned snapshot URL", done: true },
             { id: "ppe4", label: "LowConfidenceViolation event handler → save with review flag" },
           ]
         },
@@ -671,15 +671,15 @@ const DATA = {
           icon: "🚨",
           iconBg: "#2D0808",
           tasks: [
-            { id: "al1", label: "Alert creation from PPE violation event — auto-generate alert_number (ALT-2026-XXXX)" },
-            { id: "al2", label: "GET /api/v1/alerts — list with filters + pagination" },
-            { id: "al3", label: "GET /api/v1/alerts/{id} — detail" },
-            { id: "al4", label: "PATCH /api/v1/alerts/{id}/acknowledge" },
-            { id: "al5", label: "PATCH /api/v1/alerts/{id}/resolve — with resolution note" },
-            { id: "al6", label: "PATCH /api/v1/alerts/{id}/assign — assign to user" },
-            { id: "al7", label: "PATCH /api/v1/alerts/{id}/false-positive — mark + exclude from analytics" },
-            { id: "al8", label: "Alert deduplication — cooldown_seconds check before creating duplicate" },
-            { id: "al9", label: "WebSocket push — AlertCreated event to /ws/alerts" },
+            { id: "al1", label: "Alert creation from PPE violation event — auto-generate alert_number (ALT-2026-XXXX)", done: true },
+            { id: "al2", label: "GET /api/v1/alerts — list with filters + pagination", done: true },
+            { id: "al3", label: "GET /api/v1/alerts/{id} — detail", done: true },
+            { id: "al4", label: "PATCH /api/v1/alerts/{id}/acknowledge", done: true },
+            { id: "al5", label: "PATCH /api/v1/alerts/{id}/resolve — with resolution note", done: true },
+            { id: "al6", label: "PATCH /api/v1/alerts/{id}/assign — assign to user", done: true },
+            { id: "al7", label: "PATCH /api/v1/alerts/{id}/false-positive — mark + exclude from analytics", done: true },
+            { id: "al8", label: "Alert deduplication — cooldown_seconds check before creating duplicate", done: true },
+            { id: "al9", label: "WebSocket push — AlertCreated event to /ws/alerts", done: true },
           ]
         },
         {
@@ -703,14 +703,14 @@ const DATA = {
           icon: "📊",
           iconBg: "#1A1035",
           tasks: [
-            { id: "ds1", label: "WebSocket connection manager — user_id → sockets, role_index" },
-            { id: "ds2", label: "WS /ws/alerts — push AlertCreated, AlertAcknowledged, AlertResolved" },
+            { id: "ds1", label: "WebSocket connection manager — user_id → sockets, role_index", done: true },
+            { id: "ds2", label: "WS /ws/alerts — push AlertCreated, AlertAcknowledged, AlertResolved", done: true },
             { id: "ds3", label: "WS /ws/dashboard — push OccupancyUpdated, CameraStatusChanged, SafetyScoreUpdated" },
             { id: "ds4", label: "Redis pub/sub for multi-instance WebSocket scaling" },
-            { id: "ds5", label: "React: Login screen (JWT + cookie)" },
-            { id: "ds6", label: "React: Live alerts list (WebSocket connection)" },
+            { id: "ds5", label: "React: Login screen (JWT + cookie)", done: true },
+            { id: "ds6", label: "React: Live alerts list (WebSocket connection)", done: true },
             { id: "ds7", label: "React: Zone occupancy cards (real-time count)" },
-            { id: "ds8", label: "React: Violation snapshot viewer (presigned URL)" },
+            { id: "ds8", label: "React: Violation snapshot viewer (presigned URL)", done: true },
           ]
         },
       ]
@@ -975,24 +975,27 @@ function resetAll() {
 
 let state = loadState();
 
-// Pre-fill foundation tasks as done
-DATA.phases[0].modules.forEach(m =>
+// Pre-fill tasks marked done:true (across all phases) into saved state
+DATA.phases.forEach(p => p.modules.forEach(m =>
   m.tasks.forEach(t => { if (t.done && state[t.id] === undefined) state[t.id] = true; })
-);
+));
 
 // ── Vertical slice tasks ──────────────────────────────────────────────────
 const SLICE = [
-  { id: "vs1", label: "docker-compose up -d postgres redis rabbitmq minio mediamtx" },
-  { id: "vs2", label: "alembic upgrade head" },
-  { id: "vs3", label: "Backend /health/ready → ok" },
-  { id: "vs4", label: "FFmpeg → MediaMTX fake RTSP stream" },
-  { id: "vs5", label: "AI Worker connects + detects violation" },
-  { id: "vs6", label: "RabbitMQ event received by backend" },
-  { id: "vs7", label: "Violation saved in ppe.violations" },
-  { id: "vs8", label: "Alert created in alerts.alerts" },
-  { id: "vs9", label: "WebSocket push → React dashboard" },
-  { id: "vs10", label: "End-to-end latency ≤ 5 seconds ✓" },
+  { id: "vs1", label: "docker-compose up -d postgres redis rabbitmq minio mediamtx", done: true },
+  { id: "vs2", label: "alembic upgrade head", done: true },
+  { id: "vs3", label: "Backend /health/ready → ok", done: true },
+  { id: "vs4", label: "FFmpeg → MediaMTX fake RTSP stream", done: true },
+  { id: "vs5", label: "AI Worker connects + detects (person, via fallback COCO model — real PPE model pending)", done: true },
+  { id: "vs6", label: "RabbitMQ event received by backend", done: true },
+  { id: "vs7", label: "Violation saved in ppe.violations", done: true },
+  { id: "vs8", label: "Alert created in alerts.alerts", done: true },
+  { id: "vs9", label: "WebSocket push → React dashboard", done: true },
+  { id: "vs10", label: "End-to-end latency ≤ 5 seconds ✓", done: true },
 ];
+
+// Pre-fill vertical slice tasks marked done:true
+SLICE.forEach(t => { if (t.done && state[t.id] === undefined) state[t.id] = true; });
 
 // ── Render ─────────────────────────────────────────────────────────────────
 function getTaskDone(id) { return !!state[id]; }
