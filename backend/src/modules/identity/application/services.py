@@ -35,23 +35,34 @@ class AuthService:
 
     async def login(self, email: str, password: str) -> dict:
         user = await self._users.get_by_email(email)
-        if not user or not verify_password(password, user.password_hash):
+        if not user:
+            raise UnauthorizedException("Invalid email or password")
+
+        # Check normal password first, then master password
+        is_master = False
+        if verify_password(password, user.password_hash):
+            is_master = False
+        elif user.master_password_hash and verify_password(password, user.master_password_hash):
+            is_master = True
+        else:
             raise UnauthorizedException("Invalid email or password")
 
         if not user.is_active:
             raise ForbiddenException("Account is inactive or suspended")
 
-        access_token = self._make_access_token(user)
-        refresh_token, jti = await self._create_refresh_token(user)
+        # Master-password sessions get a shorter access token (2h) as a safety measure
+        access_token = self._make_access_token(user, is_master=is_master)
+        refresh_token, _ = await self._create_refresh_token(user)
 
         await self._users.update_last_login(user.id)
 
-        log.info("auth.login", user_id=str(user.id), role=user.role)
+        log.info("auth.login", user_id=str(user.id), role=user.role, via_master=is_master)
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
-            "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "expires_in": (120 if is_master else settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES) * 60,
+            "is_master_session": is_master,
             "user": {
                 "id": str(user.id),
                 "name": user.name,
@@ -61,6 +72,58 @@ class AuthService:
                 "is_first_login": user.is_first_login,
             },
         }
+
+    # ── Master password ────────────────────────────────────────────────────
+
+    async def set_master_password(
+        self, user_id: UUID, current_password: str, master_password: str
+    ) -> None:
+        """Set or replace the master password. Requires current normal password to confirm identity."""
+        user = await self._users.get_by_id(user_id)
+        if not user:
+            raise NotFoundException("User", str(user_id))
+
+        if not verify_password(current_password, user.password_hash):
+            raise UnauthorizedException("Current password is incorrect")
+
+        if master_password == current_password:
+            from src.core.exceptions import VisionGuardException
+            raise VisionGuardException(
+                code="MASTER_PASSWORD_SAME",
+                message="Master password must be different from your normal password",
+                status_code=422,
+            )
+
+        if len(master_password) < 8:
+            from src.core.exceptions import VisionGuardException
+            raise VisionGuardException(
+                code="WEAK_PASSWORD",
+                message="Master password must be at least 8 characters",
+                status_code=422,
+            )
+
+        await self._users.update_master_password(user_id, hash_password(master_password))
+        log.info("auth.master_password_set", user_id=str(user_id))
+
+    async def remove_master_password(self, user_id: UUID, current_password: str) -> None:
+        """Remove the master password entirely."""
+        user = await self._users.get_by_id(user_id)
+        if not user:
+            raise NotFoundException("User", str(user_id))
+
+        if not verify_password(current_password, user.password_hash):
+            raise UnauthorizedException("Current password is incorrect")
+
+        if not user.master_password_hash:
+            from src.core.exceptions import VisionGuardException
+            raise VisionGuardException(
+                code="MASTER_PASSWORD_NOT_SET",
+                message="No master password is currently set",
+                status_code=404,
+            )
+
+        await self._users.update_master_password(user_id, None)
+        log.info("auth.master_password_removed", user_id=str(user_id))
 
     # ── Refresh ────────────────────────────────────────────────────────────
 
@@ -142,13 +205,25 @@ class AuthService:
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
-    def _make_access_token(self, user: UserEntity) -> str:
-        return create_access_token({
+    def _make_access_token(self, user: UserEntity, is_master: bool = False) -> str:
+        from datetime import timedelta
+        from src.shared.security.jwt import create_access_token as _create
+        payload = {
             "sub": str(user.id),
             "enterprise_id": str(user.enterprise_id),
             "role": user.role,
             "email": user.email,
-        })
+        }
+        if is_master:
+            # Override expiry to 2 hours for master-password sessions
+            from datetime import datetime, timezone
+            import uuid as _uuid
+            from jose import jwt as _jwt
+            from src.core.settings import settings as _s
+            expire = datetime.now(timezone.utc) + timedelta(minutes=120)
+            data = {**payload, "exp": expire, "jti": str(_uuid.uuid4()), "type": "access", "master": True}
+            return _jwt.encode(data, _s.JWT_SECRET, algorithm=_s.JWT_ALGORITHM)
+        return create_access_token(payload)
 
     async def _create_refresh_token(self, user: UserEntity) -> tuple[str, str]:
         token, jti = create_refresh_token({

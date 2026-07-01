@@ -17,3 +17,6 @@ class IUserRepository(ABC):
 
     @abstractmethod
     async def update_password(self, user_id: UUID, new_hash: str) -> None: ...
+
+    @abstractmethod
+    async def update_master_password(self, user_id: UUID, new_hash: str | None) -> None: ...
