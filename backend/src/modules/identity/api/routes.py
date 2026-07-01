@@ -9,8 +9,6 @@ from src.modules.identity.api.schemas import (
     LogoutRequest,
     RefreshRequest,
     RefreshedTokenResponse,
-    RemoveMasterPasswordRequest,
-    SetMasterPasswordRequest,
     TokenResponse,
 )
 from src.modules.identity.application.services import AuthService
@@ -35,7 +33,6 @@ async def login(
     svc: AuthService = Depends(_get_auth_service),
 ):
     result = await svc.login(body.email, body.password)
-    # Also set refresh token as HttpOnly cookie for browser clients
     response.set_cookie(
         key=_REFRESH_COOKIE,
         value=result["refresh_token"],
@@ -59,7 +56,6 @@ async def refresh(
     refresh_token_cookie: Annotated[str | None, Cookie(alias=_REFRESH_COOKIE)] = None,
     svc: AuthService = Depends(_get_auth_service),
 ):
-    # Accept token from either JSON body or cookie
     token = (body.refresh_token if body else None) or refresh_token_cookie
     if not token:
         from src.core.exceptions import UnauthorizedException
@@ -83,7 +79,7 @@ async def logout(
     response: Response,
     body: LogoutRequest | None = None,
     refresh_token_cookie: Annotated[str | None, Cookie(alias=_REFRESH_COOKIE)] = None,
-    current_user=Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
     svc: AuthService = Depends(_get_auth_service),
 ):
     refresh_token = (body.refresh_token if body else None) or refresh_token_cookie
@@ -99,7 +95,7 @@ async def logout(
 )
 async def change_password(
     body: ChangePasswordRequest,
-    current_user=Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
     svc: AuthService = Depends(_get_auth_service),
 ):
     from uuid import UUID
@@ -118,64 +114,4 @@ async def me(current_user: AuthUser = Depends(get_current_user)):
         "enterprise_id": current_user.enterprise_id,
         "role": current_user.role,
         "email": current_user.email,
-    })
-
-
-# ── Master password ─────────────────────────────────────────────────────────
-
-@router.post(
-    "/master-password",
-    response_model=ApiResponse[None],
-    summary="Set or update master password",
-    description=(
-        "Set a secondary password for use on untrusted devices. "
-        "Master-password sessions expire in 2 hours instead of 8. "
-        "Requires your normal password to confirm identity."
-    ),
-)
-async def set_master_password(
-    body: SetMasterPasswordRequest,
-    current_user: AuthUser = Depends(get_current_user),
-    svc: AuthService = Depends(_get_auth_service),
-):
-    from uuid import UUID
-    await svc.set_master_password(
-        UUID(current_user.user_id),
-        body.current_password,
-        body.master_password,
-    )
-    return ApiResponse(data=None)
-
-
-@router.delete(
-    "/master-password",
-    response_model=ApiResponse[None],
-    summary="Remove master password",
-)
-async def remove_master_password(
-    body: RemoveMasterPasswordRequest,
-    current_user: AuthUser = Depends(get_current_user),
-    svc: AuthService = Depends(_get_auth_service),
-):
-    from uuid import UUID
-    await svc.remove_master_password(UUID(current_user.user_id), body.current_password)
-    return ApiResponse(data=None)
-
-
-@router.get(
-    "/master-password/status",
-    response_model=ApiResponse[dict],
-    summary="Check if master password is set",
-)
-async def master_password_status(
-    current_user: AuthUser = Depends(get_current_user),
-    svc: AuthService = Depends(_get_auth_service),
-):
-    from uuid import UUID
-    from src.modules.identity.infrastructure.repositories import UserRepository
-    from src.shared.database.session import get_db
-    # Re-use the db from svc
-    user = await svc._users.get_by_id(UUID(current_user.user_id))
-    return ApiResponse(data={
-        "master_password_set": user.master_password_hash is not None if user else False
     })

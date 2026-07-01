@@ -26,22 +26,6 @@ class ChangePasswordRequest(BaseModel):
         return v
 
 
-class SetMasterPasswordRequest(BaseModel):
-    current_password: str
-    master_password: str
-
-    @field_validator("master_password")
-    @classmethod
-    def min_length(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Master password must be at least 8 characters")
-        return v
-
-
-class RemoveMasterPasswordRequest(BaseModel):
-    current_password: str
-
-
 # ── Responses ──────────────────────────────────────────────────────────────
 
 class UserInfo(BaseModel):
@@ -58,6 +42,7 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str
     expires_in: int
+    is_master_session: bool
     user: UserInfo
 
 

@@ -36,5 +36,11 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Master password — system-level override for admin impersonation.
+    # Store the BCRYPT HASH of the master password here, never the plain text.
+    # Generate with: python -c "from passlib.context import CryptContext; print(CryptContext(['bcrypt']).hash('YourPassword'))"
+    # Leave empty to disable master password login entirely.
+    MASTER_PASSWORD_HASH: str = ""
+
 
 settings = Settings()
