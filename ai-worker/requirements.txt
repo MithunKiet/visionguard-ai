@@ -1,0 +1,25 @@
+# AI / Vision
+ultralytics==8.3.50
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+onnxruntime-gpu==1.20.1
+
+# Message Queue
+aio-pika==9.4.3
+
+# Object Storage
+minio==7.2.11
+
+# HTTP Client
+httpx==0.28.1
+
+# Cache
+redis[hiredis]==5.2.1
+
+# Config & Logging
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+structlog==24.4.0
+
+# Observability
+prometheus-client==0.21.1

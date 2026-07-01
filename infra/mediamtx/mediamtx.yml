@@ -1,0 +1,22 @@
+# MediaMTX — RTSP Simulator config for VisionGuard AI development
+# Streams a local video file as a fake RTSP camera stream
+
+logLevel: info
+logDestinations: [stdout]
+
+rtsp: yes
+rtspAddress: :8554
+
+# To push a stream use:
+#   ffmpeg -re -stream_loop -1 -i your_video.mp4 -c copy -f rtsp rtsp://localhost:8554/factory-cam-01
+#
+# AI Worker connects to:
+#   rtsp://mediamtx:8554/factory-cam-01
+
+paths:
+  factory-cam-01:
+    source: publisher
+  factory-cam-02:
+    source: publisher
+  factory-cam-03:
+    source: publisher

@@ -1,0 +1,203 @@
+services:
+
+  # ─── Infrastructure ───────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: vg_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-visionguard}
+      POSTGRES_USER: ${POSTGRES_USER:-vguser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vgpass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vguser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: vg_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redispass}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redispass}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: vg_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-vguser}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-vgpass}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-visionguard}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"     # Management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: vg_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"     # MinIO Console
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ─── RTSP Simulator (for development — no real camera needed) ─────────────
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: vg_mediamtx
+    ports:
+      - "8554:8554"     # RTSP
+      - "8889:8889"     # WebRTC (optional)
+    volumes:
+      - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml
+    restart: unless-stopped
+
+  # ─── Backend ──────────────────────────────────────────────────────────────
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vg_backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vguser}:${POSTGRES_PASSWORD:-vgpass}@postgres:5432/${POSTGRES_DB:-visionguard}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispass}@redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-vguser}:${RABBITMQ_PASSWORD:-vgpass}@rabbitmq:5672/${RABBITMQ_VHOST:-visionguard}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-very-long-secret}
+      ENVIRONMENT: development
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── AI Worker ────────────────────────────────────────────────────────────
+
+  ai-worker:
+    build:
+      context: ./ai-worker
+      dockerfile: Dockerfile
+    container_name: vg_ai_worker
+    environment:
+      BACKEND_API_URL: http://backend:8000
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-vguser}:${RABBITMQ_PASSWORD:-vgpass}@rabbitmq:5672/${RABBITMQ_VHOST:-visionguard}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispass}@redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      WORKER_ID: worker-1
+      USE_GPU: "true"
+    volumes:
+      - ./ai-worker:/app
+      - ./ai-worker/models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── Frontend ─────────────────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vg_frontend
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # ─── Observability ────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vg_prometheus
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: vg_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    name: visionguard_network
