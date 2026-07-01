@@ -1,4 +1,25 @@
 import os
+import sys
+
+# The container's apt python3.11 package is a pre-release build (3.11.0~rc1)
+# missing sys.get_int_max_str_digits / sys.set_int_max_str_digits, added only
+# late in the 3.11 release cycle. torch._dynamo's polyfills module imports
+# them unconditionally (torch/_dynamo/polyfills/sys.py) and validates the
+# polyfill's signature against the original, so the shim names/signatures
+# below must match exactly.
+_int_max_str_digits = 4300
+
+if not hasattr(sys, "get_int_max_str_digits"):
+    def get_int_max_str_digits() -> int:
+        return _int_max_str_digits
+    sys.get_int_max_str_digits = get_int_max_str_digits
+
+if not hasattr(sys, "set_int_max_str_digits"):
+    def set_int_max_str_digits(maxdigits: int) -> None:
+        global _int_max_str_digits
+        _int_max_str_digits = maxdigits
+    sys.set_int_max_str_digits = set_int_max_str_digits
+
 import cv2
 import numpy as np
 import structlog
