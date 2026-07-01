@@ -48,14 +48,6 @@ class UserRepository(IUserRepository):
         )
         await self._db.commit()
 
-    async def update_master_password(self, user_id: UUID, new_hash: str | None) -> None:
-        await self._db.execute(
-            update(User)
-            .where(User.id == user_id)
-            .values(master_password_hash=new_hash)
-        )
-        await self._db.commit()
-
     @staticmethod
     def _to_entity(row: User) -> UserEntity:
         return UserEntity(
@@ -66,7 +58,6 @@ class UserRepository(IUserRepository):
             role=row.role,
             status=row.status,
             password_hash=row.password_hash,
-            master_password_hash=row.master_password_hash,
             is_first_login=row.is_first_login,
             totp_enabled=row.totp_enabled,
             last_login_at=row.last_login_at,

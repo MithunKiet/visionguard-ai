@@ -51,7 +51,6 @@ class User(Base):
     is_first_login      = Column(Boolean, default=True, nullable=False)
     setup_completed     = Column(Boolean, default=False, nullable=False)
     password_changed_at = Column(DateTime(timezone=True), nullable=True)
-    master_password_hash = Column(String(500), nullable=True)
     totp_enabled        = Column(Boolean, default=False, nullable=False)
     dnd_enabled         = Column(Boolean, default=False, nullable=False)
     dnd_start           = Column(Time, nullable=True)

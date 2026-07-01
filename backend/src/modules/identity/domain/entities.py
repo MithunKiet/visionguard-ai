@@ -12,7 +12,6 @@ class UserEntity:
     role: str
     status: str
     password_hash: str
-    master_password_hash: str | None = None
     is_first_login: bool = True
     totp_enabled: bool = False
     last_login_at: datetime | None = None
