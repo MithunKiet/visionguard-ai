@@ -37,6 +37,6 @@ def _register_routers(app: FastAPI) -> None:
     from src.modules.health.api.routes import router as health_router
     app.include_router(health_router)
 
-    # Phase 1 routers — added as modules are built
-    # from src.modules.identity.api.routes import router as identity_router
-    # app.include_router(identity_router, prefix="/api/v1")
+    # Phase 1
+    from src.modules.identity.api.routes import router as identity_router
+    app.include_router(identity_router, prefix="/api/v1")
