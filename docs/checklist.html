@@ -1,0 +1,1224 @@
+<!doctype html>
+<title>VisionGuard AI — Module Checklist</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0D1117;
+    --surface:   #161B22;
+    --surface2:  #1C2333;
+    --border:    #30363D;
+    --text:      #E6EDF3;
+    --muted:     #7D8590;
+    --green:     #3FB950;
+    --green-dim: #1A3A22;
+    --amber:     #D29922;
+    --amber-dim: #2D2008;
+    --blue:      #388BFD;
+    --blue-dim:  #0D2149;
+    --red:       #F85149;
+    --mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: var(--green);
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+
+  .logo-mark svg { width: 18px; height: 18px; }
+
+  header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  header span {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .overall-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .bar-track {
+    width: 120px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: var(--green);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .overall-pct {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--green);
+    font-variant-numeric: tabular-nums;
+    min-width: 32px;
+  }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* ── Sidebar ── */
+  aside {
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+    position: sticky;
+    top: 57px;
+    height: calc(100vh - 57px);
+    overflow-y: auto;
+  }
+
+  .aside-section {
+    padding: 0 12px 20px;
+  }
+
+  .aside-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 8px;
+    margin-bottom: 6px;
+  }
+
+  .phase-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 7px 8px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .phase-btn:hover { background: var(--surface); color: var(--text); }
+
+  .phase-btn.active {
+    background: var(--surface2);
+    color: var(--text);
+  }
+
+  .phase-ring {
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .phase-ring svg { display: block; transform: rotate(-90deg); }
+
+  .phase-ring circle { fill: none; }
+
+  .ring-bg { stroke: var(--border); stroke-width: 2.5; }
+
+  .ring-fill { stroke-width: 2.5; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+
+  .phase-btn-label { flex: 1; line-height: 1.2; }
+
+  .phase-count {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Main ── */
+  main {
+    padding: 24px;
+    overflow-y: auto;
+  }
+
+  .phase-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .phase-title {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .phase-subtitle {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .phase-badge {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Module Grid ── */
+  .module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  .module-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .module-card:hover { border-color: #484F58; }
+
+  .module-card.status-done { border-left: 3px solid var(--green); }
+  .module-card.status-progress { border-left: 3px solid var(--amber); }
+  .module-card.status-pending { border-left: 3px solid var(--border); }
+
+  .module-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .module-icon {
+    width: 30px; height: 30px;
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    font-size: 14px;
+  }
+
+  .module-meta { flex: 1; min-width: 0; }
+
+  .module-name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .module-code {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+
+  .module-progress {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .progress-frac {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .module-mini-bar {
+    width: 60px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+    margin-left: auto;
+  }
+
+  .module-mini-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .chevron {
+    flex-shrink: 0;
+    color: var(--muted);
+    transition: transform 0.2s;
+  }
+
+  .module-card.open .chevron { transform: rotate(180deg); }
+
+  .task-list {
+    display: none;
+    padding: 0 16px 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .module-card.open .task-list { display: block; }
+
+  .task-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+
+  .task-item:last-child { border-bottom: none; }
+
+  .task-item input[type="checkbox"] { display: none; }
+
+  .check-box {
+    width: 16px; height: 16px;
+    border-radius: 4px;
+    border: 1.5px solid var(--border);
+    flex-shrink: 0;
+    margin-top: 1px;
+    display: grid;
+    place-items: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .task-item.checked .check-box {
+    background: var(--green);
+    border-color: var(--green);
+  }
+
+  .task-item.checked .check-box::after {
+    content: '';
+    width: 9px; height: 6px;
+    border-left: 2px solid #000;
+    border-bottom: 2px solid #000;
+    transform: translateY(-1px) rotate(-45deg);
+    display: block;
+  }
+
+  .task-label {
+    font-size: 12.5px;
+    color: var(--text);
+    line-height: 1.4;
+    transition: color 0.15s;
+    flex: 1;
+  }
+
+  .task-item.checked .task-label {
+    color: var(--muted);
+    text-decoration: line-through;
+    text-decoration-color: var(--border);
+  }
+
+  .task-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* Status colors */
+  .done-badge { background: var(--green-dim); color: var(--green); }
+  .prog-badge { background: var(--amber-dim); color: var(--amber); }
+  .pend-badge { background: var(--surface2); color: var(--muted); }
+
+  /* Phase section divider */
+  .section-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 28px 0 16px;
+  }
+
+  .section-divider h2 {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .divider-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Vertical slice special card */
+  .slice-card {
+    background: linear-gradient(135deg, #0D2149 0%, #1A3A22 100%);
+    border: 1px solid #2A4060;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+
+  .slice-card h3 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--blue);
+    margin-bottom: 12px;
+    letter-spacing: -0.01em;
+  }
+
+  .slice-steps {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .slice-step {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(56,139,253,0.12);
+    color: var(--blue);
+    cursor: pointer;
+    border: 1px solid rgba(56,139,253,0.2);
+    transition: background 0.15s;
+  }
+
+  .slice-step.checked {
+    background: rgba(63,185,80,0.15);
+    color: var(--green);
+    border-color: rgba(63,185,80,0.25);
+    text-decoration: line-through;
+    text-decoration-color: rgba(63,185,80,0.4);
+  }
+
+  .slice-arrow {
+    color: var(--muted);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  .slice-gate {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(56,139,253,0.15);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .slice-gate strong { color: var(--amber); }
+
+  /* Reset btn */
+  .reset-btn {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .reset-btn:hover { color: var(--red); border-color: var(--red); }
+
+  @media (max-width: 700px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { display: none; }
+    main { padding: 16px; }
+    .module-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<header>
+  <div class="logo-mark">
+    <svg viewBox="0 0 18 18" fill="none">
+      <rect x="2" y="2" width="6" height="6" rx="1" fill="#0D1117"/>
+      <rect x="10" y="2" width="6" height="6" rx="1" fill="#0D1117"/>
+      <rect x="2" y="10" width="6" height="6" rx="1" fill="#0D1117"/>
+      <circle cx="13" cy="13" r="3" fill="#0D1117" stroke="#0D1117"/>
+      <circle cx="13" cy="13" r="1.5" fill="#3FB950"/>
+    </svg>
+  </div>
+  <div>
+    <h1>VisionGuard AI</h1>
+    <span>Module Checklist</span>
+  </div>
+  <div class="header-right">
+    <div class="overall-bar">
+      <span>Overall</span>
+      <div class="bar-track"><div class="bar-fill" id="overall-fill" style="width:0%"></div></div>
+      <span class="overall-pct" id="overall-pct">0%</span>
+    </div>
+    <button class="reset-btn" onclick="resetAll()">Reset</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside id="sidebar"></aside>
+  <main id="main"></main>
+</div>
+
+<script>
+const DATA = {
+  phases: [
+    {
+      id: "foundation",
+      label: "Foundation",
+      subtitle: "Infrastructure & core setup",
+      color: "#3FB950",
+      modules: [
+        {
+          id: "infra",
+          name: "Infrastructure",
+          code: "docker-compose + env",
+          icon: "🐳",
+          iconBg: "#0D2149",
+          tasks: [
+            { id: "dc1", label: "docker-compose.yml (PostgreSQL, Redis, RabbitMQ, MinIO, MediaMTX)", done: true },
+            { id: "dc2", label: ".env.example — all environment variables", done: true },
+            { id: "dc3", label: "infra/mediamtx/mediamtx.yml — RTSP simulator config", done: true },
+            { id: "dc4", label: "infra/prometheus/prometheus.yml — scrape configs", done: true },
+            { id: "dc5", label: ".gitignore — models, .env, node_modules", done: true },
+          ]
+        },
+        {
+          id: "backend-core",
+          name: "Backend Core",
+          code: "FastAPI app factory",
+          icon: "⚡",
+          iconBg: "#1A2A1A",
+          tasks: [
+            { id: "bc1", label: "src/main.py + core/app.py — FastAPI factory", done: true },
+            { id: "bc2", label: "core/settings.py — Pydantic Settings v2", done: true },
+            { id: "bc3", label: "core/lifespan.py — startup/shutdown hooks", done: true },
+            { id: "bc4", label: "core/exceptions.py — VisionGuardException hierarchy", done: true },
+            { id: "bc5", label: "shared/responses.py — ApiResponse[T] standard format", done: true },
+            { id: "bc6", label: "shared/cache/client.py — async Redis client", done: true },
+            { id: "bc7", label: "shared/messaging/consumer.py — RabbitMQ consumer + DLQ", done: true },
+            { id: "bc8", label: "shared/storage/minio_client.py — MinIO + presigned URLs", done: true },
+            { id: "bc9", label: "modules/health/api/routes.py — /health/live, /ready, /status", done: true },
+          ]
+        },
+        {
+          id: "database",
+          name: "Database & Migrations",
+          code: "Alembic + SQLAlchemy",
+          icon: "🗄️",
+          iconBg: "#1A1035",
+          tasks: [
+            { id: "db1", label: "shared/database/session.py — async engine + session factory", done: true },
+            { id: "db2", label: "shared/database/mixins.py — AuditMixin (enterprise_id, soft delete, version)", done: true },
+            { id: "db3", label: "shared/database/models.py — all 20+ ORM models", done: true },
+            { id: "db4", label: "alembic.ini + alembic/env.py — async migration setup", done: true },
+            { id: "db5", label: "0001_initial_schema.py — 9 schemas + all tables + RLS on audit_log", done: true },
+          ]
+        },
+        {
+          id: "ai-worker-core",
+          name: "AI Worker Core",
+          code: "YOLO + CLAHE + publisher",
+          icon: "🤖",
+          iconBg: "#1A2A1A",
+          tasks: [
+            { id: "aw1", label: "pipeline/frame_reader.py — RTSP capture + reconnect backoff (5s/15s/60s)", done: true },
+            { id: "aw2", label: "pipeline/detector.py — YOLO inference with CLAHE preprocessing (Rule 13)", done: true },
+            { id: "aw3", label: "pipeline/ppe_validator.py — multi-frame voting 3 frames (Rule 14) + low-confidence routing (Rule 16)", done: true },
+            { id: "aw4", label: "pipeline/camera_worker.py — per-camera loop + circuit breaker (Rule 6) + MinIO snapshot", done: true },
+            { id: "aw5", label: "events/publisher.py — RabbitMQ publisher with persistent delivery", done: true },
+            { id: "aw6", label: "src/main.py — startup, camera fetch, heartbeat loop (Rule 11)", done: true },
+            { id: "aw7", label: "Dockerfile — NVIDIA CUDA base image", done: true },
+          ]
+        },
+      ]
+    },
+    {
+      id: "phase1",
+      label: "Phase 1 — MVP",
+      subtitle: "Core safety, ~8 weeks",
+      color: "#388BFD",
+      modules: [
+        {
+          id: "identity",
+          name: "Identity & Auth",
+          code: "module: identity",
+          icon: "🔐",
+          iconBg: "#0D2149",
+          tasks: [
+            { id: "id1", label: "User domain entity + repository interface" },
+            { id: "id2", label: "POST /api/v1/auth/login — JWT access token (8h)" },
+            { id: "id3", label: "POST /api/v1/auth/refresh — rotating refresh token (7d, HttpOnly cookie)" },
+            { id: "id4", label: "POST /api/v1/auth/logout — revoke refresh token + blacklist JTI in Redis" },
+            { id: "id5", label: "POST /api/v1/auth/change-password" },
+            { id: "id6", label: "RBAC middleware — role-based scope check on every endpoint" },
+            { id: "id7", label: "Tenant context middleware — enterprise_id injected from JWT" },
+            { id: "id8", label: "SUPER_ADMIN seed script — first user creation" },
+          ]
+        },
+        {
+          id: "camera",
+          name: "Camera Module",
+          code: "module: camera",
+          icon: "📷",
+          iconBg: "#1C1A0D",
+          tasks: [
+            { id: "cam1", label: "Camera CRUD — GET/POST/PUT/DELETE /api/v1/cameras" },
+            { id: "cam2", label: "POST /api/v1/cameras/test-connection — RTSP health check via OpenCV" },
+            { id: "cam3", label: "Camera status tracking (Online/Offline/Degraded/Maintenance)" },
+            { id: "cam4", label: "Camera → AI Worker assignment (round-robin)" },
+            { id: "cam5", label: "GET /api/v1/cameras/{id}/health" },
+          ]
+        },
+        {
+          id: "worker",
+          name: "Worker Registry",
+          code: "module: worker",
+          icon: "🖥️",
+          iconBg: "#1A1035",
+          tasks: [
+            { id: "wk1", label: "AI Worker registry — auto-register on heartbeat" },
+            { id: "wk2", label: "POST /api/v1/workers/heartbeat — update last_heartbeat, status" },
+            { id: "wk3", label: "GET /api/v1/workers/{id}/cameras — return assigned cameras + zone configs" },
+            { id: "wk4", label: "Config event publisher — push ZoneConfig to worker via RabbitMQ" },
+          ]
+        },
+        {
+          id: "ppe",
+          name: "PPE Violations",
+          code: "module: ppe",
+          icon: "⛑️",
+          iconBg: "#2D0808",
+          tasks: [
+            { id: "ppe1", label: "RabbitMQ consumer handlers for all 4 violation events → save to ppe.violations" },
+            { id: "ppe2", label: "GET /api/v1/violations — list with filters (zone, camera, type, date)" },
+            { id: "ppe3", label: "GET /api/v1/violations/{id} — detail with presigned snapshot URL" },
+            { id: "ppe4", label: "LowConfidenceViolation event handler → save with review flag" },
+          ]
+        },
+        {
+          id: "occupancy",
+          name: "Occupancy",
+          code: "module: occupancy",
+          icon: "👥",
+          iconBg: "#1A2A1A",
+          tasks: [
+            { id: "occ1", label: "RabbitMQ consumer → save to occupancy.logs" },
+            { id: "occ2", label: "GET /api/v1/occupancy/current — live count per zone" },
+            { id: "occ3", label: "GET /api/v1/occupancy/history — time-series with filters" },
+            { id: "occ4", label: "Overcrowding detection — compare count vs zone max_occupancy" },
+          ]
+        },
+        {
+          id: "alerts",
+          name: "Alerts",
+          code: "module: alerts",
+          icon: "🚨",
+          iconBg: "#2D0808",
+          tasks: [
+            { id: "al1", label: "Alert creation from PPE violation event — auto-generate alert_number (ALT-2026-XXXX)" },
+            { id: "al2", label: "GET /api/v1/alerts — list with filters + pagination" },
+            { id: "al3", label: "GET /api/v1/alerts/{id} — detail" },
+            { id: "al4", label: "PATCH /api/v1/alerts/{id}/acknowledge" },
+            { id: "al5", label: "PATCH /api/v1/alerts/{id}/resolve — with resolution note" },
+            { id: "al6", label: "PATCH /api/v1/alerts/{id}/assign — assign to user" },
+            { id: "al7", label: "PATCH /api/v1/alerts/{id}/false-positive — mark + exclude from analytics" },
+            { id: "al8", label: "Alert deduplication — cooldown_seconds check before creating duplicate" },
+            { id: "al9", label: "WebSocket push — AlertCreated event to /ws/alerts" },
+          ]
+        },
+        {
+          id: "notifications-p1",
+          name: "Notifications (Phase 1)",
+          code: "module: notifications",
+          icon: "📬",
+          iconBg: "#0D2149",
+          tasks: [
+            { id: "nf1", label: "Email notification on alert created (SMTP via FastMail/SendGrid)" },
+            { id: "nf2", label: "In-app notification — POST to notification_log" },
+            { id: "nf3", label: "DND check before sending — respect dnd_start/dnd_end (Critical bypasses)" },
+            { id: "nf4", label: "GET /api/v1/notifications — list unread for current user" },
+            { id: "nf5", label: "POST /api/v1/notifications/{id}/read" },
+          ]
+        },
+        {
+          id: "dashboard-p1",
+          name: "Dashboard + WebSocket",
+          code: "module: dashboard",
+          icon: "📊",
+          iconBg: "#1A1035",
+          tasks: [
+            { id: "ds1", label: "WebSocket connection manager — user_id → sockets, role_index" },
+            { id: "ds2", label: "WS /ws/alerts — push AlertCreated, AlertAcknowledged, AlertResolved" },
+            { id: "ds3", label: "WS /ws/dashboard — push OccupancyUpdated, CameraStatusChanged, SafetyScoreUpdated" },
+            { id: "ds4", label: "Redis pub/sub for multi-instance WebSocket scaling" },
+            { id: "ds5", label: "React: Login screen (JWT + cookie)" },
+            { id: "ds6", label: "React: Live alerts list (WebSocket connection)" },
+            { id: "ds7", label: "React: Zone occupancy cards (real-time count)" },
+            { id: "ds8", label: "React: Violation snapshot viewer (presigned URL)" },
+          ]
+        },
+      ]
+    },
+    {
+      id: "phase2",
+      label: "Phase 2 — Operations",
+      subtitle: "Config, shifts, audit, ~6 weeks",
+      color: "#D29922",
+      modules: [
+        {
+          id: "config",
+          name: "Zone Config",
+          code: "module: config",
+          icon: "⚙️",
+          iconBg: "#1C1A0D",
+          tasks: [
+            { id: "cf1", label: "GET/PUT /api/v1/config/zone/{id} — hot-swap config" },
+            { id: "cf2", label: "Config version increment on every save" },
+            { id: "cf3", label: "Publish ConfigUpdated to RabbitMQ → AI Worker applies (version check)" },
+            { id: "cf4", label: "GET /api/v1/config/zone/{id}/history" },
+            { id: "cf5", label: "POST /api/v1/config/zone/{id}/restore — rollback to previous version" },
+            { id: "cf6", label: "Config templates — GET/POST /api/v1/config/templates" },
+            { id: "cf7", label: "POST /api/v1/config/templates/{id}/apply — apply to multiple zones" },
+          ]
+        },
+        {
+          id: "shifts",
+          name: "Shifts",
+          code: "module: shifts",
+          icon: "🕐",
+          iconBg: "#1A2A1A",
+          tasks: [
+            { id: "sh1", label: "Shift CRUD — GET/POST/PUT /api/v1/shifts" },
+            { id: "sh2", label: "GET /api/v1/shifts/active — current shift by time + day" },
+            { id: "sh3", label: "Tag violations + alerts with active shift_id" },
+          ]
+        },
+        {
+          id: "maintenance",
+          name: "Camera Maintenance",
+          code: "module: maintenance",
+          icon: "🔧",
+          iconBg: "#2D0808",
+          tasks: [
+            { id: "mt1", label: "POST /api/v1/cameras/{id}/maintenance/enable — set Redis key + DB flag" },
+            { id: "mt2", label: "POST /api/v1/cameras/{id}/maintenance/complete" },
+            { id: "mt3", label: "Maintenance mode check in AI Worker before publishing events (Rule 10)" },
+            { id: "mt4", label: "Preventive maintenance scheduling + history" },
+          ]
+        },
+        {
+          id: "audit",
+          name: "Audit Trail",
+          code: "module: audit",
+          icon: "📋",
+          iconBg: "#1A1035",
+          tasks: [
+            { id: "au1", label: "audit_service.log() — append-only insert to audit.audit_log" },
+            { id: "au2", label: "Wire audit logging into every sensitive action (login, config change, alert close, user update)" },
+            { id: "au3", label: "GET /api/v1/audit — filtered by enterprise, user, action, date" },
+            { id: "au4", label: "Verify RLS policy — no UPDATE/DELETE permitted on audit_log" },
+          ]
+        },
+        {
+          id: "reports",
+          name: "Reports",
+          code: "module: reports",
+          icon: "📄",
+          iconBg: "#1C1A0D",
+          tasks: [
+            { id: "rp1", label: "POST /api/v1/reports/generate — trigger PDF/Excel report" },
+            { id: "rp2", label: "PDF report with dynamic branding (enterprise logo + colors)" },
+            { id: "rp3", label: "Excel export — violations + alerts raw data" },
+            { id: "rp4", label: "GET /api/v1/reports/{id}/download — presigned MinIO URL" },
+            { id: "rp5", label: "Scheduled reports — daily/weekly/monthly auto-email" },
+          ]
+        },
+        {
+          id: "notifications-p2",
+          name: "Notifications (Phase 2)",
+          code: "module: notifications +",
+          icon: "📡",
+          iconBg: "#0D2149",
+          tasks: [
+            { id: "nf6", label: "SMS via Twilio — alert notifications" },
+            { id: "nf7", label: "Slack webhook integration" },
+            { id: "nf8", label: "Microsoft Teams webhook" },
+            { id: "nf9", label: "Custom webhook (POST to configured URL)" },
+            { id: "nf10", label: "Notification digest — 15min / 1hr / daily batching" },
+            { id: "nf11", label: "Retry on delivery failure (3 attempts with backoff)" },
+          ]
+        },
+        {
+          id: "identity-p2",
+          name: "Identity (Phase 2)",
+          code: "module: identity +",
+          icon: "🛡️",
+          iconBg: "#0D2149",
+          tasks: [
+            { id: "id9", label: "POST /api/v1/auth/2fa/enable — TOTP secret + QR code" },
+            { id: "id10", label: "POST /api/v1/auth/2fa/verify — TOTP token validation" },
+            { id: "id11", label: "2FA mandatory for SUPER_ADMIN + HO_ADMIN" },
+            { id: "id12", label: "IP Whitelist middleware — per-enterprise allow list" },
+            { id: "id13", label: "Session timeout — Redis TTL per role + frontend keepalive" },
+            { id: "id14", label: "Backup codes generation (8 codes)" },
+          ]
+        },
+        {
+          id: "alerts-p2",
+          name: "Alerts (Phase 2)",
+          code: "module: alerts +",
+          icon: "⚠️",
+          iconBg: "#2D0808",
+          tasks: [
+            { id: "al10", label: "Escalation engine — background job every 1 min, notify by role per level" },
+            { id: "al11", label: "PATCH /api/v1/alerts/{id}/snooze — Redis TTL key per camera+type" },
+            { id: "al12", label: "POST /api/v1/alerts/bulk-action — acknowledge/close/assign multiple" },
+            { id: "al13", label: "SLA tracking — sla_due_at set on creation, overdue flag in list API" },
+          ]
+        },
+      ]
+    },
+    {
+      id: "phase3",
+      label: "Phase 3 — Enterprise",
+      subtitle: "Multi-tenant, analytics, ~6 weeks",
+      color: "#BC8CFF",
+      modules: [
+        {
+          id: "enterprise",
+          name: "Enterprise & Branding",
+          code: "module: enterprise",
+          icon: "🏢",
+          iconBg: "#1A1035",
+          tasks: [
+            { id: "en1", label: "GET /api/v1/enterprise/branding — name, logo_url, colors" },
+            { id: "en2", label: "PUT /api/v1/enterprise/branding — update colors, tagline" },
+            { id: "en3", label: "POST /api/v1/enterprise/branding/logo — upload to MinIO logos bucket" },
+            { id: "en4", label: "React: load branding on app init, set CSS vars dynamically" },
+            { id: "en5", label: "GET /api/v1/enterprise/dashboard — cross-factory KPIs" },
+            { id: "en6", label: "Verify zero hardcoded company names in all templates, emails, PDFs" },
+          ]
+        },
+        {
+          id: "analytics",
+          name: "Analytics",
+          code: "module: analytics",
+          icon: "📈",
+          iconBg: "#1A2A1A",
+          tasks: [
+            { id: "an1", label: "GET /api/v1/analytics/violations — trend by type, zone, shift" },
+            { id: "an2", label: "GET /api/v1/analytics/compliance — PPE compliance % per zone" },
+            { id: "an3", label: "GET /api/v1/analytics/safety-score — factory-level safety KPI" },
+            { id: "an4", label: "GET /api/v1/analytics/comparative — this month vs last month" },
+            { id: "an5", label: "GET /api/v1/analytics/shifts — shift-wise violation breakdown" },
+            { id: "an6", label: "Heatmap data — violations by hour/day matrix" },
+          ]
+        },
+        {
+          id: "onboarding",
+          name: "Setup Wizard",
+          code: "module: onboarding",
+          icon: "🧙",
+          iconBg: "#1C1A0D",
+          tasks: [
+            { id: "ob1", label: "GET /api/v1/setup/progress — resume wizard from last step" },
+            { id: "ob2", label: "POST /api/v1/setup/factory → department → zone → camera" },
+            { id: "ob3", label: "POST /api/v1/setup/complete — set setup_completed=true + auto-assign AI workers" },
+            { id: "ob4", label: "React: 4-step wizard UI with RTSP test in Step 4" },
+            { id: "ob5", label: "Camera placement checklist shown before RTSP submission" },
+          ]
+        },
+        {
+          id: "api-keys",
+          name: "API Keys",
+          code: "module: api_keys",
+          icon: "🔑",
+          iconBg: "#0D2149",
+          tasks: [
+            { id: "ak1", label: "POST /api/v1/api-keys — generate + return once, store SHA-256 hash" },
+            { id: "ak2", label: "GET /api/v1/api-keys — list (no secret shown)" },
+            { id: "ak3", label: "DELETE /api/v1/api-keys/{id} — instant revocation" },
+            { id: "ak4", label: "API key middleware — validate on X-API-Key header" },
+            { id: "ak5", label: "API usage logging per key" },
+          ]
+        },
+        {
+          id: "announcements",
+          name: "Announcements",
+          code: "module: announcements",
+          icon: "📢",
+          iconBg: "#1C1A0D",
+          tasks: [
+            { id: "an7", label: "POST /api/v1/announcements — create with Enterprise/Factory/Dept scope" },
+            { id: "an8", label: "GET /api/v1/announcements — filtered by user's scope" },
+            { id: "an9", label: "POST /api/v1/announcements/{id}/read — mark read" },
+            { id: "an10", label: "Auto-expiry — cron job to deactivate expired announcements" },
+          ]
+        },
+      ]
+    },
+    {
+      id: "phase4",
+      label: "Phase 4 — Tests & Infra",
+      subtitle: "Quality gate, CI/CD",
+      color: "#F85149",
+      modules: [
+        {
+          id: "tests",
+          name: "Test Suite",
+          code: "coverage ≥ 80%",
+          icon: "🧪",
+          iconBg: "#2D0808",
+          tasks: [
+            { id: "ts1", label: "Unit tests — domain entities + business rules (pytest)" },
+            { id: "ts2", label: "Integration tests — API endpoints with real DB (pytest-asyncio)" },
+            { id: "ts3", label: "Auth tests — JWT flow, refresh rotation, logout blacklist" },
+            { id: "ts4", label: "RBAC tests — each role can/cannot access specific endpoints" },
+            { id: "ts5", label: "AI pipeline tests — CLAHE preprocessing + multi-frame voting unit tests" },
+            { id: "ts6", label: "WebSocket tests — alert push latency < 5s" },
+            { id: "ts7", label: "Tenant isolation tests — enterprise A cannot read enterprise B data" },
+            { id: "ts8", label: "Coverage gate ≥ 80% enforced in CI" },
+          ]
+        },
+        {
+          id: "cicd",
+          name: "CI/CD",
+          code: ".github/workflows",
+          icon: "🚀",
+          iconBg: "#1A2A1A",
+          tasks: [
+            { id: "ci1", label: ".github/workflows/ci.yml — lint + test + coverage on every PR" },
+            { id: "ci2", label: ".github/workflows/deploy.yml — build Docker images + push to registry" },
+            { id: "ci3", label: "Nginx config — reverse proxy backend + frontend + WebSocket upgrade" },
+            { id: "ci4", label: "Grafana dashboard — alerts latency, violation rate, worker health" },
+            { id: "ci5", label: "docker-compose.prod.yml — production overrides (no --reload, proper secrets)" },
+          ]
+        },
+      ]
+    },
+  ]
+};
+
+// ── State ──────────────────────────────────────────────────────────────────
+const KEY = "vg_checklist_v1";
+
+function loadState() {
+  try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; }
+}
+
+function saveState(state) {
+  localStorage.setItem(KEY, JSON.stringify(state));
+}
+
+function resetAll() {
+  if (confirm("Reset all checkboxes?")) {
+    localStorage.removeItem(KEY);
+    location.reload();
+  }
+}
+
+let state = loadState();
+
+// Pre-fill foundation tasks as done
+DATA.phases[0].modules.forEach(m =>
+  m.tasks.forEach(t => { if (t.done && state[t.id] === undefined) state[t.id] = true; })
+);
+
+// ── Vertical slice tasks ──────────────────────────────────────────────────
+const SLICE = [
+  { id: "vs1", label: "docker-compose up -d postgres redis rabbitmq minio mediamtx" },
+  { id: "vs2", label: "alembic upgrade head" },
+  { id: "vs3", label: "Backend /health/ready → ok" },
+  { id: "vs4", label: "FFmpeg → MediaMTX fake RTSP stream" },
+  { id: "vs5", label: "AI Worker connects + detects violation" },
+  { id: "vs6", label: "RabbitMQ event received by backend" },
+  { id: "vs7", label: "Violation saved in ppe.violations" },
+  { id: "vs8", label: "Alert created in alerts.alerts" },
+  { id: "vs9", label: "WebSocket push → React dashboard" },
+  { id: "vs10", label: "End-to-end latency ≤ 5 seconds ✓" },
+];
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function getTaskDone(id) { return !!state[id]; }
+
+function setTaskDone(id, val) {
+  state[id] = val;
+  saveState(state);
+}
+
+function moduleStats(mod) {
+  const total = mod.tasks.length;
+  const done = mod.tasks.filter(t => getTaskDone(t.id)).length;
+  return { total, done };
+}
+
+function phaseStats(phase) {
+  let total = 0, done = 0;
+  phase.modules.forEach(m => {
+    const s = moduleStats(m);
+    total += s.total;
+    done += s.done;
+  });
+  return { total, done };
+}
+
+function overallStats() {
+  let total = 0, done = 0;
+  DATA.phases.forEach(p => {
+    const s = phaseStats(p);
+    total += s.total;
+    done += s.done;
+  });
+  total += SLICE.length;
+  done += SLICE.filter(t => getTaskDone(t.id)).length;
+  return { total, done };
+}
+
+function moduleStatusClass(mod) {
+  const { total, done } = moduleStats(mod);
+  if (done === total) return "status-done";
+  if (done > 0) return "status-progress";
+  return "status-pending";
+}
+
+function statusBadgeClass(mod) {
+  const { total, done } = moduleStats(mod);
+  if (done === total) return "done-badge";
+  if (done > 0) return "prog-badge";
+  return "pend-badge";
+}
+
+function statusBadgeText(mod) {
+  const { total, done } = moduleStats(mod);
+  if (done === total) return "Done";
+  if (done > 0) return "In Progress";
+  return "Pending";
+}
+
+function renderSidebar() {
+  const el = document.getElementById("sidebar");
+  let html = `<div class="aside-section"><div class="aside-label">Phases</div>`;
+
+  DATA.phases.forEach(phase => {
+    const { total, done } = phaseStats(phase);
+    const pct = total ? Math.round(done / total * 100) : 0;
+    const r = 10, circ = 2 * Math.PI * r;
+    const offset = circ - (pct / 100) * circ;
+
+    html += `
+      <button class="phase-btn" onclick="scrollToPhase('${phase.id}')" id="btn-${phase.id}">
+        <div class="phase-ring">
+          <svg width="26" height="26" viewBox="0 0 26 26">
+            <circle class="ring-bg" cx="13" cy="13" r="${r}"/>
+            <circle class="ring-fill" cx="13" cy="13" r="${r}"
+              stroke="${phase.color}"
+              stroke-dasharray="${circ}"
+              stroke-dashoffset="${offset}"/>
+          </svg>
+        </div>
+        <span class="phase-btn-label">${phase.label}</span>
+        <span class="phase-count">${done}/${total}</span>
+      </button>`;
+  });
+
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+function renderMain() {
+  const el = document.getElementById("main");
+  let html = "";
+
+  const sliceDone = SLICE.filter(t => getTaskDone(t.id)).length;
+  html += `
+    <div class="section-divider"><div class="divider-line"></div><h2>Vertical Slice Gate</h2><div class="divider-line"></div></div>
+    <div class="slice-card">
+      <h3>⚡ End-to-End Pipeline Test — ${sliceDone}/${SLICE.length} steps complete</h3>
+      <div class="slice-steps">`;
+
+  SLICE.forEach((step, i) => {
+    const checked = getTaskDone(step.id);
+    html += `<span class="slice-step${checked ? " checked" : ""}" onclick="toggleSlice('${step.id}')" title="${step.label}">${step.label.split("→")[0].split("≤")[0].trim()}</span>`;
+    if (i < SLICE.length - 1) html += `<span class="slice-arrow">→</span>`;
+  });
+
+  html += `</div>
+      <div class="slice-gate"><strong>Gate:</strong> All 10 steps must pass on real hardware before Phase 1 full module build.</div>
+    </div>`;
+
+  DATA.phases.forEach(phase => {
+    html += `
+      <div class="section-divider" id="phase-${phase.id}">
+        <div class="divider-line"></div>
+        <h2>${phase.label}</h2>
+        <div class="divider-line"></div>
+      </div>
+      <div class="module-grid" id="grid-${phase.id}">`;
+
+    phase.modules.forEach(mod => {
+      const { total: mt, done: md } = moduleStats(mod);
+      const mpct = mt ? Math.round(md / mt * 100) : 0;
+      const statusClass = moduleStatusClass(mod);
+      const fillColor = md === mt ? "var(--green)" : md > 0 ? "var(--amber)" : "var(--border)";
+
+      html += `
+        <div class="module-card ${statusClass}" id="card-${mod.id}">
+          <div class="module-head" onclick="toggleCard('${mod.id}')">
+            <div class="module-icon" style="background:${mod.iconBg}">${mod.icon}</div>
+            <div class="module-meta">
+              <div class="module-name">${mod.name}</div>
+              <div class="module-code">${mod.code}</div>
+            </div>
+            <div class="module-progress">
+              <div class="progress-frac">${md}/${mt}</div>
+              <div class="module-mini-bar">
+                <div class="module-mini-fill" style="width:${mpct}%;background:${fillColor}"></div>
+              </div>
+            </div>
+            <svg class="chevron" width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="task-list">`;
+
+      mod.tasks.forEach(task => {
+        const checked = getTaskDone(task.id);
+        html += `
+            <label class="task-item${checked ? " checked" : ""}" id="task-${task.id}" onclick="toggleTask('${mod.id}','${task.id}')">
+              <div class="check-box"></div>
+              <span class="task-label">${task.label}</span>
+            </label>`;
+      });
+
+      html += `</div></div>`;
+    });
+
+    html += `</div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function updateOverall() {
+  const { total, done } = overallStats();
+  const pct = total ? Math.round(done / total * 100) : 0;
+  document.getElementById("overall-fill").style.width = pct + "%";
+  document.getElementById("overall-pct").textContent = pct + "%";
+}
+
+function toggleCard(modId) {
+  const card = document.getElementById("card-" + modId);
+  card.classList.toggle("open");
+}
+
+function toggleTask(modId, taskId) {
+  const val = !getTaskDone(taskId);
+  setTaskDone(taskId, val);
+
+  const taskEl = document.getElementById("task-" + taskId);
+  taskEl.classList.toggle("checked", val);
+
+  const phase = DATA.phases.find(p => p.modules.find(m => m.id === modId));
+  const mod = phase.modules.find(m => m.id === modId);
+  const { total, done } = moduleStats(mod);
+  const mpct = total ? Math.round(done / total * 100) : 0;
+  const fillColor = done === total ? "var(--green)" : done > 0 ? "var(--amber)" : "var(--border)";
+
+  const card = document.getElementById("card-" + modId);
+  card.querySelector(".progress-frac").textContent = `${done}/${total}`;
+  card.querySelector(".module-mini-fill").style.width = mpct + "%";
+  card.querySelector(".module-mini-fill").style.background = fillColor;
+  card.className = `module-card ${moduleStatusClass(mod)}${card.classList.contains("open") ? " open" : ""}`;
+
+  renderSidebar();
+  updateOverall();
+}
+
+function toggleSlice(taskId) {
+  const val = !getTaskDone(taskId);
+  setTaskDone(taskId, val);
+  const el = document.querySelector(`.slice-step[onclick="toggleSlice('${taskId}')"]`);
+  el.classList.toggle("checked", val);
+
+  const done = SLICE.filter(t => getTaskDone(t.id)).length;
+  document.querySelector(".slice-card h3").textContent =
+    `⚡ End-to-End Pipeline Test — ${done}/${SLICE.length} steps complete`;
+
+  updateOverall();
+}
+
+function scrollToPhase(phaseId) {
+  const el = document.getElementById("phase-" + phaseId);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+renderSidebar();
+renderMain();
+updateOverall();
+
+DATA.phases.forEach(phase => {
+  for (const mod of phase.modules) {
+    const { total, done } = moduleStats(mod);
+    if (done < total) {
+      document.getElementById("card-" + mod.id)?.classList.add("open");
+      break;
+    }
+  }
+});
+</script>
