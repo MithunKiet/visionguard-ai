@@ -62,26 +62,47 @@ async def _dispatch_event(message: IncomingMessage) -> None:
 
 async def _route_event(routing_key: str, body: dict) -> None:
     # Routes added as modules are built
-    handlers = {
-        "events.occupancy_updated":          _handle_occupancy_updated,
-        "events.helmet_missing_detected":    _handle_ppe_violation,
-        "events.vest_missing_detected":      _handle_ppe_violation,
-        "events.gloves_missing_detected":    _handle_ppe_violation,
-        "events.shoes_missing_detected":     _handle_ppe_violation,
-        "events.overcrowding_detected":      _handle_overcrowding,
-        "events.camera_offline_detected":    _handle_camera_offline,
-        "events.camera_reconnected":         _handle_camera_reconnected,
-        "events.worker_heartbeat":           _handle_worker_heartbeat,
+    ppe_keys = {
+        "events.helmet_missing_detected",
+        "events.vest_missing_detected",
+        "events.gloves_missing_detected",
+        "events.shoes_missing_detected",
+        "events.mask_missing_detected",
     }
-    handler = handlers.get(routing_key)
+    if routing_key in ppe_keys:
+        await _handle_ppe_violation(routing_key, body)
+        return
+
+    plain_handlers = {
+        "events.occupancy_updated":       _handle_occupancy_updated,
+        "events.overcrowding_detected":   _handle_overcrowding,
+        "events.camera_offline_detected": _handle_camera_offline,
+        "events.camera_reconnected":      _handle_camera_reconnected,
+        "events.worker_heartbeat":        _handle_worker_heartbeat,
+    }
+    handler = plain_handlers.get(routing_key)
     if handler:
         await handler(body)
     else:
         log.warning("rabbitmq.unhandled_event", routing_key=routing_key)
 
 
-async def _handle_ppe_violation(body: dict) -> None:
-    log.info("event.ppe_violation", camera_id=body.get("camera_id"), type=body.get("event"))
+async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
+    from uuid import UUID
+    from src.shared.database.session import AsyncSessionFactory
+    from src.modules.ppe.application.services import PPEService
+    from src.modules.ppe.infrastructure.repositories import ViolationRepository
+    from src.modules.alerts.application.services import AlertService
+    from src.modules.alerts.infrastructure.repositories import AlertRepository
+
+    async with AsyncSessionFactory() as db:
+        ppe_svc = PPEService(ViolationRepository(db))
+        violation = await ppe_svc.handle_violation_event(routing_key, body)
+
+        # factory_id required for alert; AI worker must include it in the event payload
+        factory_id = UUID(body["factory_id"]) if body.get("factory_id") else violation.zone_id
+        alert_svc = AlertService(AlertRepository(db))
+        await alert_svc.create_from_violation(violation, factory_id)
 
 
 async def _handle_occupancy_updated(body: dict) -> None:
