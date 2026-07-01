@@ -108,30 +108,30 @@ class AlertService:
         items, total = await self._repo.list(
             enterprise_id, status, severity, zone_id, assigned_to, page, page_size
         )
-        return [self._to_dict(a) for a in items], total
+        return [self.to_dict(a) for a in items], total
 
     async def get_alert(self, alert_id: UUID, enterprise_id: UUID) -> dict:
         alert = await self._repo.get_by_id(alert_id, enterprise_id)
         if not alert:
             raise NotFoundException("Alert", str(alert_id))
-        return self._to_dict(alert)
+        return self.to_dict(alert)
 
     async def acknowledge(self, alert_id: UUID, enterprise_id: UUID, user_id: UUID) -> dict:
-        return self._to_dict(
+        return self.to_dict(
             await self._transition(alert_id, enterprise_id, "Acknowledged", user_id)
         )
 
     async def resolve(
         self, alert_id: UUID, enterprise_id: UUID, user_id: UUID, note: str | None
     ) -> dict:
-        return self._to_dict(
+        return self.to_dict(
             await self._transition(alert_id, enterprise_id, "Resolved", user_id, note)
         )
 
     async def mark_false_positive(
         self, alert_id: UUID, enterprise_id: UUID, user_id: UUID, reason: str
     ) -> dict:
-        return self._to_dict(
+        return self.to_dict(
             await self._transition(alert_id, enterprise_id, "FalsePositive", user_id, reason)
         )
 
@@ -141,7 +141,7 @@ class AlertService:
             raise NotFoundException("Alert", str(alert_id))
         await self._repo.assign(alert_id, enterprise_id, assign_to)
         alert.assigned_to = assign_to
-        return self._to_dict(alert)
+        return self.to_dict(alert)
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -166,7 +166,7 @@ class AlertService:
         return await self._repo.transition(alert_id, enterprise_id, to_status, changed_by, comment)
 
     @staticmethod
-    def _to_dict(a: AlertEntity) -> dict:
+    def to_dict(a: AlertEntity) -> dict:
         return {
             "id": str(a.id),
             "enterprise_id": str(a.enterprise_id),

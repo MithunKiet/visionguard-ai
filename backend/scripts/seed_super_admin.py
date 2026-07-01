@@ -90,6 +90,7 @@ async def seed() -> None:
             print(f"[seed] Admin already exists: {user.email}")
 
     await engine.dispose()
+    print(f"[seed] Enterprise ID: {enterprise.id}  <- set as ENTERPRISE_ID for the AI Worker")
     print("[seed] Done.")
 
 

@@ -37,6 +37,16 @@ class WorkerService:
     async def list_workers(self, enterprise_id: UUID) -> list[WorkerEntity]:
         return await self._repo.list_all(enterprise_id)
 
+    async def get_worker_cameras_by_business_id(self, worker_id: str, db) -> list:
+        """
+        Resolve the AI Worker's business id (e.g. "worker-1") to its DB row,
+        then return cameras + zone configs assigned to it.
+        """
+        worker = await self._repo.get_by_worker_id(worker_id)
+        if not worker:
+            return []
+        return await self.get_worker_cameras(worker.id, db)
+
     async def get_worker_cameras(self, worker_db_id: UUID, db) -> list:
         """
         Return cameras + zone configs assigned to this worker.
@@ -58,9 +68,12 @@ class WorkerService:
             config = config_result.scalar_one_or_none()
 
             result.append({
+                "id": str(cam.id),
                 "camera_id": str(cam.id),
                 "camera_code": cam.code,
                 "rtsp_url": cam.rtsp_url,
+                "enterprise_id": str(cam.enterprise_id),
+                "factory_id": str(cam.factory_id),
                 "zone_id": str(cam.zone_id),
                 "in_maintenance": cam.in_maintenance,
                 "zone_config": {

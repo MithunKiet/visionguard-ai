@@ -94,15 +94,27 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
     from src.modules.ppe.infrastructure.repositories import ViolationRepository
     from src.modules.alerts.application.services import AlertService
     from src.modules.alerts.infrastructure.repositories import AlertRepository
+    from src.modules.realtime.manager import manager
 
     async with AsyncSessionFactory() as db:
         ppe_svc = PPEService(ViolationRepository(db))
         violation = await ppe_svc.handle_violation_event(routing_key, body)
 
+        await manager.broadcast(str(violation.enterprise_id), {
+            "type": "violation.created",
+            "data": await ppe_svc.enrich(violation),
+        })
+
         # factory_id required for alert; AI worker must include it in the event payload
         factory_id = UUID(body["factory_id"]) if body.get("factory_id") else violation.zone_id
         alert_svc = AlertService(AlertRepository(db))
-        await alert_svc.create_from_violation(violation, factory_id)
+        alert = await alert_svc.create_from_violation(violation, factory_id)
+
+        if alert:
+            await manager.broadcast(str(violation.enterprise_id), {
+                "type": "alert.created",
+                "data": alert_svc.to_dict(alert),
+            })
 
 
 async def _handle_occupancy_updated(body: dict) -> None:
@@ -114,12 +126,37 @@ async def _handle_overcrowding(body: dict) -> None:
 
 
 async def _handle_camera_offline(body: dict) -> None:
+    await _set_camera_status(body, "Offline")
     log.warning("event.camera_offline", camera_id=body.get("camera_id"))
 
 
 async def _handle_camera_reconnected(body: dict) -> None:
+    await _set_camera_status(body, "Active")
     log.info("event.camera_reconnected", camera_id=body.get("camera_id"))
 
 
+async def _set_camera_status(body: dict, status: str) -> None:
+    from uuid import UUID
+    from src.shared.database.session import AsyncSessionFactory
+    from src.modules.camera.infrastructure.repositories import CameraRepository
+    from src.modules.realtime.manager import manager
+
+    camera_id = body.get("camera_id")
+    enterprise_id = body.get("enterprise_id")
+    if not camera_id:
+        return
+
+    async with AsyncSessionFactory() as db:
+        await CameraRepository(db).set_status(UUID(camera_id), status)
+
+    if enterprise_id:
+        await manager.broadcast(enterprise_id, {
+            "type": "camera.status_changed",
+            "data": {"camera_id": camera_id, "status": status},
+        })
+
+
 async def _handle_worker_heartbeat(body: dict) -> None:
+    # Registration + status is handled synchronously via POST /workers/heartbeat;
+    # this event is published in parallel purely for log-based observability.
     log.debug("event.worker_heartbeat", worker_id=body.get("worker_id"))

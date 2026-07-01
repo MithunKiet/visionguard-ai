@@ -17,6 +17,11 @@ class WorkerSettings(BaseSettings):
     USE_GPU: bool = True
     YOLO_MODEL_PATH: str = "models/yolov8s-ppe.pt"
 
+    # Must match backend's WORKER_API_KEY — authenticates service-to-service calls
+    # (heartbeat, camera assignment fetch) that happen before any user is logged in.
+    WORKER_API_KEY: str = "dev-worker-key-change-me"
+    ENTERPRISE_ID: str = ""
+
     FRAME_SAMPLE_FPS: int = 2
     REQUIRED_CONSECUTIVE_FRAMES: int = 3
     SNAPSHOT_CONFIDENCE_THRESHOLD: float = 0.60

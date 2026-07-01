@@ -1,3 +1,4 @@
+import os
 import cv2
 import numpy as np
 import structlog
@@ -23,6 +24,11 @@ PPE_CLASSES = {
 
 VIOLATION_CLASSES = {"no_helmet", "no_vest", "no_gloves", "no_safety_shoes"}
 
+# Fallback for the pilot when no fine-tuned PPE weights are present at
+# YOLO_MODEL_PATH: use a generic pretrained COCO model so the pipeline still
+# runs end-to-end (person detection only, no real PPE violation classes).
+_FALLBACK_MODEL = "yolov8n.pt"
+
 
 @dataclass
 class Detection:
@@ -36,10 +42,23 @@ class PPEDetector:
 
     def __init__(self):
         device = "cuda" if settings.USE_GPU else "cpu"
-        log.info("detector.loading", model=settings.YOLO_MODEL_PATH, device=device)
-        self._model = YOLO(settings.YOLO_MODEL_PATH)
+
+        self._ppe_mode = os.path.isfile(settings.YOLO_MODEL_PATH)
+        model_path = settings.YOLO_MODEL_PATH if self._ppe_mode else _FALLBACK_MODEL
+
+        if not self._ppe_mode:
+            log.warning(
+                "detector.ppe_model_missing",
+                expected=settings.YOLO_MODEL_PATH,
+                fallback=_FALLBACK_MODEL,
+                note="Using a generic COCO model — person detection only, no real PPE classes. "
+                     "Replace with a fine-tuned PPE model for real violation detection.",
+            )
+
+        log.info("detector.loading", model=model_path, device=device)
+        self._model = YOLO(model_path)
         self._model.to(device)
-        log.info("detector.ready", device=device)
+        log.info("detector.ready", device=device, ppe_mode=self._ppe_mode)
 
     def preprocess(self, frame: np.ndarray) -> np.ndarray:
         """Rule 13: CLAHE preprocessing on every frame before YOLO inference."""
@@ -56,7 +75,10 @@ class PPEDetector:
 
         for box in results.boxes:
             cls_id = int(box.cls[0])
-            class_name = PPE_CLASSES.get(cls_id, "unknown")
+            if self._ppe_mode:
+                class_name = PPE_CLASSES.get(cls_id, "unknown")
+            else:
+                class_name = self._model.names.get(cls_id, "unknown")
             confidence = float(box.conf[0])
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
 

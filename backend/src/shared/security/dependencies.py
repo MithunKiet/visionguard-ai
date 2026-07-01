@@ -13,10 +13,13 @@ Usage:
     async def admin_endpoint(user: AuthUser = Depends(require_roles("SUPER_ADMIN", "HO_ADMIN"))):
         ...
 """
+from uuid import UUID
+
 from fastapi import Depends, Header
 from jose import JWTError
 
 from src.core.exceptions import ForbiddenException, UnauthorizedException
+from src.core.settings import settings
 from src.shared.security.jwt import decode_token
 
 
@@ -59,3 +62,24 @@ def _extract_bearer(authorization: str | None) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise UnauthorizedException("Missing or malformed Authorization header")
     return authorization[7:]
+
+
+class WorkerContext:
+    """Identity for an AI Worker calling backend service endpoints (no user JWT)."""
+    def __init__(self, enterprise_id: str):
+        self.enterprise_id = enterprise_id
+
+
+async def get_worker_context(
+    x_worker_key: str | None = Header(default=None),
+    x_enterprise_id: str | None = Header(default=None),
+) -> WorkerContext:
+    if not x_worker_key or x_worker_key != settings.WORKER_API_KEY:
+        raise UnauthorizedException("Invalid or missing worker API key")
+    if not x_enterprise_id:
+        raise UnauthorizedException("Missing X-Enterprise-Id header")
+    try:
+        UUID(x_enterprise_id)
+    except ValueError:
+        raise UnauthorizedException("X-Enterprise-Id must be a valid UUID")
+    return WorkerContext(enterprise_id=x_enterprise_id)

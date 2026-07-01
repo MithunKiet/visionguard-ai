@@ -77,15 +77,15 @@ class PPEService:
             enterprise_id, zone_id, camera_id, violation_type,
             from_dt, to_dt, None, page, page_size,
         )
-        return [await self._enrich(v) for v in items], total
+        return [await self.enrich(v) for v in items], total
 
     async def get_violation(self, violation_id: UUID, enterprise_id: UUID) -> dict:
         v = await self._repo.get_by_id(violation_id, enterprise_id)
         if not v:
             raise NotFoundException("Violation", str(violation_id))
-        return await self._enrich(v)
+        return await self.enrich(v)
 
-    async def _enrich(self, v: ViolationEntity) -> dict:
+    async def enrich(self, v: ViolationEntity) -> dict:
         snapshot_url = None
         if v.snapshot_key:
             try:

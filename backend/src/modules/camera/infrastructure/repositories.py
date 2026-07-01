@@ -80,6 +80,15 @@ class CameraRepository(ICameraRepository):
         await self._db.commit()
         return entity
 
+    async def set_status(self, camera_id: UUID, status: str) -> None:
+        await self._db.execute(
+            update(Camera).where(Camera.id == camera_id).values(
+                status=status,
+                last_seen_at=datetime.now(timezone.utc),
+            )
+        )
+        await self._db.commit()
+
     async def delete(self, camera_id: UUID, enterprise_id: UUID) -> None:
         await self._db.execute(
             update(Camera).where(

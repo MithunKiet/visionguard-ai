@@ -42,5 +42,10 @@ class Settings(BaseSettings):
     # Leave empty to disable master password login entirely.
     MASTER_PASSWORD_HASH: str = ""
 
+    # Shared secret the AI Worker uses to call backend service endpoints
+    # (heartbeat, camera assignment fetch) — these run before any user is logged in,
+    # so they can't carry a user JWT.
+    WORKER_API_KEY: str = "dev-worker-key-change-me"
+
 
 settings = Settings()

@@ -8,7 +8,13 @@ from src.modules.worker.application.services import WorkerService
 from src.modules.worker.infrastructure.repositories import WorkerRepository
 from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse
-from src.shared.security.dependencies import AuthUser, get_current_user, require_roles
+from src.shared.security.dependencies import (
+    AuthUser,
+    WorkerContext,
+    get_current_user,
+    get_worker_context,
+    require_roles,
+)
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
 
@@ -34,12 +40,12 @@ async def list_workers(
 )
 async def heartbeat(
     body: HeartbeatRequest,
-    user: AuthUser = Depends(get_current_user),
+    ctx: WorkerContext = Depends(get_worker_context),
     svc: WorkerService = Depends(_get_service),
 ):
     from uuid import UUID as _UUID
     worker = await svc.heartbeat(
-        enterprise_id=_UUID(user.enterprise_id),
+        enterprise_id=_UUID(ctx.enterprise_id),
         worker_id=body.worker_id,
         hostname=body.hostname,
         model_version=body.model_version,
@@ -54,12 +60,12 @@ async def heartbeat(
     summary="Get cameras + zone configs assigned to this worker",
 )
 async def get_worker_cameras(
-    worker_id: UUID,
-    user: AuthUser = Depends(get_current_user),
+    worker_id: str,
+    ctx: WorkerContext = Depends(get_worker_context),
     svc: WorkerService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
-    cameras = await svc.get_worker_cameras(worker_id, db)
+    cameras = await svc.get_worker_cameras_by_business_id(worker_id, db)
     return ApiResponse(data=cameras)
 
 
