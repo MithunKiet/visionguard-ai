@@ -105,7 +105,6 @@ def upgrade() -> None:
 
     # Add FK from users → factories (after factories table exists)
     op.create_foreign_key("fk_users_factory",     "users", "factories",    ["factory_id"],    ["id"], source_schema="identity")
-    op.create_foreign_key("fk_users_department",  "users", "departments",  ["department_id"], ["id"], source_schema="identity")
 
     # ── departments ─────────────────────────────────────────────────────────
     op.create_table(
@@ -124,6 +123,9 @@ def upgrade() -> None:
     )
     op.create_index("ix_departments_enterprise_id", "departments", ["enterprise_id"])
     op.create_index("ix_departments_factory_id",    "departments", ["factory_id"])
+
+    # Add FK from users → departments (after departments table exists)
+    op.create_foreign_key("fk_users_department",  "users", "departments",  ["department_id"], ["id"], source_schema="identity")
 
     # ── zones ───────────────────────────────────────────────────────────────
     op.create_table(

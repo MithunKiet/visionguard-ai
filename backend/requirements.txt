@@ -10,10 +10,12 @@ alembic==1.14.0
 # Validation
 pydantic==2.10.2
 pydantic-settings==2.6.1
+email-validator==2.2.0
 
 # Auth
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+passlib==1.7.4
+bcrypt==4.0.1
 pyotp==2.9.0
 
 # Cache
