@@ -149,6 +149,37 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  ai-worker-2:
+    build:
+      context: ./ai-worker
+      dockerfile: Dockerfile
+    container_name: vg_ai_worker_2
+    environment:
+      BACKEND_API_URL: http://backend:8000
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-vguser}:${RABBITMQ_PASSWORD:-vgpass}@rabbitmq:5672/${RABBITMQ_VHOST:-visionguard}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redispass}@redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      WORKER_ID: worker-2
+      WORKER_API_KEY: ${WORKER_API_KEY:-dev-worker-key-change-me}
+      ENTERPRISE_ID: ${SEED_ENTERPRISE_ID:-}
+      USE_GPU: "true"
+    volumes:
+      - ./ai-worker:/app
+      - ./ai-worker/models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ─── Frontend ─────────────────────────────────────────────────────────────
 
   frontend:
