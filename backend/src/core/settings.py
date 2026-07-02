@@ -21,8 +21,12 @@ class Settings(BaseSettings):
     # RabbitMQ
     RABBITMQ_URL: str = "amqp://vguser:vgpass@localhost:5672/visionguard"
 
-    # MinIO
+    # MinIO — MINIO_ENDPOINT is the internal Docker hostname the backend uses
+    # to talk to MinIO directly (bucket ops, uploads). MINIO_PUBLIC_ENDPOINT
+    # is what gets baked into presigned URLs, since those are followed by the
+    # browser/frontend which can't resolve Docker-internal hostnames.
     MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_PUBLIC_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET_SNAPSHOTS: str = "snapshots"

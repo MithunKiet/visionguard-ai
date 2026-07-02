@@ -72,8 +72,10 @@ class PPEDetector:
                 "detector.ppe_model_missing",
                 expected=settings.YOLO_MODEL_PATH,
                 fallback=_FALLBACK_MODEL,
-                note="Using a generic COCO model — person detection only, no real PPE classes. "
-                     "Replace with a fine-tuned PPE model for real violation detection.",
+                note="Using a generic COCO model. DEMO MODE: any detected 'person' is reported "
+                     "as a helmet_missing violation so the pipeline can be exercised end-to-end "
+                     "against real camera frames. Replace with a fine-tuned PPE model for real "
+                     "violation detection.",
             )
 
         log.info("detector.loading", model=model_path, device=device)
@@ -96,18 +98,28 @@ class PPEDetector:
 
         for box in results.boxes:
             cls_id = int(box.cls[0])
-            if self._ppe_mode:
-                class_name = PPE_CLASSES.get(cls_id, "unknown")
-            else:
-                class_name = self._model.names.get(cls_id, "unknown")
             confidence = float(box.conf[0])
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+
+            if self._ppe_mode:
+                class_name = PPE_CLASSES.get(cls_id, "unknown")
+                is_violation = class_name in VIOLATION_CLASSES
+            else:
+                class_name = self._model.names.get(cls_id, "unknown")
+                # Demo mode: no fine-tuned PPE model is loaded, so there's no
+                # real helmet/vest signal to violate. Stand in "person
+                # detected" as a demo helmet_missing so the rest of the
+                # pipeline (snapshot capture, MinIO upload, alert, dashboard)
+                # can be exercised end-to-end against real camera frames.
+                is_violation = class_name == "person"
+                if is_violation:
+                    class_name = "no_helmet"
 
             detections.append(Detection(
                 class_name=class_name,
                 confidence=confidence,
                 bbox=(x1, y1, x2, y2),
-                is_violation=class_name in VIOLATION_CLASSES,
+                is_violation=is_violation,
             ))
 
         return detections

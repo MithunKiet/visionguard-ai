@@ -89,9 +89,9 @@ class PPEService:
         snapshot_url = None
         if v.snapshot_key:
             try:
-                snapshot_url = await get_presigned_url("snapshots", v.snapshot_key)
-            except Exception:
-                pass
+                snapshot_url = get_presigned_url("snapshots", v.snapshot_key)
+            except Exception as e:
+                log.warning("ppe.presigned_url_failed", snapshot_key=v.snapshot_key, error=str(e))
         return {
             "id": str(v.id),
             "enterprise_id": str(v.enterprise_id),
