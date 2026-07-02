@@ -6,7 +6,7 @@ from uuid import UUID
 
 import structlog
 
-from src.core.exceptions import NotFoundException, VisionGuardException
+from src.core.exceptions import NotFoundException
 from src.modules.camera.domain.entities import CameraEntity
 from src.modules.camera.infrastructure.repositories import CameraRepository
 from src.modules.worker.infrastructure.repositories import WorkerRepository
@@ -112,7 +112,7 @@ class CameraService:
                 latency_ms = int((time.monotonic() - start) * 1000)
                 cap.release()
                 return ok, latency_ms
-            except Exception as exc:
+            except Exception:
                 return False, 0
 
         ok, latency_ms = await asyncio.get_event_loop().run_in_executor(None, _probe)

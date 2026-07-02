@@ -23,7 +23,7 @@ async def init_rabbitmq() -> None:
     )
 
     # Declare queues with Dead Letter Queue
-    dlq = await channel.declare_queue("dlq.ai_events", durable=True)
+    await channel.declare_queue("dlq.ai_events", durable=True)
 
     queue = await channel.declare_queue(
         "backend.ai_events",
@@ -97,6 +97,18 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
     from src.modules.realtime.manager import manager
 
     async with AsyncSessionFactory() as db:
+        # Tag the violation with the factory's currently active shift so
+        # shift-wise analytics/reports work without the AI worker knowing
+        # anything about shift schedules.
+        if not body.get("shift_id") and body.get("factory_id") and body.get("enterprise_id"):
+            from datetime import datetime, timezone
+            from src.modules.shifts.application.services import ShiftService
+            shift = await ShiftService(db).find_active_for_factory(
+                UUID(body["enterprise_id"]), UUID(body["factory_id"]), datetime.now(timezone.utc)
+            )
+            if shift:
+                body["shift_id"] = str(shift.id)
+
         ppe_svc = PPEService(ViolationRepository(db))
         violation = await ppe_svc.handle_violation_event(routing_key, body)
 
@@ -104,6 +116,12 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
             "type": "violation.created",
             "data": await ppe_svc.enrich(violation),
         })
+
+        # Maintenance mode: record the violation (above) but never alert/notify
+        from src.modules.maintenance.application.services import MaintenanceService
+        if await MaintenanceService.is_in_maintenance(db, violation.camera_id):
+            log.info("alert.suppressed_maintenance", camera_id=str(violation.camera_id))
+            return
 
         # factory_id required for alert; AI worker must include it in the event payload
         factory_id = UUID(body["factory_id"]) if body.get("factory_id") else violation.zone_id
@@ -127,11 +145,66 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
 
 
 async def _handle_occupancy_updated(body: dict) -> None:
-    log.info("event.occupancy_updated", zone_id=body.get("zone_id"), count=body.get("count"))
+    from src.shared.database.session import AsyncSessionFactory
+    from src.modules.occupancy.application.services import OccupancyService
+    from src.modules.occupancy.infrastructure.repositories import OccupancyRepository
+    from src.modules.realtime.manager import manager
+
+    if not (body.get("enterprise_id") and body.get("zone_id") and body.get("camera_id")):
+        log.warning("event.occupancy_updated.missing_fields", body=body)
+        return
+
+    async with AsyncSessionFactory() as db:
+        svc = OccupancyService(OccupancyRepository(db))
+        entry = await svc.handle_occupancy_event(body)
+
+    await manager.broadcast(str(entry.enterprise_id), {
+        "type": "occupancy.updated",
+        "data": svc.to_dict(entry),
+    })
 
 
 async def _handle_overcrowding(body: dict) -> None:
-    log.info("event.overcrowding", zone_id=body.get("zone_id"))
+    from uuid import UUID
+    from src.shared.database.session import AsyncSessionFactory
+    from src.modules.alerts.application.services import AlertService
+    from src.modules.alerts.infrastructure.repositories import AlertRepository
+    from src.modules.realtime.manager import manager
+
+    required = ("enterprise_id", "factory_id", "zone_id", "camera_id")
+    if not all(body.get(k) for k in required):
+        log.warning("event.overcrowding.missing_fields", body=body)
+        return
+
+    async with AsyncSessionFactory() as db:
+        from src.modules.maintenance.application.services import MaintenanceService
+        if await MaintenanceService.is_in_maintenance(db, UUID(body["camera_id"])):
+            log.info("alert.suppressed_maintenance", camera_id=body["camera_id"])
+            return
+
+        alert_svc = AlertService(AlertRepository(db))
+        alert = await alert_svc.create_event_alert(
+            enterprise_id=UUID(body["enterprise_id"]),
+            factory_id=UUID(body["factory_id"]),
+            zone_id=UUID(body["zone_id"]),
+            camera_id=UUID(body["camera_id"]),
+            alert_type="OVERCROWDING",
+            severity="High",
+        )
+
+        if alert:
+            from src.modules.notifications.application.services import NotificationService
+            from src.modules.notifications.infrastructure.repositories import NotificationRecipientRepository
+
+            notif_svc = NotificationService(NotificationRecipientRepository(db), db)
+            desktop_targets = await notif_svc.notify_zone_violation(
+                alert.enterprise_id, alert.zone_id, alert.camera_id,
+                alert.id, alert.alert_number, alert.alert_type, alert.severity,
+            )
+            await manager.broadcast(str(alert.enterprise_id), {
+                "type": "alert.created",
+                "data": {**alert_svc.to_dict(alert), "notify_user_ids": desktop_targets},
+            })
 
 
 async def _handle_camera_offline(body: dict) -> None:

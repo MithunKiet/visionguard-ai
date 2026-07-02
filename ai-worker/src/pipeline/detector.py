@@ -23,11 +23,11 @@ if not hasattr(sys, "set_int_max_str_digits"):
 import cv2
 import numpy as np
 import structlog
-from dataclasses import dataclass
 from typing import List
 from ultralytics import YOLO
 
 from src.config.settings import settings
+from src.pipeline.types import Detection
 
 log = structlog.get_logger()
 
@@ -49,14 +49,6 @@ VIOLATION_CLASSES = {"no_helmet", "no_vest", "no_gloves", "no_safety_shoes"}
 # YOLO_MODEL_PATH: use a generic pretrained COCO model so the pipeline still
 # runs end-to-end (person detection only, no real PPE violation classes).
 _FALLBACK_MODEL = "yolov8n.pt"
-
-
-@dataclass
-class Detection:
-    class_name: str
-    confidence: float
-    bbox: tuple   # (x1, y1, x2, y2)
-    is_violation: bool
 
 
 class PPEDetector:
@@ -118,14 +110,20 @@ class PPEDetector:
                 is_violation = class_name in VIOLATION_CLASSES
             else:
                 class_name = self._model.names.get(cls_id, "unknown")
+                is_violation = False
                 # Demo mode: no fine-tuned PPE model is loaded, so there's no
-                # real helmet/vest signal to violate. Stand in "person
-                # detected" as a demo helmet_missing so the rest of the
-                # pipeline (snapshot capture, MinIO upload, alert, dashboard)
-                # can be exercised end-to-end against real camera frames.
-                is_violation = class_name == "person"
-                if is_violation:
-                    class_name = "no_helmet"
+                # real helmet/vest signal to violate. Emit the person detection
+                # itself (so occupancy counting still works), plus a synthetic
+                # helmet_missing violation so the rest of the pipeline
+                # (snapshot capture, MinIO upload, alert, dashboard) can be
+                # exercised end-to-end against real camera frames.
+                if class_name == "person":
+                    detections.append(Detection(
+                        class_name="no_helmet",
+                        confidence=confidence,
+                        bbox=(x1, y1, x2, y2),
+                        is_violation=True,
+                    ))
 
             detections.append(Detection(
                 class_name=class_name,

@@ -12,6 +12,7 @@ from src.modules.notifications.domain.entities import NotificationRecipientEntit
 from src.modules.notifications.infrastructure.repositories import NotificationRecipientRepository
 from src.shared.database.models import Camera, User, Zone
 from src.shared.email.sender import send_email
+from src.shared.notify.channels import send_slack_alert, send_webhook_alert
 
 log = structlog.get_logger()
 
@@ -55,13 +56,41 @@ class NotificationService:
         caller can include them in the WebSocket broadcast payload.
         """
         recipients = await self._repo.list_for_zone_with_fallback(enterprise_id, zone_id)
-        if not recipients:
-            return []
 
         zone = (await self._db.execute(select(Zone).where(Zone.id == zone_id))).scalar_one_or_none()
         camera = (await self._db.execute(select(Camera).where(Camera.id == camera_id))).scalar_one_or_none()
         zone_name = zone.name if zone else "Unknown zone"
         camera_code = camera.code if camera else "Unknown camera"
+
+        # Enterprise-level channels — fired once per alert, independent of
+        # per-user recipient config.
+        slack_sent, slack_err = await send_slack_alert(
+            alert_number, alert_type, severity, zone_name, camera_code
+        )
+        if slack_err != "not_configured":
+            await self._repo.log_delivery(
+                enterprise_id, alert_id, None, "slack",
+                "Sent" if slack_sent else "Failed", slack_err,
+            )
+
+        webhook_sent, webhook_err = await send_webhook_alert({
+            "alert_id": str(alert_id),
+            "alert_number": alert_number,
+            "alert_type": alert_type,
+            "severity": severity,
+            "zone_id": str(zone_id),
+            "zone_name": zone_name,
+            "camera_id": str(camera_id),
+            "camera_code": camera_code,
+        })
+        if webhook_err != "not_configured":
+            await self._repo.log_delivery(
+                enterprise_id, alert_id, None, "webhook",
+                "Sent" if webhook_sent else "Failed", webhook_err,
+            )
+
+        if not recipients:
+            return []
 
         desktop_targets: list[str] = []
         subject = f"[{severity}] {alert_type.replace('PPE_VIOLATION_', '').replace('_', ' ').title()} — {zone_name}"

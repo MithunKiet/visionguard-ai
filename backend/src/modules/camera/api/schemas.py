@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, HttpUrl, field_validator
+from pydantic import BaseModel
 
 
 class CreateCameraRequest(BaseModel):

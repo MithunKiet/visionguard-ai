@@ -79,7 +79,6 @@ class AlertRepository:
 
     async def exists_open(self, zone_id: UUID, camera_id: UUID, alert_type: str, cooldown_seconds: int) -> bool:
         """Deduplication — true if same alert created within cooldown window."""
-        from sqlalchemy import text
         from datetime import timedelta
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=cooldown_seconds)
         result = await self._db.execute(

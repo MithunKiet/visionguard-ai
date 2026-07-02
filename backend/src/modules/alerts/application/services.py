@@ -93,6 +93,46 @@ class AlertService:
         )
         return alert
 
+    async def create_event_alert(
+        self,
+        enterprise_id: UUID,
+        factory_id: UUID,
+        zone_id: UUID,
+        camera_id: UUID,
+        alert_type: str,
+        severity: str,
+        cooldown_seconds: int = 120,
+    ) -> AlertEntity | None:
+        """Alert for non-violation events (overcrowding, camera offline, …)."""
+        if await self._repo.exists_open(zone_id, camera_id, alert_type, cooldown_seconds):
+            log.debug("alert.deduplicated", type=alert_type, zone_id=str(zone_id))
+            return None
+
+        seq = await self._repo.next_sequence(enterprise_id)
+        now = datetime.now(timezone.utc)
+        entity = AlertEntity(
+            id=uuid.uuid4(),
+            enterprise_id=enterprise_id,
+            factory_id=factory_id,
+            department_id=None,
+            zone_id=zone_id,
+            camera_id=camera_id,
+            violation_id=None,
+            alert_number=f"ALT-{now.year}-{seq:05d}",
+            alert_type=alert_type,
+            severity=severity,
+            status="Open",
+            assigned_to=None,
+            shift_id=None,
+            sla_due_at=now + timedelta(minutes=_SLA_MINUTES.get(severity, 60)),
+            created_on=now,
+            acknowledged_on=None,
+            resolved_on=None,
+        )
+        alert = await self._repo.create(entity)
+        log.info("alert.created", alert_number=alert.alert_number, severity=severity, type=alert_type)
+        return alert
+
     # ── API ────────────────────────────────────────────────────────────────
 
     async def list_alerts(

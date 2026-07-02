@@ -88,6 +88,28 @@ Open [http://localhost:5173](http://localhost:5173), log in with the seeded SUPE
 - **Dashboard** live feed panel should show a `violation.created` and `alert.created` event within seconds of running the test publisher (or a real detection).
 - **Alerts** page: acknowledge -> resolve the alert and confirm the status updates without a page reload.
 
+## 7. Verify Phase 2 features (optional)
+
+**Occupancy:** with the RTSP loop running, `GET /api/v1/occupancy/current` in
+Swagger should show a per-zone person count within ~30 s (works even in demo
+mode — person detection comes from the COCO fallback).
+
+**Config hot-swap:** `PUT /api/v1/config/zone/{zone_id}` with e.g.
+`{"frame_sample_fps": 4}`. Expected within seconds, no restarts:
+- backend logs `config_publisher.sent routing_key=config.zone_config_updated`
+- ai-worker logs `zone_sync.config_applied version=N`
+
+**Maintenance mode:** `POST /api/v1/maintenance/camera/{camera_id}/enable`,
+then trigger a violation — the violation row is still recorded but backend
+logs `alert.suppressed_maintenance` and no alert/notification fires.
+
+**Reports:** `POST /api/v1/reports/generate` with
+`{"report_type": "violations_summary", "format": "pdf", "from_date": "...", "to_date": "..."}`,
+then `GET /api/v1/reports/{id}/download` returns a pre-signed MinIO URL.
+
+**Audit:** `GET /api/v1/audit` (as SUPER_ADMIN) shows login, config, and
+alert-action entries.
+
 ## Troubleshooting
 
 - `401` from `/workers/heartbeat` or `/workers/{id}/cameras`: `WORKER_API_KEY` mismatch between backend and ai-worker, or missing `ENTERPRISE_ID` on the ai-worker container.

@@ -17,6 +17,10 @@ class FrameReader:
         self.sample_fps = sample_fps
         self._failure_count = 0
 
+    def set_sample_fps(self, sample_fps: int) -> None:
+        """Hot-applied on the next frame — used by zone config hot-swap."""
+        self.sample_fps = max(1, int(sample_fps))
+
     async def read_frames(self) -> AsyncGenerator[np.ndarray, None]:
         while True:
             cap = cv2.VideoCapture(self.rtsp_url)
@@ -26,7 +30,6 @@ class FrameReader:
                 continue
 
             stream_fps = cap.get(cv2.CAP_PROP_FPS) or 25
-            skip_frames = max(1, int(stream_fps / self.sample_fps))
             frame_idx = 0
             self._failure_count = 0
 
@@ -41,6 +44,9 @@ class FrameReader:
                     break
 
                 frame_idx += 1
+                # Recomputed per frame so a hot-swapped sample_fps takes
+                # effect immediately without reconnecting the stream.
+                skip_frames = max(1, int(stream_fps / self.sample_fps))
                 if frame_idx % skip_frames == 0:
                     yield frame
 

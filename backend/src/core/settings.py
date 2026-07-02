@@ -60,5 +60,15 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
     SMTP_FROM: str = "VisionGuard AI <no-reply@visionguard.ai>"
 
+    # Slack — incoming webhook URL for alert notifications. Empty = disabled.
+    SLACK_WEBHOOK_URL: str = ""
+
+    # Generic webhook — POSTed the full alert JSON on every alert creation,
+    # for external integrations (SIEM, ticketing, custom automation). Empty = disabled.
+    ALERT_WEBHOOK_URL: str = ""
+
+    # Delivery retry attempts for outbound notification channels (email/slack/webhook)
+    NOTIFY_RETRY_ATTEMPTS: int = 3
+
 
 settings = Settings()

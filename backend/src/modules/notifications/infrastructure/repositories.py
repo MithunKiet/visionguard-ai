@@ -66,7 +66,7 @@ class NotificationRecipientRepository:
         self,
         enterprise_id: UUID,
         alert_id: UUID,
-        recipient_id: UUID,
+        recipient_id: UUID | None,
         channel: str,
         status: str,
         failure_reason: str | None = None,

@@ -23,6 +23,18 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> AlertService:
     return AlertService(AlertRepository(db))
 
 
+async def _audit(db: AsyncSession, user: AuthUser, action: str, alert_id: UUID, detail: dict | None = None) -> None:
+    from src.modules.audit.application.services import AuditService
+    await AuditService(db).record(
+        enterprise_id=UUID(user.enterprise_id),
+        user_id=UUID(user.user_id),
+        action=action,
+        entity_type="alert",
+        entity_id=alert_id,
+        new_value=detail,
+    )
+
+
 @router.get("", response_model=ApiResponse[list], summary="List alerts")
 async def list_alerts(
     status: str | None = None,
@@ -63,10 +75,11 @@ async def acknowledge_alert(
     _body: AcknowledgeRequest = AcknowledgeRequest(),
     user: AuthUser = Depends(require_roles("SAFETY_OFFICER", "FACTORY_MANAGER", "SUPER_ADMIN")),
     svc: AlertService = Depends(_get_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    return ApiResponse(
-        data=await svc.acknowledge(alert_id, UUID(user.enterprise_id), UUID(user.user_id))
-    )
+    data = await svc.acknowledge(alert_id, UUID(user.enterprise_id), UUID(user.user_id))
+    await _audit(db, user, "ALERT_ACKNOWLEDGED", alert_id)
+    return ApiResponse(data=data)
 
 
 @router.patch("/{alert_id}/resolve", response_model=ApiResponse[dict])
@@ -75,10 +88,11 @@ async def resolve_alert(
     body: ResolveRequest,
     user: AuthUser = Depends(require_roles("SAFETY_OFFICER", "FACTORY_MANAGER", "SUPER_ADMIN")),
     svc: AlertService = Depends(_get_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    return ApiResponse(
-        data=await svc.resolve(alert_id, UUID(user.enterprise_id), UUID(user.user_id), body.note)
-    )
+    data = await svc.resolve(alert_id, UUID(user.enterprise_id), UUID(user.user_id), body.note)
+    await _audit(db, user, "ALERT_RESOLVED", alert_id, {"note": body.note})
+    return ApiResponse(data=data)
 
 
 @router.patch("/{alert_id}/false-positive", response_model=ApiResponse[dict])
@@ -87,12 +101,13 @@ async def false_positive_alert(
     body: FalsePositiveRequest,
     user: AuthUser = Depends(require_roles("SAFETY_OFFICER", "FACTORY_MANAGER", "SUPER_ADMIN")),
     svc: AlertService = Depends(_get_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    return ApiResponse(
-        data=await svc.mark_false_positive(
-            alert_id, UUID(user.enterprise_id), UUID(user.user_id), body.reason
-        )
+    data = await svc.mark_false_positive(
+        alert_id, UUID(user.enterprise_id), UUID(user.user_id), body.reason
     )
+    await _audit(db, user, "ALERT_FALSE_POSITIVE", alert_id, {"reason": body.reason})
+    return ApiResponse(data=data)
 
 
 @router.patch("/{alert_id}/assign", response_model=ApiResponse[dict])
@@ -101,7 +116,8 @@ async def assign_alert(
     body: AssignRequest,
     user: AuthUser = Depends(require_roles("FACTORY_MANAGER", "SUPER_ADMIN")),
     svc: AlertService = Depends(_get_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    return ApiResponse(
-        data=await svc.assign(alert_id, UUID(user.enterprise_id), body.user_id)
-    )
+    data = await svc.assign(alert_id, UUID(user.enterprise_id), body.user_id)
+    await _audit(db, user, "ALERT_ASSIGNED", alert_id, {"assigned_to": str(body.user_id)})
+    return ApiResponse(data=data)

@@ -43,3 +43,7 @@ orjson==3.10.12
 pytest==8.3.4
 pytest-asyncio==0.24.0
 pytest-cov==6.0.0
+
+# Reports
+reportlab==4.2.5
+openpyxl==3.1.5

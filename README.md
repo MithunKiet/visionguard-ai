@@ -349,52 +349,75 @@ See `.env.example` for the full list.
 
 ## API Overview
 
+All endpoints below are implemented (see Swagger at `/docs` for full schemas):
+
 ```
 # Auth
-POST   /api/v1/auth/login
-POST   /api/v1/auth/refresh
-POST   /api/v1/auth/logout
-
-# Factories & Zones
-GET    /api/v1/factories
-POST   /api/v1/factories
-GET    /api/v1/zones
-POST   /api/v1/zones
+POST   /api/v1/auth/login              POST   /api/v1/auth/refresh
+POST   /api/v1/auth/logout             POST   /api/v1/auth/change-password
+GET    /api/v1/auth/me
 
 # Cameras
-GET    /api/v1/cameras
-POST   /api/v1/cameras
-GET    /api/v1/cameras/{id}/health
+GET    /api/v1/cameras                 POST   /api/v1/cameras
+GET    /api/v1/cameras/{id}            PUT    /api/v1/cameras/{id}
+DELETE /api/v1/cameras/{id}            GET    /api/v1/cameras/{id}/health
+POST   /api/v1/cameras/test-connection
 
-# Alerts
-GET    /api/v1/alerts
-GET    /api/v1/alerts/{id}
-PATCH  /api/v1/alerts/{id}/acknowledge
-PATCH  /api/v1/alerts/{id}/resolve
+# Workers (AI worker service auth)
+GET    /api/v1/workers                 POST   /api/v1/workers/heartbeat
+GET    /api/v1/workers/{id}/cameras
+
+# Violations & Alerts
+GET    /api/v1/violations              GET    /api/v1/violations/{id}
+GET    /api/v1/alerts                  GET    /api/v1/alerts/{id}
+PATCH  /api/v1/alerts/{id}/acknowledge PATCH  /api/v1/alerts/{id}/resolve
+PATCH  /api/v1/alerts/{id}/assign      PATCH  /api/v1/alerts/{id}/false-positive
+
+# Occupancy
+GET    /api/v1/occupancy/current       GET    /api/v1/occupancy/history
+
+# Zone Config (hot-applied to AI workers, no restart)
+GET    /api/v1/config/zone/{zone_id}   PUT    /api/v1/config/zone/{zone_id}
+GET    /api/v1/config/zone/{zone_id}/history
+POST   /api/v1/config/zone/{zone_id}/restore/{history_id}
+
+# Shifts
+GET    /api/v1/shifts                  POST   /api/v1/shifts
+PUT    /api/v1/shifts/{id}             DELETE /api/v1/shifts/{id}
+GET    /api/v1/shifts/active
+
+# Maintenance (alerts suppressed while camera is in maintenance)
+GET    /api/v1/maintenance             POST   /api/v1/maintenance
+PATCH  /api/v1/maintenance/{id}/complete
+POST   /api/v1/maintenance/camera/{camera_id}/enable
+POST   /api/v1/maintenance/camera/{camera_id}/disable
 
 # Analytics
-GET    /api/v1/analytics/violations
-GET    /api/v1/analytics/occupancy
-GET    /api/v1/analytics/compliance
-GET    /api/v1/analytics/safety-score
+GET    /api/v1/analytics/violations    GET    /api/v1/analytics/occupancy
+GET    /api/v1/analytics/compliance    GET    /api/v1/analytics/safety-score
 
-# Reports
-POST   /api/v1/reports/generate
+# Reports (PDF + Excel, stored in MinIO, pre-signed downloads)
+POST   /api/v1/reports/generate        GET    /api/v1/reports
 GET    /api/v1/reports/{id}/download
 
-# Zone Config
-GET    /api/v1/config/zone/{zone_id}
-PUT    /api/v1/config/zone/{zone_id}
+# Enterprise Branding
+GET    /api/v1/enterprise/branding     PUT    /api/v1/enterprise/branding
 
-# Audit
+# Setup Wizard (first-time onboarding, resumable)
+GET    /api/v1/setup/progress          POST   /api/v1/setup/factory
+POST   /api/v1/setup/department        POST   /api/v1/setup/zone
+POST   /api/v1/setup/camera            POST   /api/v1/setup/complete
+
+# Notifications
+GET    /api/v1/notifications/recipients   POST   /api/v1/notifications/recipients
+DELETE /api/v1/notifications/recipients/{id}
+
+# Audit (immutable, append-only)
 GET    /api/v1/audit
 
 # WebSocket
-WS     /ws/dashboard
-WS     /ws/alerts
+WS     /api/v1/ws/live
 ```
-
-Full API reference → [`docs/API.md`](./docs/API.md)
 
 ---
 
@@ -604,6 +627,58 @@ This proves RTSP stability, YOLO throughput, event flow correctness, and WebSock
 | Phase 3 — Enterprise | 6 weeks | Multi-tenant, analytics, branding, API keys |
 
 Each phase ends with a gate review before the next phase starts. See [`IMPLEMENTATION.md` — Section 43](./IMPLEMENTATION.md) for full details.
+
+---
+
+## Implementation Status
+
+| Area | Status | Notes |
+|---|---|---|
+| Vertical slice (RTSP → YOLO → RabbitMQ → DB → WebSocket → dashboard) | ✅ Done | ≤ 5 s latency, see [E2E runbook](./docs/E2E_PILOT_RUNBOOK.md) |
+| Identity & auth (JWT + refresh rotation, RBAC) | ✅ Done | 2FA planned |
+| Camera registry + health + RTSP test | ✅ Done | |
+| AI worker (CLAHE, multi-frame voting, batching, circuit breaker) | ✅ Done | |
+| PPE violations + alert lifecycle | ✅ Done | Escalation matrix planned |
+| Occupancy tracking (worker counting → API + overcrowding alerts) | ✅ Done | |
+| Notifications (email, Slack, webhook, desktop; retry + delivery log) | ✅ Done | SMS/Teams planned |
+| Zone config hot-swap (versioned, history, restore, live push to workers) | ✅ Done | |
+| Shifts (CRUD, active resolution, violation tagging) | ✅ Done | |
+| Camera maintenance mode (alert suppression + records) | ✅ Done | |
+| Audit trail (append-only, wired into sensitive actions) | ✅ Done | |
+| Analytics (violations, occupancy, compliance, safety score) | ✅ Done | Heatmaps planned |
+| Reports (PDF/Excel → MinIO → pre-signed download) | ✅ Done | Scheduled reports planned |
+| Enterprise branding (dynamic, DB-driven) | ✅ Done | Logo upload endpoint planned |
+| Setup wizard (4 steps, resumable, placement checklist) | ✅ Done | |
+| Tests (backend + AI worker unit suites) | ✅ Done | `pytest` in both packages |
+| CI (GitHub Actions: lint + tests + frontend build) | ✅ Done | |
+| Fine-tuned PPE model | ⚠️ Needs data | Training pipeline ready — see [MODEL_TRAINING.md](./docs/MODEL_TRAINING.md) |
+| Frontend pages for Phase 2/3 modules | 🔜 Planned | APIs ready |
+| Prometheus/Grafana dashboards | 🔜 Planned | |
+
+> **Demo mode:** without a fine-tuned model at `ai-worker/models/yolov8s-ppe.pt`,
+> the worker uses a COCO fallback — it counts people for occupancy and emits
+> synthetic `helmet_missing` violations so the pipeline can be demonstrated
+> end-to-end. Follow the [model training guide](./docs/MODEL_TRAINING.md) to
+> go live.
+
+---
+
+## Testing & CI
+
+```bash
+# Backend unit tests (no Docker needed)
+cd backend && pip install -r requirements.txt && pytest
+
+# AI worker unit tests (light deps only)
+cd ai-worker && pip install pytest pytest-asyncio pydantic-settings structlog && pytest
+
+# Lint
+ruff check backend/src backend/tests
+```
+
+GitHub Actions ([.github/workflows/ci.yml](./.github/workflows/ci.yml)) runs
+ruff + pytest for backend and AI worker, and type-check + build for the
+frontend on every push/PR to `main`.
 
 ---
 

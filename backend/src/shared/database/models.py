@@ -219,6 +219,44 @@ class ZoneRule(Base):
     created_on          = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class ConfigHistory(Base):
+    __tablename__ = "config_history"
+    __table_args__ = (
+        Index("ix_config_history_zone", "zone_id", "changed_at"),
+        {"schema": "config"},
+    )
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    enterprise_id   = Column(UUID(as_uuid=True), ForeignKey("enterprises.id"), nullable=False, index=True)
+    zone_id         = Column(UUID(as_uuid=True), ForeignKey("zones.id"), nullable=False)
+    changed_by      = Column(UUID(as_uuid=True), ForeignKey("identity.users.id"), nullable=True)
+    old_config      = Column(JSONB, nullable=True)
+    new_config      = Column(JSONB, nullable=False)
+    change_reason   = Column(Text, nullable=True)
+    changed_at      = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# ─── Reports ──────────────────────────────────────────────────────────────────
+
+class Report(Base):
+    __tablename__ = "reports"
+    __table_args__ = (
+        Index("ix_reports_enterprise", "enterprise_id", "created_on"),
+        {"schema": "reports"},
+    )
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    enterprise_id   = Column(UUID(as_uuid=True), ForeignKey("enterprises.id"), nullable=False)
+    report_type     = Column(String(50), nullable=False)
+    format          = Column(String(10), nullable=False)
+    from_date       = Column(DateTime(timezone=True), nullable=False)
+    to_date         = Column(DateTime(timezone=True), nullable=False)
+    object_key      = Column(String(500), nullable=True)
+    status          = Column(String(20), default="Completed", nullable=False)
+    generated_by    = Column(UUID(as_uuid=True), ForeignKey("identity.users.id"), nullable=True)
+    created_on      = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 # ─── Shifts ───────────────────────────────────────────────────────────────────
 
 class Shift(Base):

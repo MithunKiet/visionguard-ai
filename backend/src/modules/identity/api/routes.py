@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, Response
+from fastapi import APIRouter, Cookie, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.modules.identity.api.schemas import (
@@ -30,9 +30,22 @@ def _get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
 async def login(
     body: LoginRequest,
     response: Response,
+    request: Request,
     svc: AuthService = Depends(_get_auth_service),
+    db: AsyncSession = Depends(get_db),
 ):
     result = await svc.login(body.email, body.password)
+    from uuid import UUID
+    from src.modules.audit.application.services import AuditService
+    await AuditService(db).record(
+        enterprise_id=UUID(result["user"]["enterprise_id"]),
+        user_id=UUID(result["user"]["id"]),
+        action="USER_LOGIN",
+        entity_type="user",
+        entity_id=UUID(result["user"]["id"]),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     response.set_cookie(
         key=_REFRESH_COOKIE,
         value=result["refresh_token"],
@@ -104,6 +117,16 @@ async def change_password(
         body.current_password,
         body.new_password,
     )
+    from src.modules.audit.application.services import AuditService
+    from src.shared.database.session import AsyncSessionFactory
+    async with AsyncSessionFactory() as audit_db:
+        await AuditService(audit_db).record(
+            enterprise_id=UUID(current_user.enterprise_id),
+            user_id=UUID(current_user.user_id),
+            action="PASSWORD_CHANGED",
+            entity_type="user",
+            entity_id=UUID(current_user.user_id),
+        )
     return ApiResponse(data=None)
 
 

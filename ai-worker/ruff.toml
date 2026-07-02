@@ -1,0 +1,8 @@
+line-length = 120
+target-version = "py311"
+
+[lint.per-file-ignores]
+# main.py configures logging before importing anything else; detector.py
+# shims sys.*_int_max_str_digits before torch imports. Both are intentional.
+"src/main.py" = ["E402"]
+"src/pipeline/detector.py" = ["E402"]

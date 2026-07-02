@@ -1,4 +1,5 @@
 import asyncio
+import time
 import structlog
 import numpy as np
 import cv2
@@ -14,6 +15,12 @@ from src.config.settings import settings
 log = structlog.get_logger()
 
 CIRCUIT_BREAKER_THRESHOLD = 3   # AI Worker rule #6
+
+# Occupancy publishing cadence: publish immediately when the person count
+# changes, and at most every OCCUPANCY_HEARTBEAT_SECONDS while it's stable —
+# keeps the dashboard live without flooding RabbitMQ at frame rate.
+OCCUPANCY_HEARTBEAT_SECONDS = 30
+OVERCROWDING_COOLDOWN_SECONDS = 120
 
 # Shared across all CameraWorker instances in this process — one client
 # connection reused for every snapshot upload instead of reconnecting per call.
@@ -43,6 +50,17 @@ class CameraWorker:
         self._validator = PPEValidator()
         self._failure_count = 0
         self._isolated = False
+        self._last_occupancy_count: int | None = None
+        self._last_occupancy_published = 0.0
+        self._last_overcrowding_fired = 0.0
+
+    def apply_zone_config(self, new_config: dict) -> None:
+        """Hot-swap zone config (rule #8) — takes effect on the next frame.
+        Frame sampling rate is pushed down into the reader immediately."""
+        self.zone_config = new_config
+        fps = new_config.get("frame_sample_fps")
+        if fps:
+            self._reader.set_sample_fps(fps)
 
     async def run(self) -> None:
         if self._isolated:
@@ -81,6 +99,8 @@ class CameraWorker:
         detections = await self._detector.detect(frame)
         violations = self._validator.evaluate(detections, self.zone_config)
 
+        await self._publish_occupancy(detections)
+
         for v in violations:
             if v.get("review"):
                 await publish("events.low_confidence_violation", {
@@ -103,6 +123,49 @@ class CameraWorker:
                     "snapshot_key": snapshot_key,
                     "config_version": self.zone_config.get("version", 1),
                 })
+
+    async def _publish_occupancy(self, detections: list) -> None:
+        """Person count per frame → occupancy_updated on change or heartbeat,
+        overcrowding_detected when the count exceeds the zone capacity."""
+        person_threshold = self.zone_config.get("person_threshold", 0.70)
+        count = sum(
+            1 for d in detections
+            if d.class_name == "person" and d.confidence >= person_threshold
+        )
+
+        now = time.monotonic()
+        changed = count != self._last_occupancy_count
+        stale = (now - self._last_occupancy_published) >= OCCUPANCY_HEARTBEAT_SECONDS
+        if changed or stale:
+            self._last_occupancy_count = count
+            self._last_occupancy_published = now
+            await publish("events.occupancy_updated", {
+                "event": "occupancy_updated",
+                "camera_id": self.camera_id,
+                "enterprise_id": self.enterprise_id,
+                "factory_id": self.factory_id,
+                "zone_id": self.zone_id,
+                "count": count,
+            })
+
+        max_occupancy = self.zone_config.get("max_occupancy")
+        if (
+            max_occupancy
+            and count > max_occupancy
+            and (now - self._last_overcrowding_fired) >= OVERCROWDING_COOLDOWN_SECONDS
+        ):
+            self._last_overcrowding_fired = now
+            await publish("events.overcrowding_detected", {
+                "event": "overcrowding_detected",
+                "camera_id": self.camera_id,
+                "enterprise_id": self.enterprise_id,
+                "factory_id": self.factory_id,
+                "zone_id": self.zone_id,
+                "count": count,
+                "max_occupancy": max_occupancy,
+            })
+            log.warning("camera_worker.overcrowding", camera_id=self.camera_id,
+                        count=count, max_occupancy=max_occupancy)
 
     async def _capture_snapshot(self, frame: np.ndarray, event_name: str) -> str:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")

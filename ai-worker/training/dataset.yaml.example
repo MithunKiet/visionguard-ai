@@ -1,0 +1,20 @@
+# Ultralytics YOLO dataset config for VisionGuard PPE fine-tuning.
+# Copy to dataset.yaml and point `path` at your labeled dataset root.
+#
+# Class order MUST match PPE_CLASSES in src/pipeline/detector.py exactly —
+# the runtime detector maps class ids by this order.
+
+path: ./datasets/ppe          # dataset root
+train: images/train           # relative to path
+val: images/val
+
+names:
+  0: helmet
+  1: no_helmet
+  2: vest
+  3: no_vest
+  4: gloves
+  5: no_gloves
+  6: safety_shoes
+  7: no_safety_shoes
+  8: person

@@ -1,7 +1,7 @@
 import time
 import structlog
 from typing import Dict
-from src.pipeline.detector import Detection
+from src.pipeline.types import Detection
 from src.config.settings import settings
 
 log = structlog.get_logger()

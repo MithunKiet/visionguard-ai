@@ -1,4 +1,3 @@
-from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +10,6 @@ from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import (
     AuthUser,
     WorkerContext,
-    get_current_user,
     get_worker_context,
     require_roles,
 )

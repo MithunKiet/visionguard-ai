@@ -1,0 +1,7 @@
+line-length = 120
+target-version = "py311"
+
+[lint.per-file-ignores]
+# main.py configures logging before importing the app — imports intentionally
+# come after that side effect.
+"src/main.py" = ["E402"]

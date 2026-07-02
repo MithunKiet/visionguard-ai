@@ -38,3 +38,13 @@ ai-worker/*.pt
 # OS
 .DS_Store
 Thumbs.db
+
+# TypeScript build artifacts
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# Training datasets and runs (large)
+ai-worker/training/datasets/
+ai-worker/training/runs/
+ai-worker/training/dataset.yaml

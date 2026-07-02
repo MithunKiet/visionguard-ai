@@ -7,6 +7,7 @@ import platform
 import structlog
 import httpx
 from src.config.settings import settings
+from src.config.zone_sync import ZoneConfigSync
 from src.events.publisher import init_publisher, close_publisher, publish
 from src.pipeline.batch_detector import BatchDetector
 from src.pipeline.camera_worker import CameraWorker
@@ -78,6 +79,7 @@ async def main() -> None:
     detector.start()
 
     tasks = []
+    workers: list[CameraWorker] = []
 
     # Start heartbeat
     tasks.append(asyncio.create_task(send_heartbeat()))
@@ -93,14 +95,20 @@ async def main() -> None:
             zone_id=cam["zone_id"],
             detector=detector,
         )
+        workers.append(worker)
         tasks.append(asyncio.create_task(worker.run()))
 
     if not cameras:
         log.warning("ai_worker.no_cameras_assigned", worker_id=settings.WORKER_ID)
 
+    # Zone config hot-reload — applies backend config pushes without restart
+    config_sync = ZoneConfigSync(workers)
+    await config_sync.start()
+
     try:
         await asyncio.gather(*tasks)
     finally:
+        await config_sync.stop()
         await close_publisher()
         log.info("ai_worker.stopped")
 
