@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import AddIcon from "@mui/icons-material/Add";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Paper from "@mui/material/Paper";
@@ -10,6 +12,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { api } from "../api/client";
+import { AddCameraDialog } from "../components/AddCameraDialog";
 
 async function fetchCameras() {
   const resp = await api.get("/cameras");
@@ -30,6 +33,7 @@ const STATUS_COLOR: Record<string, "success" | "error" | "warning" | "default"> 
 
 export function Cameras() {
   const queryClient = useQueryClient();
+  const [addOpen, setAddOpen] = useState(false);
   const { data: cameras, isLoading } = useQuery({
     queryKey: ["cameras"],
     queryFn: fetchCameras,
@@ -43,9 +47,16 @@ export function Cameras() {
 
   return (
     <Stack spacing={3}>
-      <Typography variant="h5" fontWeight={700}>
-        Cameras
-      </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Typography variant="h5" fontWeight={700}>
+          Cameras
+        </Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
+          Add Camera
+        </Button>
+      </Stack>
+
+      <AddCameraDialog open={addOpen} onClose={() => setAddOpen(false)} />
 
       <Paper variant="outlined">
         <Table>

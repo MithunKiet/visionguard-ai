@@ -45,6 +45,7 @@ def _register_routers(app: FastAPI) -> None:
     from src.modules.realtime.routes import router as realtime_router
     from src.modules.notifications.api.routes import router as notifications_router
     from src.modules.occupancy.api.routes import router as occupancy_router
+    from src.modules.zone.api.routes import router as zone_router
 
     app.include_router(identity_router, prefix="/api/v1")
     app.include_router(camera_router, prefix="/api/v1")
@@ -54,6 +55,7 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(realtime_router, prefix="/api/v1")
     app.include_router(notifications_router, prefix="/api/v1")
     app.include_router(occupancy_router, prefix="/api/v1")
+    app.include_router(zone_router, prefix="/api/v1")
 
     # Phase 2 — Operations
     from src.modules.config.api.routes import router as config_router
