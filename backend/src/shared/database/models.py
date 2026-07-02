@@ -192,6 +192,8 @@ class ZoneConfig(Base):
     frame_sample_fps    = Column(Integer, default=2)
     ppe_required        = Column(JSONB, default=lambda: ["helmet", "vest"])
     cooldown_seconds    = Column(Integer, default=120)
+    required_consecutive_frames = Column(Integer, default=3)
+    low_confidence_floor        = Column(Float, default=0.40)
     updated_by          = Column(UUID(as_uuid=True), ForeignKey("identity.users.id"), nullable=True)
     updated_at          = Column(DateTime(timezone=True))
     version             = Column(Integer, default=1, nullable=False)

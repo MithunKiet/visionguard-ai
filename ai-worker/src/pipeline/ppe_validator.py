@@ -30,12 +30,12 @@ class ViolationTracker:
         self._counts: Dict[str, int] = {}
         self._last_fired: Dict[str, float] = {}
 
-    def record(self, key: str, violation: bool) -> bool:
+    def record(self, key: str, violation: bool, required_frames: int) -> bool:
         if violation:
             self._counts[key] = self._counts.get(key, 0) + 1
         else:
             self._counts[key] = 0
-        return self._counts[key] >= settings.REQUIRED_CONSECUTIVE_FRAMES
+        return self._counts[key] >= required_frames
 
     def should_fire(self, key: str, cooldown_seconds: int) -> bool:
         last = self._last_fired.get(key)
@@ -61,6 +61,8 @@ class PPEValidator:
         """
         confirmed = []
         cooldown_seconds = zone_config.get("cooldown_seconds", DEFAULT_COOLDOWN_SECONDS)
+        required_frames = zone_config.get("required_consecutive_frames", settings.REQUIRED_CONSECUTIVE_FRAMES)
+        low_confidence_floor = zone_config.get("low_confidence_floor", settings.LOW_CONFIDENCE_FLOOR)
 
         for det in detections:
             if not det.is_violation:
@@ -75,7 +77,7 @@ class PPEValidator:
 
             if det.confidence >= threshold:
                 key = det.class_name
-                if self._tracker.record(key, True) and self._tracker.should_fire(key, cooldown_seconds):
+                if self._tracker.record(key, True, required_frames) and self._tracker.should_fire(key, cooldown_seconds):
                     self._tracker.mark_fired(key)
                     confirmed.append({
                         "event": event_name,
@@ -83,7 +85,7 @@ class PPEValidator:
                         "bbox": det.bbox,
                         "review": False,
                     })
-            elif det.confidence >= settings.LOW_CONFIDENCE_FLOOR:
+            elif det.confidence >= low_confidence_floor:
                 key = f"review:{det.class_name}"
                 if self._tracker.should_fire(key, cooldown_seconds):
                     self._tracker.mark_fired(key)
@@ -95,6 +97,6 @@ class PPEValidator:
                         "review": True,
                     })
             else:
-                self._tracker.record(det.class_name, False)
+                self._tracker.record(det.class_name, False, required_frames)
 
         return confirmed

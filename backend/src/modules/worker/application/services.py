@@ -86,6 +86,8 @@ class WorkerService:
                     "frame_sample_fps": config.frame_sample_fps if config else 2,
                     "ppe_required": config.ppe_required if config else ["helmet", "vest"],
                     "cooldown_seconds": config.cooldown_seconds if config else 120,
+                    "required_consecutive_frames": config.required_consecutive_frames if config else 3,
+                    "low_confidence_floor": config.low_confidence_floor if config else 0.40,
                     "max_occupancy": config.max_occupancy if config else None,
                     "config_version": config.version if config else 1,
                 } if config else None,
