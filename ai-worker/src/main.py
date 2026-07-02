@@ -4,6 +4,7 @@ import structlog
 import httpx
 from src.config.settings import settings
 from src.events.publisher import init_publisher, close_publisher, publish
+from src.pipeline.batch_detector import BatchDetector
 from src.pipeline.camera_worker import CameraWorker
 
 log = structlog.get_logger()
@@ -66,6 +67,12 @@ async def main() -> None:
     cameras = await fetch_assigned_cameras()
     log.info("ai_worker.cameras_loaded", count=len(cameras))
 
+    # One model loaded once per process, shared by every camera below —
+    # each camera submits frames to it and inference runs in GPU-friendly
+    # batches instead of one single-image call per camera.
+    detector = BatchDetector()
+    detector.start()
+
     tasks = []
 
     # Start heartbeat
@@ -80,6 +87,7 @@ async def main() -> None:
             enterprise_id=cam["enterprise_id"],
             factory_id=cam["factory_id"],
             zone_id=cam["zone_id"],
+            detector=detector,
         )
         tasks.append(asyncio.create_task(worker.run()))
 

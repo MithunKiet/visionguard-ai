@@ -92,10 +92,22 @@ class PPEDetector:
         return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
     def detect(self, frame: np.ndarray) -> List[Detection]:
-        processed = self.preprocess(frame)
-        results = self._model(processed, verbose=False)[0]
-        detections = []
+        return self.detect_batch([frame])[0]
 
+    def detect_batch(self, frames: List[np.ndarray]) -> List[List[Detection]]:
+        """
+        Run inference on multiple camera frames in a single forward pass.
+        A GPU processes a batch of N images far more efficiently than N
+        sequential single-image calls (better utilization of parallel
+        compute per call), so this is what lets one GPU serve more cameras
+        — BatchDetector groups pending per-camera frames and calls this.
+        """
+        processed = [self.preprocess(f) for f in frames]
+        results_list = self._model(processed, verbose=False)
+        return [self._parse_results(r) for r in results_list]
+
+    def _parse_results(self, results) -> List[Detection]:
+        detections = []
         for box in results.boxes:
             cls_id = int(box.cls[0])
             confidence = float(box.conf[0])

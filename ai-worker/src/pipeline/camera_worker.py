@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from minio import Minio
 
 from src.pipeline.frame_reader import FrameReader
-from src.pipeline.detector import PPEDetector
+from src.pipeline.batch_detector import BatchDetector
 from src.pipeline.ppe_validator import PPEValidator
 from src.events.publisher import publish
 from src.config.settings import settings
@@ -26,7 +26,7 @@ _minio = Minio(settings.MINIO_ENDPOINT,
 class CameraWorker:
 
     def __init__(self, camera_id: str, rtsp_url: str, zone_config: dict,
-                 enterprise_id: str, factory_id: str, zone_id: str):
+                 enterprise_id: str, factory_id: str, zone_id: str, detector: BatchDetector):
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
         self.zone_config = zone_config
@@ -35,7 +35,11 @@ class CameraWorker:
         self.zone_id = zone_id
 
         self._reader = FrameReader(camera_id, rtsp_url, zone_config.get("frame_sample_fps", 2))
-        self._detector = PPEDetector()
+        # Shared BatchDetector, one per process — every camera on this
+        # worker submits frames to it so inference can run in batches
+        # instead of each camera loading its own model copy and calling
+        # inference one image at a time.
+        self._detector = detector
         self._validator = PPEValidator()
         self._failure_count = 0
         self._isolated = False
@@ -68,14 +72,13 @@ class CameraWorker:
                 log.error("camera_worker.circuit_breaker_open", camera_id=self.camera_id)
 
     async def _process_frame(self, frame: np.ndarray) -> None:
-        # YOLO inference is a blocking, CPU/GPU-bound call. Running it inline
-        # would stall this process's single asyncio event loop — freezing
-        # frame reading, heartbeats, and every other camera this worker
-        # handles for the duration of each inference. Offloading to a thread
-        # lets those keep running while inference happens in the background
-        # (multiple cameras still serialize on the GPU itself, but the rest
-        # of the worker stays responsive).
-        detections = await asyncio.to_thread(self._detector.detect, frame)
+        # Submits to the shared BatchDetector, which groups this frame with
+        # whatever other cameras submit within the same short window and
+        # runs one batched GPU inference call for all of them — cheaper per
+        # camera than each running its own single-image call, and never
+        # blocks this worker's event loop (inference itself runs in a
+        # thread inside BatchDetector).
+        detections = await self._detector.detect(frame)
         violations = self._validator.evaluate(detections, self.zone_config)
 
         for v in violations:
