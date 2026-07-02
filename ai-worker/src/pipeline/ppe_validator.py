@@ -1,3 +1,4 @@
+import time
 import structlog
 from typing import Dict
 from src.pipeline.detector import Detection
@@ -12,13 +13,22 @@ VIOLATION_TO_EVENT = {
     "no_safety_shoes": "shoes_missing_detected",
 }
 
+DEFAULT_COOLDOWN_SECONDS = 120
+
 
 class ViolationTracker:
     """Rule 14: Multi-frame voting — require REQUIRED_CONSECUTIVE_FRAMES
-    consecutive positive detections before confirming a violation."""
+    consecutive positive detections before confirming a violation.
+
+    Also throttles repeat firing of the same violation type: once confirmed,
+    the same key won't fire (snapshot + event) again until cooldown_seconds
+    has passed, even if the subject stays in frame continuously — otherwise
+    a single person standing still gets a new snapshot + DB row on every
+    processed frame (2x/sec by default)."""
 
     def __init__(self):
         self._counts: Dict[str, int] = {}
+        self._last_fired: Dict[str, float] = {}
 
     def record(self, key: str, violation: bool) -> bool:
         if violation:
@@ -26,6 +36,14 @@ class ViolationTracker:
         else:
             self._counts[key] = 0
         return self._counts[key] >= settings.REQUIRED_CONSECUTIVE_FRAMES
+
+    def should_fire(self, key: str, cooldown_seconds: int) -> bool:
+        last = self._last_fired.get(key)
+        return last is None or (time.monotonic() - last) >= cooldown_seconds
+
+    def mark_fired(self, key: str) -> None:
+        self._last_fired[key] = time.monotonic()
+        self._counts[key] = 0  # require fresh consecutive-frame confirmation after cooldown
 
     def reset(self, key: str) -> None:
         self._counts.pop(key, None)
@@ -42,6 +60,7 @@ class PPEValidator:
         Rule 16: Routes low-confidence detections to review queue instead of alert.
         """
         confirmed = []
+        cooldown_seconds = zone_config.get("cooldown_seconds", DEFAULT_COOLDOWN_SECONDS)
 
         for det in detections:
             if not det.is_violation:
@@ -56,7 +75,8 @@ class PPEValidator:
 
             if det.confidence >= threshold:
                 key = det.class_name
-                if self._tracker.record(key, True):
+                if self._tracker.record(key, True) and self._tracker.should_fire(key, cooldown_seconds):
+                    self._tracker.mark_fired(key)
                     confirmed.append({
                         "event": event_name,
                         "confidence": det.confidence,
@@ -64,13 +84,16 @@ class PPEValidator:
                         "review": False,
                     })
             elif det.confidence >= settings.LOW_CONFIDENCE_FLOOR:
-                confirmed.append({
-                    "event": "low_confidence_violation",
-                    "violation_type": det.class_name,
-                    "confidence": det.confidence,
-                    "bbox": det.bbox,
-                    "review": True,
-                })
+                key = f"review:{det.class_name}"
+                if self._tracker.should_fire(key, cooldown_seconds):
+                    self._tracker.mark_fired(key)
+                    confirmed.append({
+                        "event": "low_confidence_violation",
+                        "violation_type": det.class_name,
+                        "confidence": det.confidence,
+                        "bbox": det.bbox,
+                        "review": True,
+                    })
             else:
                 self._tracker.record(det.class_name, False)
 
