@@ -79,8 +79,9 @@ services:
     image: bluenviron/mediamtx:latest
     container_name: vg_mediamtx
     ports:
-      - "8554:8554"     # RTSP
-      - "8889:8889"     # WebRTC (optional)
+      - "8554:8554"       # RTSP
+      - "8889:8889"       # WebRTC — Live Grid page in the frontend embeds this
+      - "8189:8189/udp"   # WebRTC ICE (must be published for the browser to actually connect)
     volumes:
       - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml
     restart: unless-stopped
@@ -190,6 +191,7 @@ services:
     environment:
       VITE_API_URL: http://localhost:8000
       VITE_WS_URL: ws://localhost:8000
+      VITE_MEDIAMTX_WEBRTC_URL: http://localhost:8889
     volumes:
       - ./frontend:/app
       - /app/node_modules

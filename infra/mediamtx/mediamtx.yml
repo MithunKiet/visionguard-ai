@@ -7,6 +7,13 @@ logDestinations: [stdout]
 rtsp: yes
 rtspAddress: :8554
 
+# Lets the browser view live camera feeds directly (Live Grid page) without
+# any extra backend/transcoding — mediamtx serves a built-in WebRTC player
+# per path at http://<host>:8889/<path>/.
+webrtc: yes
+webrtcAddress: :8889
+webrtcAdditionalHosts: [localhost, 127.0.0.1]
+
 # To push a stream use:
 #   ffmpeg -re -stream_loop -1 -i your_video.mp4 -c copy -f rtsp rtsp://localhost:8554/factory-cam-01
 #

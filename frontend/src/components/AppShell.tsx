@@ -13,6 +13,7 @@ import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import DashboardIcon from "@mui/icons-material/SpaceDashboard";
 import VideocamIcon from "@mui/icons-material/Videocam";
+import GridViewIcon from "@mui/icons-material/GridView";
 import WarningIcon from "@mui/icons-material/WarningAmber";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -25,6 +26,7 @@ const DRAWER_WIDTH = 220;
 const NAV = [
   { to: "/", label: "Dashboard", icon: <DashboardIcon /> },
   { to: "/cameras", label: "Cameras", icon: <VideocamIcon /> },
+  { to: "/live", label: "Live Grid", icon: <GridViewIcon /> },
   { to: "/violations", label: "Violations", icon: <WarningIcon /> },
   { to: "/alerts", label: "Alerts", icon: <NotificationsActiveIcon /> },
 ];

@@ -3,6 +3,7 @@ import { AppShell } from "./components/AppShell";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { Cameras } from "./pages/Cameras";
+import { LiveGrid } from "./pages/LiveGrid";
 import { Alerts } from "./pages/Alerts";
 import { Violations } from "./pages/Violations";
 import { useAuthStore } from "./store/authStore";
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Dashboard /> },
       { path: "cameras", element: <Cameras /> },
+      { path: "live", element: <LiveGrid /> },
       { path: "violations", element: <Violations /> },
       { path: "alerts", element: <Alerts /> },
     ],
