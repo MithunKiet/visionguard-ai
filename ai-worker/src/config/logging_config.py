@@ -6,13 +6,20 @@ only existing in `docker compose logs` output.
 import logging
 import logging.handlers
 import os
+from datetime import datetime
 
 import structlog
 
 LOG_DIR = os.environ.get("LOG_DIR", "/app/logs")
-LOG_FILE = "ai-worker.log"
-MAX_BYTES = 10 * 1024 * 1024
-BACKUP_COUNT = 5
+BACKUP_DAYS = 30
+
+
+def _dated_namer(default_name: str) -> str:
+    """TimedRotatingFileHandler default names rollovers like
+    'YYYYMMDD.log.2026-07-03' — rewrite to '20260703.log' so every day's
+    file, past or present, follows the same YYYYMMDD.log pattern."""
+    base, _, date_suffix = default_name.rpartition(".")
+    return os.path.join(LOG_DIR, f"{date_suffix.replace('-', '')}.log")
 
 
 def configure_logging() -> None:
@@ -39,9 +46,12 @@ def configure_logging() -> None:
         foreign_pre_chain=shared_processors,
     ))
 
-    file_handler = logging.handlers.RotatingFileHandler(
-        os.path.join(LOG_DIR, LOG_FILE), maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT,
+    log_file = os.path.join(LOG_DIR, datetime.now().strftime("%Y%m%d.log"))
+    file_handler = logging.handlers.TimedRotatingFileHandler(
+        log_file, when="midnight", backupCount=BACKUP_DAYS, encoding="utf-8",
     )
+    file_handler.suffix = "%Y-%m-%d"
+    file_handler.namer = _dated_namer
     file_handler.setFormatter(structlog.stdlib.ProcessorFormatter(
         processor=structlog.processors.JSONRenderer(),
         foreign_pre_chain=shared_processors,
