@@ -108,7 +108,7 @@ services:
       - ./backend:/app
       - ./logs/backend:/app/logs
     ports:
-      - "8000:8000"
+      - "${BACKEND_PUBLIC_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -192,8 +192,8 @@ services:
       dockerfile: Dockerfile
     container_name: vg_frontend
     environment:
-      VITE_API_URL: http://localhost:8000
-      VITE_WS_URL: ws://localhost:8000
+      VITE_API_URL: http://localhost:${BACKEND_PUBLIC_PORT:-8000}
+      VITE_WS_URL: ws://localhost:${BACKEND_PUBLIC_PORT:-8000}
       VITE_MEDIAMTX_WEBRTC_URL: http://localhost:8889
     volumes:
       - ./frontend:/app
