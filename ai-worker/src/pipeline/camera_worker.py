@@ -16,9 +16,12 @@ log = structlog.get_logger()
 
 CIRCUIT_BREAKER_THRESHOLD = 3   # AI Worker rule #6
 
-# Occupancy publishing cadence: publish immediately when the person count
-# changes, and at most every OCCUPANCY_HEARTBEAT_SECONDS while it's stable —
-# keeps the dashboard live without flooding RabbitMQ at frame rate.
+# Occupancy publishing cadence: publish when the person count changes but at
+# most once per OCCUPANCY_MIN_INTERVAL_SECONDS (a count bouncing 3↔4 every
+# frame would otherwise flood RabbitMQ and the dashboard feed), and at least
+# every OCCUPANCY_HEARTBEAT_SECONDS while it's stable so the dashboard never
+# goes stale.
+OCCUPANCY_MIN_INTERVAL_SECONDS = 5
 OCCUPANCY_HEARTBEAT_SECONDS = 30
 OVERCROWDING_COOLDOWN_SECONDS = 120
 
@@ -134,9 +137,10 @@ class CameraWorker:
         )
 
         now = time.monotonic()
+        elapsed = now - self._last_occupancy_published
         changed = count != self._last_occupancy_count
-        stale = (now - self._last_occupancy_published) >= OCCUPANCY_HEARTBEAT_SECONDS
-        if changed or stale:
+        stale = elapsed >= OCCUPANCY_HEARTBEAT_SECONDS
+        if (changed and elapsed >= OCCUPANCY_MIN_INTERVAL_SECONDS) or stale:
             self._last_occupancy_count = count
             self._last_occupancy_published = now
             await publish("events.occupancy_updated", {

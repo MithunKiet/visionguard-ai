@@ -3,7 +3,11 @@ import { WS_URL } from "../api/client";
 import { useAuthStore } from "../store/authStore";
 
 export interface LiveEvent {
-  type: "violation.created" | "alert.created" | "camera.status_changed";
+  type:
+    | "violation.created"
+    | "alert.created"
+    | "camera.status_changed"
+    | "occupancy.updated";
   data: any;
 }
 

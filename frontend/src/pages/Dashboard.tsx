@@ -30,9 +30,20 @@ async function fetchRecentViolations() {
   return resp.data.data as any[];
 }
 
+// Occupancy readings are telemetry, not activity — they get their own stat
+// card instead of flooding the activity feed.
+const FEED_LABELS: Record<string, string> = {
+  "violation.created": "Violation detected",
+  "alert.created": "Alert created",
+  "camera.status_changed": "Camera status changed",
+};
+
 export function Dashboard() {
   const queryClient = useQueryClient();
-  const { events, connected } = useLiveFeed(20);
+  const { events, connected } = useLiveFeed(50);
+
+  const feedEvents = events.filter((e) => e.type !== "occupancy.updated").slice(0, 20);
+  const latestOccupancy = events.find((e) => e.type === "occupancy.updated");
 
   const { data: counts } = useQuery({
     queryKey: ["open-alert-counts"],
@@ -46,12 +57,13 @@ export function Dashboard() {
     refetchInterval: 30000,
   });
 
-  // Any live event invalidates the summary queries so counters/lists stay fresh.
+  // Meaningful live events invalidate the summary queries so counters/lists
+  // stay fresh; occupancy ticks alone shouldn't trigger refetch storms.
   useEffect(() => {
-    if (events.length === 0) return;
+    if (feedEvents.length === 0) return;
     queryClient.invalidateQueries({ queryKey: ["open-alert-counts"] });
     queryClient.invalidateQueries({ queryKey: ["recent-violations"] });
-  }, [events.length, queryClient]);
+  }, [feedEvents.length, queryClient]);
 
   return (
     <Stack spacing={3}>
@@ -63,6 +75,11 @@ export function Dashboard() {
         <StatCard label="Open Alerts" value={counts?.total ?? "-"} />
         <StatCard label="Critical" value={counts?.critical ?? "-"} accent="#DC2626" />
         <StatCard label="High" value={counts?.high ?? "-"} accent="#F59E0B" />
+        <StatCard
+          label="Live Occupancy"
+          value={latestOccupancy?.data?.current_count ?? "-"}
+          accent="#2563EB"
+        />
         <StatCard label="Live Connection" value={connected ? "Connected" : "Reconnecting..."} />
       </Stack>
 
@@ -109,24 +126,28 @@ export function Dashboard() {
               Live Feed
             </Typography>
             <List dense sx={{ maxHeight: 420, overflowY: "auto" }}>
-              {events.map((e, idx) => (
+              {feedEvents.map((e, idx) => (
                 <ListItem key={idx} divider>
                   <ListItemText
                     primary={
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Typography variant="body2" fontWeight={600}>
-                          {e.type}
+                          {FEED_LABELS[e.type] ?? e.type}
                         </Typography>
                         {e.data?.severity && <SeverityChip severity={e.data.severity} />}
                       </Stack>
                     }
-                    secondary={e.data?.alert_number ?? e.data?.violation_type ?? e.data?.camera_id}
+                    secondary={
+                      e.data?.alert_number ??
+                      e.data?.violation_type?.replace(/_/g, " ") ??
+                      (e.data?.status ? `Camera ${e.data.status}` : null)
+                    }
                   />
                 </ListItem>
               ))}
-              {events.length === 0 && (
+              {feedEvents.length === 0 && (
                 <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
-                  Waiting for live events...
+                  Waiting for activity — violations, alerts, and camera status changes appear here.
                 </Typography>
               )}
             </List>
