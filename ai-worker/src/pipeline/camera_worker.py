@@ -3,6 +3,7 @@ import structlog
 import numpy as np
 import cv2
 from datetime import datetime, timezone
+from minio import Minio
 
 from src.pipeline.frame_reader import FrameReader
 from src.pipeline.detector import PPEDetector
@@ -13,6 +14,13 @@ from src.config.settings import settings
 log = structlog.get_logger()
 
 CIRCUIT_BREAKER_THRESHOLD = 3   # AI Worker rule #6
+
+# Shared across all CameraWorker instances in this process — one client
+# connection reused for every snapshot upload instead of reconnecting per call.
+_minio = Minio(settings.MINIO_ENDPOINT,
+               access_key=settings.MINIO_ACCESS_KEY,
+               secret_key=settings.MINIO_SECRET_KEY,
+               secure=False)
 
 
 class CameraWorker:
@@ -60,7 +68,14 @@ class CameraWorker:
                 log.error("camera_worker.circuit_breaker_open", camera_id=self.camera_id)
 
     async def _process_frame(self, frame: np.ndarray) -> None:
-        detections = self._detector.detect(frame)
+        # YOLO inference is a blocking, CPU/GPU-bound call. Running it inline
+        # would stall this process's single asyncio event loop — freezing
+        # frame reading, heartbeats, and every other camera this worker
+        # handles for the duration of each inference. Offloading to a thread
+        # lets those keep running while inference happens in the background
+        # (multiple cameras still serialize on the GPU itself, but the rest
+        # of the worker stays responsive).
+        detections = await asyncio.to_thread(self._detector.detect, frame)
         violations = self._validator.evaluate(detections, self.zone_config)
 
         for v in violations:
@@ -87,23 +102,21 @@ class CameraWorker:
                 })
 
     async def _capture_snapshot(self, frame: np.ndarray, event_name: str) -> str:
-        from minio import Minio
-        import io
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
         key = f"{self.enterprise_id}/{self.factory_id}/{self.zone_id}/{self.camera_id}/{ts}_{event_name}.jpg"
+        # JPEG encode + the MinIO PUT are both blocking I/O — same reasoning
+        # as detect() above, offload so this camera's upload doesn't stall
+        # every other camera on this worker.
+        await asyncio.to_thread(self._upload_snapshot, frame, key)
+        return key
 
+    def _upload_snapshot(self, frame: np.ndarray, key: str) -> None:
+        import io
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-
-        minio = Minio(settings.MINIO_ENDPOINT,
-                      access_key=settings.MINIO_ACCESS_KEY,
-                      secret_key=settings.MINIO_SECRET_KEY,
-                      secure=False)
-
-        minio.put_object(
+        _minio.put_object(
             settings.MINIO_BUCKET_SNAPSHOTS,
             key,
             data=io.BytesIO(buf.tobytes()),
             length=len(buf),
             content_type="image/jpeg",
         )
-        return key
