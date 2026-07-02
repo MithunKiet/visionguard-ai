@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
@@ -32,7 +32,35 @@ const NAV = [
 export function AppShell() {
   const navigate = useNavigate();
   const { user, isMasterSession, clearSession } = useAuthStore();
-  const { connected } = useLiveFeed(1);
+  const { connected, events } = useLiveFeed(10);
+  const lastNotifiedRef = useRef<string | null>(null);
+
+  // Request permission once so the browser can show OS-level popups.
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Desktop notification: only for alerts whose backend-configured
+  // recipients (notifications.notification_recipients) include this user.
+  useEffect(() => {
+    const latest = events[0];
+    if (!latest || latest.type !== "alert.created") return;
+    const targets: string[] = latest.data?.notify_user_ids ?? [];
+    if (!user || !targets.includes(user.id)) return;
+
+    const key = latest.data?.id;
+    if (!key || lastNotifiedRef.current === key) return;
+    lastNotifiedRef.current = key;
+
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(`VisionGuard Alert — ${latest.data.severity}`, {
+        body: `${latest.data.alert_type?.replace("PPE_VIOLATION_", "").replace("_", " ")} · ${latest.data.alert_number}`,
+        tag: key,
+      });
+    }
+  }, [events, user]);
 
   const initials = useMemo(() => {
     if (!user?.name) return "?";

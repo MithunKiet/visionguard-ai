@@ -335,6 +335,27 @@ class NotificationLog(Base):
     retry_count     = Column(Integer, default=0)
 
 
+class NotificationRecipient(Base):
+    """
+    Who gets notified (email + desktop) when a violation/alert fires in a
+    zone. zone_id=NULL means an enterprise-wide fallback recipient (used
+    when a zone has no recipients configured of its own). `level` orders
+    recipients for future time-based escalation (Phase 2) — for now every
+    configured recipient for the zone is notified immediately.
+    """
+    __tablename__ = "notification_recipients"
+    __table_args__ = {"schema": "notifications"}
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    enterprise_id   = Column(UUID(as_uuid=True), ForeignKey("enterprises.id"), nullable=False, index=True)
+    zone_id         = Column(UUID(as_uuid=True), ForeignKey("zones.id"), nullable=True, index=True)
+    user_id         = Column(UUID(as_uuid=True), ForeignKey("identity.users.id"), nullable=False)
+    level           = Column(Integer, default=1, nullable=False)
+    notify_email    = Column(Boolean, default=True, nullable=False)
+    notify_desktop  = Column(Boolean, default=True, nullable=False)
+    created_on      = Column(DateTime(timezone=True), server_default=func.now())
+
+
 # ─── Audit ────────────────────────────────────────────────────────────────────
 
 class AuditLog(Base):

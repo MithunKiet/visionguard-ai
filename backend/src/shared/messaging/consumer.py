@@ -111,9 +111,18 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
         alert = await alert_svc.create_from_violation(violation, factory_id)
 
         if alert:
+            from src.modules.notifications.application.services import NotificationService
+            from src.modules.notifications.infrastructure.repositories import NotificationRecipientRepository
+
+            notif_svc = NotificationService(NotificationRecipientRepository(db), db)
+            desktop_targets = await notif_svc.notify_zone_violation(
+                violation.enterprise_id, violation.zone_id, violation.camera_id,
+                alert.id, alert.alert_number, alert.alert_type, alert.severity,
+            )
+
             await manager.broadcast(str(violation.enterprise_id), {
                 "type": "alert.created",
-                "data": alert_svc.to_dict(alert),
+                "data": {**alert_svc.to_dict(alert), "notify_user_ids": desktop_targets},
             })
 
 

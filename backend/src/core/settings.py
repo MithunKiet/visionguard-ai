@@ -51,5 +51,14 @@ class Settings(BaseSettings):
     # so they can't carry a user JWT.
     WORKER_API_KEY: str = "dev-worker-key-change-me"
 
+    # SMTP — email notifications on alert creation. Leave SMTP_HOST empty to
+    # disable sending; emails are logged instead (useful for dev/demo).
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_USE_TLS: bool = True
+    SMTP_FROM: str = "VisionGuard AI <no-reply@visionguard.ai>"
+
 
 settings = Settings()

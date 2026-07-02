@@ -27,6 +27,9 @@ aio-pika==9.4.3
 # Object Storage
 minio==7.2.11
 
+# Email
+aiosmtplib==3.0.2
+
 # HTTP Client
 httpx==0.28.1
 
