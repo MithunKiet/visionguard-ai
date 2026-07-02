@@ -106,6 +106,7 @@ services:
       ENVIRONMENT: development
     volumes:
       - ./backend:/app
+      - ./logs/backend:/app/logs
     ports:
       - "8000:8000"
     depends_on:
@@ -138,6 +139,7 @@ services:
     volumes:
       - ./ai-worker:/app
       - ./ai-worker/models:/app/models
+      - ./logs/ai-worker-1:/app/logs
     deploy:
       resources:
         reservations:
@@ -169,6 +171,7 @@ services:
     volumes:
       - ./ai-worker:/app
       - ./ai-worker/models:/app/models
+      - ./logs/ai-worker-2:/app/logs
     deploy:
       resources:
         reservations:

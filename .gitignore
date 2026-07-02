@@ -28,6 +28,7 @@ ai-worker/*.pt
 
 # Docker
 *.log
+/logs/
 
 # IDE
 .vscode/
