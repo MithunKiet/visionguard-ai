@@ -110,6 +110,19 @@ then `GET /api/v1/reports/{id}/download` returns a pre-signed MinIO URL.
 **Audit:** `GET /api/v1/audit` (as SUPER_ADMIN) shows login, config, and
 alert-action entries.
 
+**Camera feed spec mismatch:** push a stream below the mandatory install
+spec (min 1080p @ 15 FPS) — e.g. a 720p test source:
+```bash
+ffmpeg -re -stream_loop -1 -f lavfi -i testsrc=size=1280x720:rate=25 \
+  -c:v libx264 -preset ultrafast -pix_fmt yuv420p -rtsp_transport tcp \
+  -f rtsp rtsp://localhost:8554/factory-cam-01
+```
+ai-worker logs `camera_worker.spec_mismatch actual_resolution=1280x720
+expected_resolution=1920x1080` on connect; a Low-severity `CAMERA_SPEC_MISMATCH`
+alert appears in `GET /api/v1/alerts`, and `GET /api/v1/audit?action=CAMERA_SPEC_MISMATCH`
+shows the actual-vs-expected numbers. No email/Slack notification fires —
+this is a camera-health signal, not a safety violation.
+
 ## Troubleshooting
 
 - `401` from `/workers/heartbeat` or `/workers/{id}/cameras`: `WORKER_API_KEY` mismatch between backend and ai-worker, or missing `ENTERPRISE_ID` on the ai-worker container.

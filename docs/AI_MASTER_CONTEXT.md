@@ -645,6 +645,7 @@ completed_at        TIMESTAMPTZ
 | UnauthorizedEntryDetected | events.unauthorized_entry_detected | AI Worker |
 | CameraOfflineDetected | events.camera_offline_detected | AI Worker |
 | CameraReconnected | events.camera_reconnected | AI Worker |
+| CameraSpecMismatch | events.camera_spec_mismatch | AI Worker |
 | WorkerHeartbeat | events.worker_heartbeat | AI Worker |
 
 ## Backend → AI Worker (config_events exchange)
@@ -923,6 +924,7 @@ Session → Redis key with TTL per role → Frontend keepalive ping every 5 min
 14. Multi-frame voting: require 3 consecutive positive frames before publishing a violation event — eliminates motion-blur and occlusion false alarms. Reset count to 0 on any clean frame.
 15. Fine-tuned model required: NEVER use COCO-pretrained weights in production. Model must be fine-tuned on factory-specific PPE dataset (500–2,000 labeled images per class minimum)
 16. Low-confidence handling: if detection confidence is below zone threshold but above a floor (e.g. 0.40), publish a `LowConfidenceViolation` review event instead of a hard alert — human supervisor reviews the snapshot
+17. Feed spec monitoring: compare the connected stream's actual resolution/FPS against the mandatory install spec (Section 18: min 1080p @ 15 FPS) once per connection and at most every 10 minutes while degraded. A stream can stay "connected" while quietly degrading below spec — this never triggers a reconnect (rule 5), so it needs its own check. Publish `CameraSpecMismatch` on mismatch → backend raises a Low-severity alert (no notification — camera-health signal, not a safety violation)
 
 ```python
 # Rule 13 — CLAHE preprocessing (apply before every YOLO call)
@@ -953,6 +955,14 @@ def route_detection(confidence: float, zone_config: ZoneConfig) -> str:
         return "review"           # publish LowConfidenceViolation event
     else:
         return "ignore"
+
+# Rule 17 — Feed spec monitoring (checked once per connect, then every 10 min)
+MIN_EXPECTED_FPS = 15.0
+MIN_EXPECTED_WIDTH, MIN_EXPECTED_HEIGHT = 1920, 1080
+
+def check_feed_spec(actual_fps: float, actual_w: int, actual_h: int) -> bool:
+    return actual_fps >= MIN_EXPECTED_FPS and actual_w >= MIN_EXPECTED_WIDTH and actual_h >= MIN_EXPECTED_HEIGHT
+    # False → publish CameraSpecMismatch (Low-severity alert, no notification)
 ```
 
 ---

@@ -480,6 +480,12 @@ Stream lost → retry in 5s → retry in 15s → retry in 60s
 
 3 consecutive processing failures → camera isolated (circuit breaker) → worker continues other cameras.
 
+### Camera Feed Spec Monitoring
+
+A camera can stay **connected** while its actual feed quality quietly degrades below the mandatory install spec (min **1080p @ 15 FPS** — see [Camera Placement Requirements](#risk-mitigation)) — a throttled network link, a bad NVR transcode, or the wrong lens. Stream-drop reconnect logic never catches this since the stream never actually disconnects.
+
+Each AI worker checks its connected stream's actual resolution/FPS against the platform-wide minimum once per connection and at most every 10 minutes while degraded, publishing `events.camera_spec_mismatch` on mismatch. The backend raises a **Low**-severity `CAMERA_SPEC_MISMATCH` alert (no email/Slack — this is a camera-health signal, not a safety violation) and logs the actual-vs-expected numbers to the audit trail.
+
 ---
 
 ## Alert System
@@ -511,6 +517,7 @@ Every status change is logged to `alerts.alert_history` with timestamp, user, an
 | Unauthorized entry | `events.unauthorized_entry_detected` |
 | Camera offline | `events.camera_offline_detected` |
 | Camera reconnected | `events.camera_reconnected` |
+| Camera feed spec mismatch | `events.camera_spec_mismatch` |
 | Occupancy updated | `events.occupancy_updated` |
 | Worker heartbeat | `events.worker_heartbeat` |
 
@@ -827,6 +834,7 @@ Step 4 → Connect Camera     (RTSP URL + test connection)
 - AI model hot-swap (no stream restart)
 - False positive marking + tracking
 - Circuit breaker per camera
+- Camera feed spec (resolution/FPS) mismatch detection
 
 ### Alert Management
 - Full lifecycle: Open → Acknowledged → In Progress → Closed
