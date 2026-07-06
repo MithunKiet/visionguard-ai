@@ -80,25 +80,35 @@ class CameraWorker:
 
         log.info("camera_worker.started", camera_id=self.camera_id)
 
-        try:
-            async for frame in self._reader.read_frames():
-                await self._process_frame(frame)
-        except Exception as e:
-            self._failure_count += 1
-            log.error("camera_worker.error", camera_id=self.camera_id, error=str(e),
-                      failures=self._failure_count)
+        # Retries the frame loop on failure (a fresh FrameReader.read_frames()
+        # generator each time, so RTSP reconnects from scratch too) up to
+        # CIRCUIT_BREAKER_THRESHOLD consecutive failures — a single transient
+        # error (e.g. a GPU hiccup) must not permanently kill this camera
+        # while the worker process keeps running.
+        while not self._isolated:
+            try:
+                async for frame in self._reader.read_frames():
+                    await self._process_frame(frame)
+                    self._failure_count = 0
+            except Exception as e:
+                self._failure_count += 1
+                log.error("camera_worker.error", camera_id=self.camera_id, error=str(e),
+                          failures=self._failure_count)
 
-            if self._failure_count >= CIRCUIT_BREAKER_THRESHOLD:
-                self._isolated = True
-                await publish("events.camera_offline_detected", {
-                    "event": "camera_offline_detected",
-                    "camera_id": self.camera_id,
-                    "enterprise_id": self.enterprise_id,
-                    "factory_id": self.factory_id,
-                    "zone_id": self.zone_id,
-                    "reason": "circuit_breaker_triggered",
-                })
-                log.error("camera_worker.circuit_breaker_open", camera_id=self.camera_id)
+                if self._failure_count >= CIRCUIT_BREAKER_THRESHOLD:
+                    self._isolated = True
+                    await publish("events.camera_offline_detected", {
+                        "event": "camera_offline_detected",
+                        "camera_id": self.camera_id,
+                        "enterprise_id": self.enterprise_id,
+                        "factory_id": self.factory_id,
+                        "zone_id": self.zone_id,
+                        "reason": "circuit_breaker_triggered",
+                    })
+                    log.error("camera_worker.circuit_breaker_open", camera_id=self.camera_id)
+                    return
+
+                await asyncio.sleep(5)
 
     async def _process_frame(self, frame: np.ndarray) -> None:
         # Submits to the shared BatchDetector, which groups this frame with
