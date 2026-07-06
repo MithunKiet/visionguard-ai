@@ -79,6 +79,7 @@ async def _route_event(routing_key: str, body: dict) -> None:
         "events.camera_offline_detected": _handle_camera_offline,
         "events.camera_reconnected":      _handle_camera_reconnected,
         "events.worker_heartbeat":        _handle_worker_heartbeat,
+        "events.camera_spec_mismatch":    _handle_camera_spec_mismatch,
     }
     handler = plain_handlers.get(routing_key)
     if handler:
@@ -205,6 +206,61 @@ async def _handle_overcrowding(body: dict) -> None:
                 "type": "alert.created",
                 "data": {**alert_svc.to_dict(alert), "notify_user_ids": desktop_targets},
             })
+
+
+async def _handle_camera_spec_mismatch(body: dict) -> None:
+    """Feed quality degraded below the mandatory install spec (Section 18:
+    min 1080p @ 15 FPS) while still "connected" — e.g. throttled network,
+    bad NVR transcode. This is a camera-infrastructure signal, not a safety
+    violation, so it's Low severity and skips email/Slack notification —
+    it still shows up on the dashboard and in the audit trail with the
+    actual vs. expected numbers for whoever manages the cameras."""
+    from uuid import UUID
+    from src.shared.database.session import AsyncSessionFactory
+    from src.modules.alerts.application.services import AlertService
+    from src.modules.alerts.infrastructure.repositories import AlertRepository
+    from src.modules.audit.application.services import AuditService
+    from src.modules.realtime.manager import manager
+
+    required = ("enterprise_id", "factory_id", "zone_id", "camera_id")
+    if not all(body.get(k) for k in required):
+        log.warning("event.camera_spec_mismatch.missing_fields", body=body)
+        return
+
+    async with AsyncSessionFactory() as db:
+        alert_svc = AlertService(AlertRepository(db))
+        alert = await alert_svc.create_event_alert(
+            enterprise_id=UUID(body["enterprise_id"]),
+            factory_id=UUID(body["factory_id"]),
+            zone_id=UUID(body["zone_id"]),
+            camera_id=UUID(body["camera_id"]),
+            alert_type="CAMERA_SPEC_MISMATCH",
+            severity="Low",
+            cooldown_seconds=600,
+        )
+
+        await AuditService(db).record(
+            enterprise_id=UUID(body["enterprise_id"]),
+            user_id=None,
+            action="CAMERA_SPEC_MISMATCH",
+            entity_type="camera",
+            entity_id=UUID(body["camera_id"]),
+            new_value={
+                "actual_fps": body.get("actual_fps"),
+                "actual_resolution": f"{body.get('actual_width')}x{body.get('actual_height')}",
+                "expected_fps": body.get("expected_fps"),
+                "expected_resolution": f"{body.get('expected_width')}x{body.get('expected_height')}",
+            },
+        )
+
+        if alert:
+            await manager.broadcast(str(alert.enterprise_id), {
+                "type": "alert.created",
+                "data": alert_svc.to_dict(alert),
+            })
+
+    log.warning("event.camera_spec_mismatch", camera_id=body.get("camera_id"),
+                actual_fps=body.get("actual_fps"))
 
 
 async def _handle_camera_offline(body: dict) -> None:

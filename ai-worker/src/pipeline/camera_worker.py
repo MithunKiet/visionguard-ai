@@ -25,6 +25,11 @@ OCCUPANCY_MIN_INTERVAL_SECONDS = 5
 OCCUPANCY_HEARTBEAT_SECONDS = 30
 OVERCROWDING_COOLDOWN_SECONDS = 120
 
+# A degraded feed (bad NVR transcode, network throttling, wrong lens) rarely
+# recovers within minutes, so re-alerting every processed frame would just
+# spam the same fact — recheck at most this often per connection.
+SPEC_MISMATCH_COOLDOWN_SECONDS = 600
+
 # Shared across all CameraWorker instances in this process — one client
 # connection reused for every snapshot upload instead of reconnecting per call.
 _minio = Minio(settings.MINIO_ENDPOINT,
@@ -56,6 +61,8 @@ class CameraWorker:
         self._last_occupancy_count: int | None = None
         self._last_occupancy_published = 0.0
         self._last_overcrowding_fired = 0.0
+        self._last_spec_check = 0.0
+        self._spec_mismatch_active = False
 
     def apply_zone_config(self, new_config: dict) -> None:
         """Hot-swap zone config (rule #8) — takes effect on the next frame.
@@ -99,6 +106,8 @@ class CameraWorker:
         # camera than each running its own single-image call, and never
         # blocks this worker's event loop (inference itself runs in a
         # thread inside BatchDetector).
+        await self._check_camera_spec()
+
         detections = await self._detector.detect(frame)
         violations = self._validator.evaluate(detections, self.zone_config)
 
@@ -170,6 +179,52 @@ class CameraWorker:
             })
             log.warning("camera_worker.overcrowding", camera_id=self.camera_id,
                         count=count, max_occupancy=max_occupancy)
+
+    async def _check_camera_spec(self) -> None:
+        """Compare the connected stream's actual fps/resolution to the
+        mandatory install spec (Section 18: min 1080p @ 15 FPS). A stream
+        can stay "connected" while quietly degrading — bad NVR transcode,
+        network throttling, wrong lens — which FrameReader's own reconnect
+        logic never catches, since the stream never actually drops."""
+        now = time.monotonic()
+        if (now - self._last_spec_check) < SPEC_MISMATCH_COOLDOWN_SECONDS:
+            return
+        self._last_spec_check = now
+
+        fps = self._reader.stream_fps
+        width = self._reader.stream_width
+        height = self._reader.stream_height
+        if fps is None or width is None or height is None:
+            return
+
+        fps_ok = fps >= settings.MIN_EXPECTED_FPS
+        resolution_ok = width >= settings.MIN_EXPECTED_WIDTH and height >= settings.MIN_EXPECTED_HEIGHT
+
+        if fps_ok and resolution_ok:
+            if self._spec_mismatch_active:
+                log.info("camera_worker.spec_recovered", camera_id=self.camera_id,
+                          fps=fps, resolution=f"{width}x{height}")
+                self._spec_mismatch_active = False
+            return
+
+        self._spec_mismatch_active = True
+        log.warning("camera_worker.spec_mismatch", camera_id=self.camera_id,
+                    actual_fps=fps, actual_resolution=f"{width}x{height}",
+                    expected_fps=settings.MIN_EXPECTED_FPS,
+                    expected_resolution=f"{settings.MIN_EXPECTED_WIDTH}x{settings.MIN_EXPECTED_HEIGHT}")
+        await publish("events.camera_spec_mismatch", {
+            "event": "camera_spec_mismatch",
+            "camera_id": self.camera_id,
+            "enterprise_id": self.enterprise_id,
+            "factory_id": self.factory_id,
+            "zone_id": self.zone_id,
+            "actual_fps": fps,
+            "actual_width": width,
+            "actual_height": height,
+            "expected_fps": settings.MIN_EXPECTED_FPS,
+            "expected_width": settings.MIN_EXPECTED_WIDTH,
+            "expected_height": settings.MIN_EXPECTED_HEIGHT,
+        })
 
     async def _capture_snapshot(self, frame: np.ndarray, event_name: str) -> str:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")

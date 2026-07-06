@@ -27,5 +27,14 @@ class WorkerSettings(BaseSettings):
     SNAPSHOT_CONFIDENCE_THRESHOLD: float = 0.60
     LOW_CONFIDENCE_FLOOR: float = 0.40
 
+    # Mandatory camera installation spec (AI_MASTER_CONTEXT Section 18) —
+    # platform-wide minimums, not per-camera: "Minimum 1080p @ 15 FPS".
+    # A stream below either triggers a CAMERA_SPEC_MISMATCH alert so a
+    # degraded feed (bad NVR transcode, network throttling, wrong lens)
+    # gets caught even though it never actually disconnects.
+    MIN_EXPECTED_FPS: float = 15.0
+    MIN_EXPECTED_WIDTH: int = 1920
+    MIN_EXPECTED_HEIGHT: int = 1080
+
 
 settings = WorkerSettings()

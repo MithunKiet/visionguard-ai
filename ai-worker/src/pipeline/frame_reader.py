@@ -16,6 +16,12 @@ class FrameReader:
         self.rtsp_url = rtsp_url
         self.sample_fps = sample_fps
         self._failure_count = 0
+        # Actual stream properties reported by the source on the current
+        # connection — None until the first successful connect. Read by
+        # CameraWorker to check against the mandatory install spec.
+        self.stream_fps: float | None = None
+        self.stream_width: int | None = None
+        self.stream_height: int | None = None
 
     def set_sample_fps(self, sample_fps: int) -> None:
         """Hot-applied on the next frame — used by zone config hot-swap."""
@@ -30,6 +36,9 @@ class FrameReader:
                 continue
 
             stream_fps = cap.get(cv2.CAP_PROP_FPS) or 25
+            self.stream_fps = stream_fps
+            self.stream_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or None
+            self.stream_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or None
             frame_idx = 0
             self._failure_count = 0
 
