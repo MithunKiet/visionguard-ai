@@ -4,6 +4,8 @@ import cv2
 import numpy as np
 from typing import AsyncGenerator
 
+from src.health.metrics import camera_connected, frame_reader_reconnects_total
+
 log = structlog.get_logger()
 
 RECONNECT_DELAYS = [5, 15, 60]   # seconds — retry backoff per AI Worker rule #5
@@ -43,6 +45,7 @@ class FrameReader:
             self._failure_count = 0
 
             log.info("frame_reader.connected", camera_id=self.camera_id, rtsp=self.rtsp_url)
+            camera_connected.labels(camera_id=self.camera_id).set(1)
 
             while True:
                 ret, frame = cap.read()
@@ -62,6 +65,8 @@ class FrameReader:
                 await asyncio.sleep(0)   # yield control to event loop
 
     async def _handle_failure(self) -> None:
+        camera_connected.labels(camera_id=self.camera_id).set(0)
+        frame_reader_reconnects_total.labels(camera_id=self.camera_id).inc()
         delay = RECONNECT_DELAYS[min(self._failure_count, len(RECONNECT_DELAYS) - 1)]
         self._failure_count += 1
         log.warning("frame_reader.reconnecting", camera_id=self.camera_id,

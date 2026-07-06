@@ -140,6 +140,8 @@ services:
       - ./ai-worker:/app
       - ./ai-worker/models:/app/models
       - ./logs/ai-worker-1:/app/logs
+    ports:
+      - "${AI_WORKER_1_METRICS_PORT:-9101}:8001"
     deploy:
       resources:
         reservations:
@@ -172,6 +174,8 @@ services:
       - ./ai-worker:/app
       - ./ai-worker/models:/app/models
       - ./logs/ai-worker-2:/app/logs
+    ports:
+      - "${AI_WORKER_2_METRICS_PORT:-9102}:8001"
     deploy:
       resources:
         reservations:

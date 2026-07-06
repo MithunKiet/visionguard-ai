@@ -11,6 +11,7 @@ from src.pipeline.batch_detector import BatchDetector
 from src.pipeline.ppe_validator import PPEValidator
 from src.events.publisher import publish
 from src.config.settings import settings
+from src.health.metrics import frames_processed_total, violations_detected_total
 
 log = structlog.get_logger()
 
@@ -108,12 +109,14 @@ class CameraWorker:
         # thread inside BatchDetector).
         await self._check_camera_spec()
 
-        detections = await self._detector.detect(frame)
+        detections = await self._detector.detect(frame, camera_id=self.camera_id)
+        frames_processed_total.labels(camera_id=self.camera_id).inc()
         violations = self._validator.evaluate(detections, self.zone_config)
 
         await self._publish_occupancy(detections)
 
         for v in violations:
+            violations_detected_total.labels(camera_id=self.camera_id, violation_type=v["event"]).inc()
             if v.get("review"):
                 await publish("events.low_confidence_violation", {
                     "event": "low_confidence_violation",

@@ -16,6 +16,7 @@ class WorkerSettings(BaseSettings):
     WORKER_ID: str = "worker-1"
     USE_GPU: bool = True
     YOLO_MODEL_PATH: str = "models/yolov8s-ppe.pt"
+    METRICS_PORT: int = 8001
 
     # Must match backend's WORKER_API_KEY — authenticates service-to-service calls
     # (heartbeat, camera assignment fetch) that happen before any user is logged in.

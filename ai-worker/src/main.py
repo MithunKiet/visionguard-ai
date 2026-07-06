@@ -9,6 +9,7 @@ import httpx
 from src.config.settings import settings
 from src.config.zone_sync import ZoneConfigSync
 from src.events.publisher import init_publisher, close_publisher, publish
+from src.health.metrics import start_metrics_server
 from src.pipeline.batch_detector import BatchDetector
 from src.pipeline.camera_worker import CameraWorker
 
@@ -66,6 +67,7 @@ async def send_heartbeat() -> None:
 async def main() -> None:
     log.info("ai_worker.starting", worker_id=settings.WORKER_ID)
 
+    start_metrics_server(settings.METRICS_PORT)
     await init_publisher()
     await register_worker()
 

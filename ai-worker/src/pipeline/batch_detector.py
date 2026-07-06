@@ -18,6 +18,8 @@ from typing import List
 import numpy as np
 import structlog
 
+from src.health.metrics import batch_size as batch_size_metric
+from src.health.metrics import detection_queue_depth, frame_processing_seconds
 from src.pipeline.detector import Detection, PPEDetector
 
 log = structlog.get_logger()
@@ -37,11 +39,14 @@ class BatchDetector:
         if self._loop_task is None:
             self._loop_task = asyncio.create_task(self._run())
 
-    async def detect(self, frame: np.ndarray) -> List[Detection]:
+    async def detect(self, frame: np.ndarray, camera_id: str = "unknown") -> List[Detection]:
         self.start()
         future: asyncio.Future = asyncio.get_event_loop().create_future()
-        await self._queue.put((frame, future))
-        return await future
+        submitted_at = time.monotonic()
+        await self._queue.put((frame, future, camera_id))
+        result = await future
+        frame_processing_seconds.labels(camera_id=camera_id).observe(time.monotonic() - submitted_at)
+        return result
 
     async def _run(self) -> None:
         while True:
@@ -57,16 +62,22 @@ class BatchDetector:
                 except asyncio.TimeoutError:
                     break
 
+            # Capacity signal: frames still waiting behind the batch we're
+            # about to run — sustained growth here means cameras are
+            # submitting faster than this GPU can drain.
+            detection_queue_depth.set(self._queue.qsize())
+            batch_size_metric.observe(len(batch))
+
             frames = [item[0] for item in batch]
             try:
                 results = await asyncio.to_thread(self._detector.detect_batch, frames)
             except Exception as e:
                 log.error("batch_detector.inference_failed", batch_size=len(frames), error=str(e))
-                for _, future in batch:
+                for _, future, _ in batch:
                     if not future.done():
                         future.set_exception(e)
                 continue
 
-            for (_, future), detections in zip(batch, results):
+            for (_, future, _), detections in zip(batch, results):
                 if not future.done():
                     future.set_result(detections)
