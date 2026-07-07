@@ -71,9 +71,9 @@ export function Violations() {
       </Stack>
 
       <Paper variant="outlined" sx={{ overflow: "hidden" }}>
-        <Table>
+        <Table size="small">
           <TableHead>
-            <TableRow sx={{ "& th": { bgcolor: "background.default", fontWeight: 700 } }}>
+            <TableRow sx={{ "& th": { bgcolor: "background.default", fontWeight: 700, py: 1 } }}>
               <TableCell>Type</TableCell>
               <TableCell>Location</TableCell>
               <TableCell>Confidence</TableCell>
@@ -84,23 +84,23 @@ export function Violations() {
           </TableHead>
           <TableBody>
             {(violations ?? []).map((v) => (
-              <TableRow key={v.id} hover>
+              <TableRow key={v.id} hover sx={{ "& td": { py: 0.75 } }}>
                 <TableCell>
                   <Chip
                     size="small"
                     label={v.violation_type.replace(/_/g, " ")}
                     color={TYPE_COLOR[v.violation_type] ?? "default"}
-                    sx={{ textTransform: "capitalize", fontWeight: 600 }}
+                    sx={{ textTransform: "capitalize", fontWeight: 600, height: 22, fontSize: 12 }}
                   />
                 </TableCell>
                 <TableCell>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <VideocamIcon fontSize="small" sx={{ color: "text.disabled" }} />
+                  <Stack direction="row" spacing={0.75} alignItems="center">
+                    <VideocamIcon fontSize="inherit" sx={{ color: "text.disabled", fontSize: 16 }} />
                     <Stack spacing={0}>
-                      <Typography variant="body2" fontWeight={600}>
+                      <Typography variant="body2" fontWeight={600} lineHeight={1.3}>
                         {v.camera_name ?? v.camera_code ?? "Unknown camera"}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" color="text.secondary" lineHeight={1.2}>
                         {v.zone_name ?? "—"}
                       </Typography>
                     </Stack>
@@ -112,12 +112,12 @@ export function Violations() {
                     variant="outlined"
                     color={confidenceColor(v.confidence)}
                     label={`${(v.confidence * 100).toFixed(0)}%`}
-                    sx={{ fontWeight: 600, minWidth: 56 }}
+                    sx={{ fontWeight: 600, minWidth: 48, height: 22, fontSize: 12 }}
                   />
                 </TableCell>
                 <TableCell>
                   {v.needs_review ? (
-                    <Chip size="small" color="warning" variant="outlined" label="Review" />
+                    <Chip size="small" color="warning" variant="outlined" label="Review" sx={{ height: 22, fontSize: 12 }} />
                   ) : (
                     <Typography variant="body2" color="text.disabled">
                       —
@@ -143,7 +143,7 @@ export function Violations() {
                         "&:hover .zoom-overlay": { opacity: 1 },
                       }}
                     >
-                      <img src={v.snapshot_url} alt="snapshot" style={{ height: 48, width: 72, objectFit: "cover", display: "block" }} />
+                      <img src={v.snapshot_url} alt="snapshot" style={{ height: 36, width: 54, objectFit: "cover", display: "block" }} />
                       <Stack
                         className="zoom-overlay"
                         alignItems="center"
@@ -156,7 +156,7 @@ export function Violations() {
                           transition: "opacity 0.15s",
                         }}
                       >
-                        <ZoomInIcon sx={{ color: "white" }} fontSize="small" />
+                        <ZoomInIcon sx={{ color: "white", fontSize: 16 }} />
                       </Stack>
                     </Box>
                   ) : (

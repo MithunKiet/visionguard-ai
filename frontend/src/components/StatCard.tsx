@@ -20,9 +20,9 @@ export function StatCard({
     <Paper
       elevation={0}
       sx={{
-        p: 2.5,
+        p: 1.5,
         flex: 1,
-        minWidth: 180,
+        minWidth: 150,
         border: "1px solid",
         borderColor: "divider",
         boxShadow: "0 1px 2px rgba(16, 24, 40, 0.04)",
@@ -34,11 +34,11 @@ export function StatCard({
       }}
     >
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-        <Stack spacing={0.5}>
-          <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
+        <Stack spacing={0.25}>
+          <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: 0.5 }}>
             {label}
           </Typography>
-          <Typography variant="h4" fontWeight={700} sx={{ color: accent }}>
+          <Typography variant="h6" fontWeight={700} sx={{ color: accent }}>
             {value}
           </Typography>
         </Stack>
@@ -48,12 +48,13 @@ export function StatCard({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 40,
-              height: 40,
-              borderRadius: 2,
+              width: 28,
+              height: 28,
+              borderRadius: 1.5,
               bgcolor: `${color}1A`,
               color,
               flexShrink: 0,
+              "& svg": { fontSize: 16 },
             }}
           >
             {icon}

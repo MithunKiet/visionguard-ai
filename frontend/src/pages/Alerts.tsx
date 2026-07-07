@@ -69,7 +69,7 @@ export function Alerts() {
       </Stack>
 
       <Paper variant="outlined">
-        <Table>
+        <Table size="small">
           <TableHead>
             <TableRow>
               <TableCell>Alert #</TableCell>
