@@ -110,7 +110,7 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
             if shift:
                 body["shift_id"] = str(shift.id)
 
-        ppe_svc = PPEService(ViolationRepository(db))
+        ppe_svc = PPEService(ViolationRepository(db), db)
         violation = await ppe_svc.handle_violation_event(routing_key, body)
 
         await manager.broadcast(str(violation.enterprise_id), {

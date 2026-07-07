@@ -15,7 +15,7 @@ router = APIRouter(prefix="/violations", tags=["PPE Violations"])
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> PPEService:
-    return PPEService(ViolationRepository(db))
+    return PPEService(ViolationRepository(db), db)
 
 
 @router.get("", response_model=ApiResponse[list], summary="List violations")

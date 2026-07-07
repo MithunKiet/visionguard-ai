@@ -6,10 +6,13 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import structlog
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import NotFoundException
 from src.modules.ppe.domain.entities import ViolationEntity
 from src.modules.ppe.infrastructure.repositories import ViolationRepository
+from src.shared.database.models import Camera, Zone
 from src.shared.storage.minio_client import get_presigned_url
 
 log = structlog.get_logger()
@@ -26,8 +29,9 @@ ROUTING_KEY_TO_TYPE = {
 
 class PPEService:
 
-    def __init__(self, repo: ViolationRepository):
+    def __init__(self, repo: ViolationRepository, db: AsyncSession):
         self._repo = repo
+        self._db = db
 
     # ── Called by RabbitMQ consumer ────────────────────────────────────────
 
@@ -92,11 +96,22 @@ class PPEService:
                 snapshot_url = get_presigned_url("snapshots", v.snapshot_key)
             except Exception as e:
                 log.warning("ppe.presigned_url_failed", snapshot_key=v.snapshot_key, error=str(e))
+
+        camera = (await self._db.execute(
+            select(Camera).where(Camera.id == v.camera_id)
+        )).scalar_one_or_none()
+        zone = (await self._db.execute(
+            select(Zone).where(Zone.id == v.zone_id)
+        )).scalar_one_or_none()
+
         return {
             "id": str(v.id),
             "enterprise_id": str(v.enterprise_id),
             "zone_id": str(v.zone_id),
+            "zone_name": zone.name if zone else None,
             "camera_id": str(v.camera_id),
+            "camera_name": camera.name if camera else None,
+            "camera_code": camera.code if camera else None,
             "violation_type": v.violation_type,
             "confidence": v.confidence,
             "snapshot_url": snapshot_url,

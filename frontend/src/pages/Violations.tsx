@@ -37,6 +37,8 @@ export function Violations() {
           <TableHead>
             <TableRow>
               <TableCell>Type</TableCell>
+              <TableCell>Camera</TableCell>
+              <TableCell>Zone</TableCell>
               <TableCell>Confidence</TableCell>
               <TableCell>Needs Review</TableCell>
               <TableCell>Detected</TableCell>
@@ -47,6 +49,8 @@ export function Violations() {
             {(violations ?? []).map((v) => (
               <TableRow key={v.id} hover>
                 <TableCell sx={{ textTransform: "capitalize" }}>{v.violation_type.replace("_", " ")}</TableCell>
+                <TableCell>{v.camera_name ?? v.camera_code ?? "-"}</TableCell>
+                <TableCell>{v.zone_name ?? "-"}</TableCell>
                 <TableCell>{(v.confidence * 100).toFixed(0)}%</TableCell>
                 <TableCell>{v.needs_review ? "Yes" : "No"}</TableCell>
                 <TableCell>{new Date(v.created_on).toLocaleString()}</TableCell>
@@ -66,7 +70,7 @@ export function Violations() {
             ))}
             {!isLoading && (violations ?? []).length === 0 && (
               <TableRow>
-                <TableCell colSpan={5}>
+                <TableCell colSpan={7}>
                   <Typography variant="body2" color="text.secondary">
                     No violations recorded yet.
                   </Typography>
