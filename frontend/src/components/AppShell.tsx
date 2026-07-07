@@ -104,7 +104,14 @@ export function AppShell() {
         sx={{
           width: DRAWER_WIDTH,
           flexShrink: 0,
-          [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH, boxSizing: "border-box" },
+          [`& .MuiDrawer-paper`]: {
+            width: DRAWER_WIDTH,
+            boxSizing: "border-box",
+            bgcolor: "#F8FAF9",
+            borderRight: "1px solid #E5E7EB",
+            display: "flex",
+            flexDirection: "column",
+          },
         }}
       >
         <Toolbar>
@@ -112,7 +119,7 @@ export function AppShell() {
             VisionGuard
           </Typography>
         </Toolbar>
-        <List>
+        <List sx={{ px: 1 }}>
           {NAV.map((item) => (
             <ListItemButton
               key={item.to}
@@ -120,10 +127,13 @@ export function AppShell() {
               to={item.to}
               end={item.to === "/"}
               sx={{
+                borderRadius: 1.5,
+                mb: 0.5,
                 "&.active": {
-                  bgcolor: "action.selected",
-                  borderRight: "3px solid",
-                  borderColor: "primary.main",
+                  bgcolor: "primary.main",
+                  color: "white",
+                  "& .MuiListItemIcon-root": { color: "white" },
+                  "&:hover": { bgcolor: "primary.main" },
                 },
               }}
             >
@@ -132,6 +142,17 @@ export function AppShell() {
             </ListItemButton>
           ))}
         </List>
+
+        <Box sx={{ flexGrow: 1 }} />
+
+        <Stack spacing={0.5} sx={{ p: 2, borderTop: "1px solid #E5E7EB" }}>
+          <Typography variant="caption" color="text.secondary" fontWeight={600}>
+            VisionGuard AI
+          </Typography>
+          <Typography variant="caption" color="text.disabled">
+            Enterprise Safety Platform · v1.0.0
+          </Typography>
+        </Stack>
       </Drawer>
 
       <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column" }}>
