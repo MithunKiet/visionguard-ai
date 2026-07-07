@@ -43,6 +43,28 @@ log = structlog.get_logger()
 DEMO_VIOLATION_TYPES = ["no_helmet", "no_vest", "no_gloves", "no_safety_shoes"]
 DEMO_ROTATION_SECONDS = 20
 
+# Which body zone each demo violation type needs visible in the frame. There's
+# no real pose estimation in demo mode — this is a coarse geometry heuristic
+# off the person bbox (e.g. a face/upper-body close-up shouldn't ever be able
+# to fire "shoes missing", since feet aren't in frame at all) so the fake
+# labels at least stay plausible for the shot, even though they're not real
+# PPE detection.
+ZONE_FOR_TYPE = {
+    "no_helmet": "head",
+    "no_vest": "torso",
+    "no_gloves": "torso",
+    "no_safety_shoes": "feet",
+}
+# Fraction of frame height the bbox's bottom edge must reach for "feet" to
+# count as visible — a tight face/shoulders shot ends well above this.
+FEET_VISIBLE_BOTTOM_FRAC = 0.80
+# A standing full body is much taller than wide (~2.5-4x); a close-up shot
+# with an arm/hand reaching toward the bottom of frame (common with laptop
+# webcams) can also push the bbox bottom edge down without feet being in
+# frame at all, so the bottom-edge check alone isn't reliable — require the
+# bbox shape to actually look like a standing body too.
+FEET_VISIBLE_MIN_ASPECT = 1.6
+
 PPE_CLASSES = {
     0: "helmet",
     1: "no_helmet",
@@ -111,8 +133,26 @@ class PPEDetector:
         results_list = self._model(processed, verbose=False)
         return [self._parse_results(r) for r in results_list]
 
+    @staticmethod
+    def _visible_zones(x1: int, y1: int, x2: int, y2: int, frame_height: int) -> set:
+        """Coarse "is this body part plausibly in frame" heuristic from bbox
+        geometry alone. Head/torso are assumed visible whenever a person is
+        detected at all; feet only count as visible once the box's bottom
+        edge reaches near the bottom of the frame AND the box is shaped like
+        a standing body (tall/narrow) rather than a close-up (wide/short)."""
+        zones = {"head", "torso"}
+        width = max(1, x2 - x1)
+        height = max(1, y2 - y1)
+        bottom_frac = (y2 / frame_height) if frame_height else 1.0
+        aspect = height / width
+        if bottom_frac >= FEET_VISIBLE_BOTTOM_FRAC and aspect >= FEET_VISIBLE_MIN_ASPECT:
+            zones.add("feet")
+        return zones
+
     def _parse_results(self, results) -> List[Detection]:
         detections = []
+        frame_height = results.orig_shape[0] if getattr(results, "orig_shape", None) else None
+
         for box in results.boxes:
             cls_id = int(box.cls[0])
             confidence = float(box.conf[0])
@@ -129,19 +169,24 @@ class PPEDetector:
                 # person detection itself (so occupancy counting still works),
                 # plus a synthetic violation — type rotates on a fixed
                 # schedule (see DEMO_VIOLATION_TYPES/DEMO_ROTATION_SECONDS
-                # above) — so the rest of the pipeline (snapshot capture,
-                # MinIO upload, alert, dashboard) can be exercised end-to-end
-                # against real camera frames, across all violation types.
+                # above), skipped when the current slot's body zone isn't
+                # plausibly visible for this bbox (e.g. never "shoes missing"
+                # on a face/upper-body close-up) — so the rest of the
+                # pipeline (snapshot capture, MinIO upload, alert, dashboard)
+                # can be exercised end-to-end against real camera frames,
+                # across all violation types, without nonsensical labels.
                 if class_name == "person":
                     demo_type = DEMO_VIOLATION_TYPES[
                         int(time.monotonic() // DEMO_ROTATION_SECONDS) % len(DEMO_VIOLATION_TYPES)
                     ]
-                    detections.append(Detection(
-                        class_name=demo_type,
-                        confidence=confidence,
-                        bbox=(x1, y1, x2, y2),
-                        is_violation=True,
-                    ))
+                    visible = self._visible_zones(x1, y1, x2, y2, frame_height)
+                    if ZONE_FOR_TYPE[demo_type] in visible:
+                        detections.append(Detection(
+                            class_name=demo_type,
+                            confidence=confidence,
+                            bbox=(x1, y1, x2, y2),
+                            is_violation=True,
+                        ))
 
             detections.append(Detection(
                 class_name=class_name,
