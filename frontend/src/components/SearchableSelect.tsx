@@ -1,5 +1,4 @@
-import Autocomplete from "@mui/material/Autocomplete";
-import TextField from "@mui/material/TextField";
+import { Dropdown } from "semantic-ui-react";
 
 export interface SearchableOption {
   id: string;
@@ -14,14 +13,11 @@ interface SearchableSelectProps {
   required?: boolean;
   disabled?: boolean;
   helperText?: string;
-  fullWidth?: boolean;
-  size?: "small" | "medium";
-  sx?: object;
 }
 
 /** Type-to-filter dropdown for id-backed pickers (zone, factory, department,
- * …) — plain MUI TextField-select has no search box once the option list
- * grows past a handful of entries. */
+ * …) — semantic-ui-react's search+selection Dropdown
+ * (semantic-ui.com/modules/dropdown.html), not MUI's plain select. */
 export function SearchableSelect({
   label,
   options,
@@ -30,26 +26,27 @@ export function SearchableSelect({
   required,
   disabled,
   helperText,
-  fullWidth,
-  size,
-  sx,
 }: SearchableSelectProps) {
-  const selected = options.find((o) => o.id === value) ?? null;
-
   return (
-    <Autocomplete
-      options={options}
-      getOptionLabel={(o) => o.label}
-      isOptionEqualToValue={(o, v) => o.id === v.id}
-      value={selected}
-      onChange={(_, newValue) => onChange(newValue?.id ?? "")}
-      disabled={disabled}
-      fullWidth={fullWidth}
-      size={size}
-      sx={sx}
-      renderInput={(params) => (
-        <TextField {...params} label={label} required={required} helperText={helperText} />
+    <div>
+      <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#374151" }}>
+        {label}
+        {required && " *"}
+      </label>
+      <Dropdown
+        placeholder={`Search ${label.toLowerCase()}…`}
+        fluid
+        search
+        selection
+        clearable={!required}
+        disabled={disabled}
+        options={options.map((o) => ({ key: o.id, text: o.label, value: o.id }))}
+        value={value || undefined}
+        onChange={(_, data) => onChange((data.value as string) ?? "")}
+      />
+      {helperText && (
+        <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 4 }}>{helperText}</div>
       )}
-    />
+    </div>
   );
 }

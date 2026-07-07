@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Autocomplete from "@mui/material/Autocomplete";
+import { Dropdown } from "semantic-ui-react";
 import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -9,7 +9,6 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../api/client";
 import { SeverityChip, StatusChip } from "../components/SeverityChip";
@@ -52,16 +51,18 @@ export function Alerts() {
         <Typography variant="h5" fontWeight={700}>
           Alerts
         </Typography>
-        <Autocomplete
-          options={STATUS_OPTIONS}
-          getOptionLabel={(s) => s || "All"}
-          value={statusFilter}
-          onChange={(_, newValue) => setStatusFilter(newValue ?? "")}
-          disableClearable
-          size="small"
-          sx={{ width: 200 }}
-          renderInput={(params) => <TextField {...params} label="Status" />}
-        />
+        <div style={{ width: 200 }}>
+          <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#374151" }}>
+            Status
+          </label>
+          <Dropdown
+            fluid
+            selection
+            options={STATUS_OPTIONS.map((s) => ({ key: s || "all", text: s || "All", value: s }))}
+            value={statusFilter}
+            onChange={(_, data) => setStatusFilter((data.value as string) ?? "")}
+          />
+        </div>
       </Stack>
 
       <Paper variant="outlined">

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Dropdown } from "semantic-ui-react";
 import Alert from "@mui/material/Alert";
-import Autocomplete from "@mui/material/Autocomplete";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -152,14 +152,18 @@ export function AddCameraDialog({ open, onClose }: AddCameraDialogProps) {
           )}
 
           <Stack direction="row" spacing={2}>
-            <Autocomplete
-              options={CAMERA_TYPES}
-              value={form.camera_type}
-              onChange={(_, newValue) => setField("camera_type")(newValue ?? "Fixed")}
-              disableClearable
-              sx={{ width: 180 }}
-              renderInput={(params) => <TextField {...params} label="Camera type" />}
-            />
+            <div style={{ width: 180 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#374151" }}>
+                Camera type
+              </label>
+              <Dropdown
+                fluid
+                selection
+                options={CAMERA_TYPES.map((t) => ({ key: t, text: t, value: t }))}
+                value={form.camera_type}
+                onChange={(_, data) => setField("camera_type")((data.value as string) ?? "Fixed")}
+              />
+            </div>
             <TextField
               label="Position (optional)"
               value={form.position_desc}

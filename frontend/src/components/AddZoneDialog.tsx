@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Dropdown } from "semantic-ui-react";
 import Alert from "@mui/material/Alert";
-import Autocomplete from "@mui/material/Autocomplete";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -133,14 +133,18 @@ export function AddZoneDialog({ open, onClose }: AddZoneDialogProps) {
               sx={{ width: 160 }}
               slotProps={{ htmlInput: { min: 1 } }}
             />
-            <Autocomplete
-              options={ZONE_TYPES}
-              value={form.zone_type}
-              onChange={(_, newValue) => setField("zone_type")(newValue ?? "Production")}
-              disableClearable
-              fullWidth
-              renderInput={(params) => <TextField {...params} label="Zone type" />}
-            />
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#374151" }}>
+                Zone type
+              </label>
+              <Dropdown
+                fluid
+                selection
+                options={ZONE_TYPES.map((t) => ({ key: t, text: t, value: t }))}
+                value={form.zone_type}
+                onChange={(_, data) => setField("zone_type")((data.value as string) ?? "Production")}
+              />
+            </div>
           </Stack>
 
           <Alert severity="info">
