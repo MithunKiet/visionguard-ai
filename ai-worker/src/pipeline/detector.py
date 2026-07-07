@@ -20,6 +20,8 @@ if not hasattr(sys, "set_int_max_str_digits"):
         _int_max_str_digits = maxdigits
     sys.set_int_max_str_digits = set_int_max_str_digits
 
+import time
+
 import cv2
 import numpy as np
 import structlog
@@ -30,6 +32,16 @@ from src.config.settings import settings
 from src.pipeline.types import Detection
 
 log = structlog.get_logger()
+
+# Demo mode only (no fine-tuned PPE model): which synthetic violation type is
+# "active" cycles on a fixed schedule rather than per-frame-random, since
+# PPEValidator requires 3 CONSECUTIVE frames of the SAME type before
+# confirming a violation (see ppe_validator.py) — a type that changes every
+# frame would never accumulate enough consecutive frames to fire at all.
+# Kept stable for DEMO_ROTATION_SECONDS at a time so each type gets a fair
+# chance to confirm and fire before rotating to the next.
+DEMO_VIOLATION_TYPES = ["no_helmet", "no_vest", "no_gloves", "no_safety_shoes"]
+DEMO_ROTATION_SECONDS = 20
 
 PPE_CLASSES = {
     0: "helmet",
@@ -65,7 +77,8 @@ class PPEDetector:
                 expected=settings.YOLO_MODEL_PATH,
                 fallback=_FALLBACK_MODEL,
                 note="Using a generic COCO model. DEMO MODE: any detected 'person' is reported "
-                     "as a helmet_missing violation so the pipeline can be exercised end-to-end "
+                     "as a synthetic violation (rotating through helmet/vest/gloves/shoes every "
+                     f"{DEMO_ROTATION_SECONDS}s) so the pipeline and UI can be exercised end-to-end "
                      "against real camera frames. Replace with a fine-tuned PPE model for real "
                      "violation detection.",
             )
@@ -112,14 +125,19 @@ class PPEDetector:
                 class_name = self._model.names.get(cls_id, "unknown")
                 is_violation = False
                 # Demo mode: no fine-tuned PPE model is loaded, so there's no
-                # real helmet/vest signal to violate. Emit the person detection
-                # itself (so occupancy counting still works), plus a synthetic
-                # helmet_missing violation so the rest of the pipeline
-                # (snapshot capture, MinIO upload, alert, dashboard) can be
-                # exercised end-to-end against real camera frames.
+                # real helmet/vest/gloves/shoes signal to violate. Emit the
+                # person detection itself (so occupancy counting still works),
+                # plus a synthetic violation — type rotates on a fixed
+                # schedule (see DEMO_VIOLATION_TYPES/DEMO_ROTATION_SECONDS
+                # above) — so the rest of the pipeline (snapshot capture,
+                # MinIO upload, alert, dashboard) can be exercised end-to-end
+                # against real camera frames, across all violation types.
                 if class_name == "person":
+                    demo_type = DEMO_VIOLATION_TYPES[
+                        int(time.monotonic() // DEMO_ROTATION_SECONDS) % len(DEMO_VIOLATION_TYPES)
+                    ]
                     detections.append(Detection(
-                        class_name="no_helmet",
+                        class_name=demo_type,
                         confidence=confidence,
                         bbox=(x1, y1, x2, y2),
                         is_violation=True,
