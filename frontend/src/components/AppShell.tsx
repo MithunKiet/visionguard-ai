@@ -15,6 +15,9 @@ import Stack from "@mui/material/Stack";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import DashboardIcon from "@mui/icons-material/SpaceDashboard";
+import FactoryIcon from "@mui/icons-material/Factory";
+import ApartmentIcon from "@mui/icons-material/Apartment";
+import MapIcon from "@mui/icons-material/Map";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import GridViewIcon from "@mui/icons-material/GridView";
 import WarningIcon from "@mui/icons-material/WarningAmber";
@@ -34,6 +37,9 @@ async function fetchBranding() {
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: <DashboardIcon /> },
+  { to: "/factories", label: "Factories", icon: <FactoryIcon /> },
+  { to: "/departments", label: "Departments", icon: <ApartmentIcon /> },
+  { to: "/zones", label: "Zones", icon: <MapIcon /> },
   { to: "/cameras", label: "Cameras", icon: <VideocamIcon /> },
   { to: "/live", label: "Live Grid", icon: <GridViewIcon /> },
   { to: "/violations", label: "Violations", icon: <WarningIcon /> },

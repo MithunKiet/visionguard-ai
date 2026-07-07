@@ -6,6 +6,9 @@ import { Cameras } from "./pages/Cameras";
 import { LiveGrid } from "./pages/LiveGrid";
 import { Alerts } from "./pages/Alerts";
 import { Violations } from "./pages/Violations";
+import { Factories } from "./pages/Factories";
+import { Departments } from "./pages/Departments";
+import { Zones } from "./pages/Zones";
 import { useAuthStore } from "./store/authStore";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -25,6 +28,9 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Dashboard /> },
+      { path: "factories", element: <Factories /> },
+      { path: "departments", element: <Departments /> },
+      { path: "zones", element: <Zones /> },
       { path: "cameras", element: <Cameras /> },
       { path: "live", element: <LiveGrid /> },
       { path: "violations", element: <Violations /> },

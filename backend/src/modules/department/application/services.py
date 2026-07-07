@@ -5,21 +5,44 @@ import uuid
 from uuid import UUID
 
 import structlog
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import NotFoundException
 from src.modules.department.domain.entities import DepartmentEntity
 from src.modules.department.infrastructure.repositories import DepartmentRepository
+from src.shared.database.models import Department, Factory
 
 log = structlog.get_logger()
 
 
 class DepartmentService:
 
-    def __init__(self, repo: DepartmentRepository):
+    def __init__(self, repo: DepartmentRepository, db: AsyncSession):
         self._repo = repo
+        self._db = db
 
     async def list_departments(self, enterprise_id: UUID, factory_id: UUID | None = None) -> list[DepartmentEntity]:
         return await self._repo.list(enterprise_id, factory_id)
+
+    async def list_departments_with_factory_name(
+        self, enterprise_id: UUID, factory_id: UUID | None = None
+    ) -> list[dict]:
+        """Same rows as list_departments, with the factory's name embedded —
+        for the admin table, which otherwise only has a bare factory_id."""
+        q = (
+            select(Department, Factory.name)
+            .join(Factory, Factory.id == Department.factory_id)
+            .where(Department.enterprise_id == enterprise_id, Department.deleted_at.is_(None))
+            .order_by(Factory.name, Department.name)
+        )
+        if factory_id:
+            q = q.where(Department.factory_id == factory_id)
+        rows = (await self._db.execute(q)).all()
+        return [
+            {**self.to_dict(DepartmentRepository._to_entity(d)), "factory_name": factory_name}
+            for d, factory_name in rows
+        ]
 
     async def get_department(self, department_id: UUID, enterprise_id: UUID) -> DepartmentEntity:
         department = await self._repo.get_by_id(department_id, enterprise_id)

@@ -17,17 +17,16 @@ _ADMIN_ROLES = ("SUPER_ADMIN", "HO_ADMIN", "FACTORY_MANAGER")
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> DepartmentService:
-    return DepartmentService(DepartmentRepository(db))
+    return DepartmentService(DepartmentRepository(db), db)
 
 
-@router.get("", response_model=ApiResponse[list], summary="List departments")
+@router.get("", response_model=ApiResponse[list], summary="List departments (with factory name)")
 async def list_departments(
     factory_id: UUID | None = None,
     user: AuthUser = Depends(get_current_user),
     svc: DepartmentService = Depends(_get_service),
 ):
-    departments = await svc.list_departments(UUID(user.enterprise_id), factory_id)
-    return ApiResponse(data=[svc.to_dict(d) for d in departments])
+    return ApiResponse(data=await svc.list_departments_with_factory_name(UUID(user.enterprise_id), factory_id))
 
 
 @router.post("", response_model=ApiResponse[dict], summary="Create department")
