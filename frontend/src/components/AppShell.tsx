@@ -115,9 +115,27 @@ export function AppShell() {
         }}
       >
         <Toolbar>
-          <Typography variant="h6" fontWeight={700} color="primary">
-            VisionGuard
-          </Typography>
+          <Stack direction="row" spacing={1.25} alignItems="center">
+            <Box
+              sx={{
+                width: 32,
+                height: 32,
+                borderRadius: 1.5,
+                bgcolor: "primary.main",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 800,
+                fontSize: 15,
+              }}
+            >
+              V
+            </Box>
+            <Typography variant="h6" fontWeight={700} color="primary" lineHeight={1}>
+              VisionGuard
+            </Typography>
+          </Stack>
         </Toolbar>
         <List sx={{ px: 1 }}>
           {NAV.map((item) => (
@@ -156,7 +174,12 @@ export function AppShell() {
       </Drawer>
 
       <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column" }}>
-        <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: "1px solid #E5E7EB" }}>
+        <AppBar
+          position="static"
+          color="inherit"
+          elevation={0}
+          sx={{ borderBottom: "1px solid #E5E7EB", boxShadow: "0 1px 3px rgba(16, 24, 40, 0.04)" }}
+        >
           <Toolbar sx={{ gap: 2 }}>
             {branding && (
               <Stack direction="row" spacing={1.5} alignItems="center">

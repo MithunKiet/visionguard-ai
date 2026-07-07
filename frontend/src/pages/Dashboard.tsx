@@ -1,5 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
+import SensorsIcon from "@mui/icons-material/Sensors";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
 import CardMedia from "@mui/material/CardMedia";
@@ -72,15 +77,21 @@ export function Dashboard() {
       </Typography>
 
       <Stack direction="row" spacing={2} flexWrap="wrap">
-        <StatCard label="Open Alerts" value={counts?.total ?? "-"} />
-        <StatCard label="Critical" value={counts?.critical ?? "-"} accent="#DC2626" />
-        <StatCard label="High" value={counts?.high ?? "-"} accent="#F59E0B" />
+        <StatCard label="Open Alerts" value={counts?.total ?? "-"} accent="#0F5C4A" icon={<NotificationsActiveIcon />} />
+        <StatCard label="Critical" value={counts?.critical ?? "-"} accent="#DC2626" icon={<ErrorOutlineIcon />} />
+        <StatCard label="High" value={counts?.high ?? "-"} accent="#F59E0B" icon={<WarningAmberIcon />} />
         <StatCard
           label="Live Occupancy"
           value={latestOccupancy?.data?.current_count ?? "-"}
           accent="#2563EB"
+          icon={<PeopleAltIcon />}
         />
-        <StatCard label="Live Connection" value={connected ? "Connected" : "Reconnecting..."} />
+        <StatCard
+          label="Live Connection"
+          value={connected ? "Connected" : "Reconnecting..."}
+          accent={connected ? "#16A34A" : "#6B7280"}
+          icon={<SensorsIcon />}
+        />
       </Stack>
 
       <Grid container spacing={3}>

@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import BlockIcon from "@mui/icons-material/Block";
+import RateReviewIcon from "@mui/icons-material/RateReview";
 import VideocamIcon from "@mui/icons-material/Videocam";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import ZoomInIcon from "@mui/icons-material/ZoomIn";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
@@ -62,9 +65,9 @@ export function Violations() {
       </Typography>
 
       <Stack direction="row" spacing={2} flexWrap="wrap">
-        <StatCard label="Total Violations" value={stats.total} />
-        <StatCard label="Needs Review" value={stats.needsReview} accent="#F59E0B" />
-        <StatCard label="False Positives" value={stats.falsePositive} accent="#6B7280" />
+        <StatCard label="Total Violations" value={stats.total} accent="#0F5C4A" icon={<WarningAmberIcon />} />
+        <StatCard label="Needs Review" value={stats.needsReview} accent="#F59E0B" icon={<RateReviewIcon />} />
+        <StatCard label="False Positives" value={stats.falsePositive} accent="#6B7280" icon={<BlockIcon />} />
       </Stack>
 
       <Paper variant="outlined" sx={{ overflow: "hidden" }}>
