@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import Avatar from "@mui/material/Avatar";
 import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
@@ -9,6 +11,7 @@ import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
+import Stack from "@mui/material/Stack";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import DashboardIcon from "@mui/icons-material/SpaceDashboard";
@@ -18,10 +21,16 @@ import WarningIcon from "@mui/icons-material/WarningAmber";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import LogoutIcon from "@mui/icons-material/Logout";
 import CircleIcon from "@mui/icons-material/Circle";
+import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
 import { useLiveFeed } from "../hooks/useWebSocket";
 
 const DRAWER_WIDTH = 220;
+
+async function fetchBranding() {
+  const resp = await api.get("/enterprise/branding");
+  return resp.data.data as { name: string; tagline: string | null; logo_url: string | null };
+}
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: <DashboardIcon /> },
@@ -36,6 +45,15 @@ export function AppShell() {
   const { user, isMasterSession, clearSession } = useAuthStore();
   const { connected, events } = useLiveFeed(10);
   const lastNotifiedRef = useRef<string | null>(null);
+
+  // Dynamic branding (master context rule #1/#2 — no hardcoded company
+  // names anywhere). Rarely changes, so cache it for the session.
+  const { data: branding } = useQuery({
+    queryKey: ["enterprise-branding"],
+    queryFn: fetchBranding,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
 
   // Request permission once so the browser can show OS-level popups.
   useEffect(() => {
@@ -119,6 +137,23 @@ export function AppShell() {
       <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column" }}>
         <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: "1px solid #E5E7EB" }}>
           <Toolbar sx={{ gap: 2 }}>
+            {branding && (
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                {branding.logo_url ? (
+                  <Avatar src={branding.logo_url} variant="rounded" sx={{ width: 28, height: 28 }} />
+                ) : null}
+                <Stack spacing={0}>
+                  <Typography variant="subtitle2" fontWeight={700} lineHeight={1.2}>
+                    {branding.name}
+                  </Typography>
+                  {branding.tagline && (
+                    <Typography variant="caption" color="text.secondary" lineHeight={1}>
+                      {branding.tagline}
+                    </Typography>
+                  )}
+                </Stack>
+              </Stack>
+            )}
             <Box sx={{ flexGrow: 1 }} />
             <Chip
               size="small"
