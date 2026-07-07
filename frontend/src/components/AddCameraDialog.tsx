@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Alert from "@mui/material/Alert";
+import Autocomplete from "@mui/material/Autocomplete";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import { api } from "../api/client";
+import { SearchableSelect } from "./SearchableSelect";
 
 interface ZoneOption {
   id: string;
@@ -84,6 +85,9 @@ export function AddCameraDialog({ open, onClose }: AddCameraDialogProps) {
       if (field === "rtsp_url") setTestResult(null);
     };
 
+  const setField = (field: keyof typeof EMPTY_FORM) => (value: string) =>
+    setForm((f) => ({ ...f, [field]: value }));
+
   const handleClose = () => {
     setForm(EMPTY_FORM);
     setError(null);
@@ -102,20 +106,17 @@ export function AddCameraDialog({ open, onClose }: AddCameraDialogProps) {
         <Stack spacing={2} sx={{ mt: 1 }}>
           {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
-          <TextField
-            select
+          <SearchableSelect
             label="Zone"
             value={form.zone_id}
-            onChange={set("zone_id")}
+            onChange={setField("zone_id")}
             required
+            options={(zones ?? []).map((z) => ({
+              id: z.id,
+              label: `${z.factory_name} / ${z.department_name} / ${z.name} (${z.code})`,
+            }))}
             helperText={!zones?.length ? "No zones found — create one via the Setup Wizard first" : undefined}
-          >
-            {(zones ?? []).map((z) => (
-              <MenuItem key={z.id} value={z.id}>
-                {z.factory_name} / {z.department_name} / {z.name} ({z.code})
-              </MenuItem>
-            ))}
-          </TextField>
+          />
 
           <Stack direction="row" spacing={2}>
             <TextField label="Name" value={form.name} onChange={set("name")} required fullWidth />
@@ -151,11 +152,14 @@ export function AddCameraDialog({ open, onClose }: AddCameraDialogProps) {
           )}
 
           <Stack direction="row" spacing={2}>
-            <TextField select label="Camera type" value={form.camera_type} onChange={set("camera_type")} sx={{ width: 180 }}>
-              {CAMERA_TYPES.map((t) => (
-                <MenuItem key={t} value={t}>{t}</MenuItem>
-              ))}
-            </TextField>
+            <Autocomplete
+              options={CAMERA_TYPES}
+              value={form.camera_type}
+              onChange={(_, newValue) => setField("camera_type")(newValue ?? "Fixed")}
+              disableClearable
+              sx={{ width: 180 }}
+              renderInput={(params) => <TextField {...params} label="Camera type" />}
+            />
             <TextField
               label="Position (optional)"
               value={form.position_desc}

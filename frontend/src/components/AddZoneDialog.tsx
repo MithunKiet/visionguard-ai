@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Alert from "@mui/material/Alert";
+import Autocomplete from "@mui/material/Autocomplete";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import { api } from "../api/client";
+import { SearchableSelect } from "./SearchableSelect";
 
 interface AddZoneDialogProps {
   open: boolean;
@@ -74,6 +75,13 @@ export function AddZoneDialog({ open, onClose }: AddZoneDialogProps) {
     }));
   };
 
+  const setField = (field: keyof typeof EMPTY_FORM) => (value: string) =>
+    setForm((f) => ({
+      ...f,
+      [field]: value,
+      ...(field === "factory_id" ? { department_id: "" } : {}),
+    }));
+
   const handleClose = () => {
     setForm(EMPTY_FORM);
     setError(null);
@@ -91,36 +99,24 @@ export function AddZoneDialog({ open, onClose }: AddZoneDialogProps) {
         <Stack spacing={2} sx={{ mt: 1 }}>
           {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
-          <TextField
-            select
+          <SearchableSelect
             label="Factory"
             value={form.factory_id}
-            onChange={set("factory_id")}
+            onChange={setField("factory_id")}
             required
+            options={(factories ?? []).map((f) => ({ id: f.id, label: `${f.name} (${f.code})` }))}
             helperText={!factories?.length ? "No factories found — create one first" : undefined}
-          >
-            {(factories ?? []).map((f) => (
-              <MenuItem key={f.id} value={f.id}>
-                {f.name} ({f.code})
-              </MenuItem>
-            ))}
-          </TextField>
+          />
 
-          <TextField
-            select
+          <SearchableSelect
             label="Department"
             value={form.department_id}
-            onChange={set("department_id")}
+            onChange={setField("department_id")}
             required
             disabled={!form.factory_id}
+            options={(departments ?? []).map((d) => ({ id: d.id, label: `${d.name} (${d.code})` }))}
             helperText={form.factory_id && !departments?.length ? "No departments in this factory — create one first" : undefined}
-          >
-            {(departments ?? []).map((d) => (
-              <MenuItem key={d.id} value={d.id}>
-                {d.name} ({d.code})
-              </MenuItem>
-            ))}
-          </TextField>
+          />
 
           <Stack direction="row" spacing={2}>
             <TextField label="Name" value={form.name} onChange={set("name")} required fullWidth />
@@ -137,11 +133,14 @@ export function AddZoneDialog({ open, onClose }: AddZoneDialogProps) {
               sx={{ width: 160 }}
               slotProps={{ htmlInput: { min: 1 } }}
             />
-            <TextField select label="Zone type" value={form.zone_type} onChange={set("zone_type")} fullWidth>
-              {ZONE_TYPES.map((t) => (
-                <MenuItem key={t} value={t}>{t}</MenuItem>
-              ))}
-            </TextField>
+            <Autocomplete
+              options={ZONE_TYPES}
+              value={form.zone_type}
+              onChange={(_, newValue) => setField("zone_type")(newValue ?? "Production")}
+              disableClearable
+              fullWidth
+              renderInput={(params) => <TextField {...params} label="Zone type" />}
+            />
           </Stack>
 
           <Alert severity="info">

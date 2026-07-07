@@ -6,10 +6,10 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import { api } from "../api/client";
+import { SearchableSelect } from "./SearchableSelect";
 
 interface AddDepartmentDialogProps {
   open: boolean;
@@ -47,6 +47,9 @@ export function AddDepartmentDialog({ open, onClose }: AddDepartmentDialogProps)
   const set = (field: keyof typeof EMPTY_FORM) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
 
+  const setField = (field: keyof typeof EMPTY_FORM) => (value: string) =>
+    setForm((f) => ({ ...f, [field]: value }));
+
   const handleClose = () => {
     setForm(EMPTY_FORM);
     setError(null);
@@ -61,20 +64,14 @@ export function AddDepartmentDialog({ open, onClose }: AddDepartmentDialogProps)
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
-          <TextField
-            select
+          <SearchableSelect
             label="Factory"
             value={form.factory_id}
-            onChange={set("factory_id")}
+            onChange={setField("factory_id")}
             required
+            options={(factories ?? []).map((f) => ({ id: f.id, label: `${f.name} (${f.code})` }))}
             helperText={!factories?.length ? "No factories found — create one first" : undefined}
-          >
-            {(factories ?? []).map((f) => (
-              <MenuItem key={f.id} value={f.id}>
-                {f.name} ({f.code})
-              </MenuItem>
-            ))}
-          </TextField>
+          />
           <Stack direction="row" spacing={2}>
             <TextField label="Name" value={form.name} onChange={set("name")} required fullWidth />
             <TextField label="Code" value={form.code} onChange={set("code")} required sx={{ width: 160 }} placeholder="WLD" />

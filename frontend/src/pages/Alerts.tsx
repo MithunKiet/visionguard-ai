@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Autocomplete from "@mui/material/Autocomplete";
 import Button from "@mui/material/Button";
-import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -52,20 +52,16 @@ export function Alerts() {
         <Typography variant="h5" fontWeight={700}>
           Alerts
         </Typography>
-        <TextField
-          select
-          size="small"
-          label="Status"
+        <Autocomplete
+          options={STATUS_OPTIONS}
+          getOptionLabel={(s) => s || "All"}
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(_, newValue) => setStatusFilter(newValue ?? "")}
+          disableClearable
+          size="small"
           sx={{ width: 200 }}
-        >
-          {STATUS_OPTIONS.map((s) => (
-            <MenuItem key={s} value={s}>
-              {s || "All"}
-            </MenuItem>
-          ))}
-        </TextField>
+          renderInput={(params) => <TextField {...params} label="Status" />}
+        />
       </Stack>
 
       <Paper variant="outlined">
