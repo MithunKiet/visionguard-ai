@@ -1,10 +1,13 @@
 """
-Zone config hot-reload (AI Worker rules #4, #8, #12).
+Zone config hot-reload (AI Worker rules #4, #8, #12), plus the manual
+camera on/off toggle.
 
 Subscribes to the backend's `config_events` exchange and applies
 zone_config_updated events to running CameraWorkers in-place — no stream
 restart. Rule #4: an event is applied only if event.version > local version;
-stale/duplicate events are discarded.
+stale/duplicate events are discarded. Also applies camera_status_changed
+events (manual on/off from the dashboard) the same way — in-place, no
+reconnect.
 """
 import json
 
@@ -56,6 +59,8 @@ class ZoneConfigSync:
 
             if message.routing_key == "config.zone_config_updated":
                 self._apply_zone_config(body)
+            elif message.routing_key == "config.camera_status_changed":
+                self._apply_camera_status(body)
             else:
                 log.debug("zone_sync.ignored_event", routing_key=message.routing_key)
 
@@ -75,3 +80,13 @@ class ZoneConfigSync:
             worker.apply_zone_config(new_config)
             log.info("zone_sync.config_applied", zone_id=zone_id,
                      camera_id=worker.camera_id, version=new_version)
+
+    def _apply_camera_status(self, body: dict) -> None:
+        camera_id = body.get("camera_id")
+        status = body.get("status")
+
+        for worker in self._workers:
+            if worker.camera_id != camera_id:
+                continue
+            worker.set_active(status == "Active")
+            log.info("zone_sync.camera_status_applied", camera_id=camera_id, status=status)

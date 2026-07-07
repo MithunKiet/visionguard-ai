@@ -75,6 +75,7 @@ class WorkerService:
                 "enterprise_id": str(cam.enterprise_id),
                 "factory_id": str(cam.factory_id),
                 "zone_id": str(cam.zone_id),
+                "status": cam.status,
                 "in_maintenance": cam.in_maintenance,
                 "zone_config": {
                     "person_threshold": config.person_threshold if config else 0.70,

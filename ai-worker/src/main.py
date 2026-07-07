@@ -96,6 +96,7 @@ async def main() -> None:
             factory_id=cam["factory_id"],
             zone_id=cam["zone_id"],
             detector=detector,
+            active=cam.get("status") != "Inactive",
         )
         workers.append(worker)
         tasks.append(asyncio.create_task(worker.run()))

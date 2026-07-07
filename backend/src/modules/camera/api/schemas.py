@@ -1,5 +1,6 @@
 from uuid import UUID
 from datetime import datetime
+from typing import Literal
 from pydantic import BaseModel
 
 
@@ -24,6 +25,11 @@ class UpdateCameraRequest(BaseModel):
 
 class TestConnectionRequest(BaseModel):
     rtsp_url: str
+
+
+class UpdateCameraStatusRequest(BaseModel):
+    """Manual on/off toggle — hot-applied to the assigned AI worker, no restart."""
+    status: Literal["Active", "Inactive"]
 
 
 class CameraResponse(BaseModel):

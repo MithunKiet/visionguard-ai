@@ -42,13 +42,18 @@ _minio = Minio(settings.MINIO_ENDPOINT,
 class CameraWorker:
 
     def __init__(self, camera_id: str, rtsp_url: str, zone_config: dict,
-                 enterprise_id: str, factory_id: str, zone_id: str, detector: BatchDetector):
+                 enterprise_id: str, factory_id: str, zone_id: str, detector: BatchDetector,
+                 active: bool = True):
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
         self.zone_config = zone_config
         self.enterprise_id = enterprise_id
         self.factory_id = factory_id
         self.zone_id = zone_id
+        # Manual on/off toggle (hot-applied via config_events, see zone_sync.py).
+        # The RTSP connection stays open and frames keep being read even when
+        # off, so turning back on is instant — no reconnect needed.
+        self._active = active
 
         self._reader = FrameReader(camera_id, rtsp_url, zone_config.get("frame_sample_fps", 2))
         # Shared BatchDetector, one per process — every camera on this
@@ -64,6 +69,10 @@ class CameraWorker:
         self._last_overcrowding_fired = 0.0
         self._last_spec_check = 0.0
         self._spec_mismatch_active = False
+
+    def set_active(self, active: bool) -> None:
+        self._active = active
+        log.info("camera_worker.active_changed", camera_id=self.camera_id, active=active)
 
     def apply_zone_config(self, new_config: dict) -> None:
         """Hot-swap zone config (rule #8) — takes effect on the next frame.
@@ -111,6 +120,12 @@ class CameraWorker:
                 await asyncio.sleep(5)
 
     async def _process_frame(self, frame: np.ndarray) -> None:
+        if not self._active:
+            # Turned off — drop the frame with zero GPU/CPU work. The RTSP
+            # read loop above keeps running so the stream stays connected
+            # and turning back on is instant.
+            return
+
         # Submits to the shared BatchDetector, which groups this frame with
         # whatever other cameras submit within the same short window and
         # runs one batched GPU inference call for all of them — cheaper per

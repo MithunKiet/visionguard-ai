@@ -10,6 +10,7 @@ from src.modules.camera.api.schemas import (
     RtspTestResponse,
     TestConnectionRequest,
     UpdateCameraRequest,
+    UpdateCameraStatusRequest,
 )
 from src.modules.camera.application.services import CameraService
 from src.modules.camera.infrastructure.repositories import CameraRepository
@@ -83,6 +84,29 @@ async def update_camera(
         camera_id,
         _UUID(user.enterprise_id),
         **body.model_dump(exclude_none=True),
+    )
+    return ApiResponse(data=_to_response(camera))
+
+
+@router.patch("/{camera_id}/status", response_model=ApiResponse[CameraResponse], summary="Turn camera on/off")
+async def set_camera_status(
+    camera_id: UUID,
+    body: UpdateCameraStatusRequest,
+    user: AuthUser = Depends(require_roles("SUPER_ADMIN", "HO_ADMIN", "FACTORY_MANAGER")),
+    svc: CameraService = Depends(_get_service),
+    db: AsyncSession = Depends(get_db),
+):
+    from uuid import UUID as _UUID
+    camera = await svc.set_active(camera_id, _UUID(user.enterprise_id), body.status == "Active")
+
+    from src.modules.audit.application.services import AuditService
+    await AuditService(db).record(
+        enterprise_id=_UUID(user.enterprise_id),
+        user_id=_UUID(user.user_id),
+        action="CAMERA_STATUS_CHANGED",
+        entity_type="camera",
+        entity_id=camera_id,
+        new_value={"status": body.status},
     )
     return ApiResponse(data=_to_response(camera))
 

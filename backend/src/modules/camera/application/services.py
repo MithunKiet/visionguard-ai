@@ -85,6 +85,28 @@ class CameraService:
                 setattr(camera, key, val)
         return await self._cameras.update(camera)
 
+    # ── Manual on/off toggle ────────────────────────────────────────────────
+
+    async def set_active(self, camera_id: UUID, enterprise_id: UUID, active: bool) -> CameraEntity:
+        """Turns the camera on/off from the operator's point of view — the
+        assigned AI worker keeps reading the RTSP stream (so it reconnects
+        instantly if turned back on) but skips all detection work while off,
+        applied live via config_events, no worker restart needed."""
+        camera = await self.get_camera(camera_id, enterprise_id)
+        new_status = "Active" if active else "Inactive"
+        await self._cameras.set_status(camera_id, new_status)
+        camera.status = new_status
+
+        from src.shared.messaging.publisher import publish_config_event
+        await publish_config_event("config.camera_status_changed", {
+            "event": "camera_status_changed",
+            "camera_id": str(camera_id),
+            "enterprise_id": str(enterprise_id),
+            "status": new_status,
+        })
+        log.info("camera.status_changed", camera_id=str(camera_id), status=new_status)
+        return camera
+
     # ── Delete ─────────────────────────────────────────────────────────────
 
     async def delete_camera(self, camera_id: UUID, enterprise_id: UUID) -> None:
