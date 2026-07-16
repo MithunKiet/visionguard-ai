@@ -86,6 +86,23 @@ services:
       - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml
     restart: unless-stopped
 
+  # Feeds a looping video into MediaMTX so the demo camera stream is always
+  # live — no more starting `ffmpeg` by hand every session (see
+  # docs/E2E_PILOT_RUNBOOK.md). Drop a real clip at ./media/sample.mp4;
+  # falls back to a synthetic test pattern if none is present.
+  camera-feeder:
+    image: linuxserver/ffmpeg:latest
+    container_name: vg_camera_feeder
+    entrypoint: ["/bin/bash", "/feeder/entrypoint.sh"]
+    environment:
+      CAMERA_STREAM_PATH: ${CAMERA_STREAM_PATH:-factory-cam-01}
+    volumes:
+      - ./infra/camera-feeder/entrypoint.sh:/feeder/entrypoint.sh:ro
+      - ./media:/media:ro
+    depends_on:
+      - mediamtx
+    restart: unless-stopped
+
   # ─── Backend ──────────────────────────────────────────────────────────────
 
   backend:
@@ -136,6 +153,8 @@ services:
       WORKER_API_KEY: ${WORKER_API_KEY:-dev-worker-key-change-me}
       ENTERPRISE_ID: ${SEED_ENTERPRISE_ID:-}
       USE_GPU: "true"
+      ROBOFLOW_API_KEY: ${ROBOFLOW_API_KEY:-}
+      ROBOFLOW_MODEL_ID: ${ROBOFLOW_MODEL_ID:-ppe-detection-yolov11-42krk/1}
     volumes:
       - ./ai-worker:/app
       - ./ai-worker/models:/app/models
@@ -170,6 +189,8 @@ services:
       WORKER_API_KEY: ${WORKER_API_KEY:-dev-worker-key-change-me}
       ENTERPRISE_ID: ${SEED_ENTERPRISE_ID:-}
       USE_GPU: "true"
+      ROBOFLOW_API_KEY: ${ROBOFLOW_API_KEY:-}
+      ROBOFLOW_MODEL_ID: ${ROBOFLOW_MODEL_ID:-ppe-detection-yolov11-42krk/1}
     volumes:
       - ./ai-worker:/app
       - ./ai-worker/models:/app/models
@@ -227,9 +248,11 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./infra/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning
     ports:
-      - "3000:3000"
+      # Host port 3000 is often already taken by another local app — Grafana
+      # itself always listens on 3000 inside the container regardless.
+      - "${GRAFANA_PUBLIC_PORT:-3001}:3000"
     depends_on:
       - prometheus
     restart: unless-stopped
