@@ -1,9 +1,7 @@
 """
 AlertService — create from violation events, lifecycle transitions, deduplication.
 """
-import uuid
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
 
 import structlog
 
@@ -11,6 +9,7 @@ from src.core.exceptions import NotFoundException, VisionGuardException
 from src.modules.alerts.domain.entities import AlertEntity
 from src.modules.alerts.infrastructure.repositories import AlertRepository
 from src.modules.ppe.domain.entities import ViolationEntity
+from src.shared.security.scope import ScopeFilter
 
 log = structlog.get_logger()
 
@@ -44,7 +43,7 @@ class AlertService:
     async def create_from_violation(
         self,
         violation: ViolationEntity,
-        factory_id: UUID,
+        factory_id: str,
         cooldown_seconds: int = 120,
     ) -> AlertEntity | None:
         severity, alert_type = _VIOLATION_META.get(
@@ -66,7 +65,6 @@ class AlertService:
         sla_due_at = now + timedelta(minutes=_SLA_MINUTES.get(severity, 60))
 
         entity = AlertEntity(
-            id=uuid.uuid4(),
             enterprise_id=violation.enterprise_id,
             factory_id=factory_id,
             department_id=None,
@@ -80,7 +78,7 @@ class AlertService:
             assigned_to=None,
             shift_id=violation.shift_id,
             sla_due_at=sla_due_at,
-            created_on=now,
+            created_at=now,
             acknowledged_on=None,
             resolved_on=None,
         )
@@ -95,10 +93,10 @@ class AlertService:
 
     async def create_event_alert(
         self,
-        enterprise_id: UUID,
-        factory_id: UUID,
-        zone_id: UUID,
-        camera_id: UUID,
+        enterprise_id: str,
+        factory_id: str,
+        zone_id: str,
+        camera_id: str,
         alert_type: str,
         severity: str,
         cooldown_seconds: int = 120,
@@ -111,7 +109,6 @@ class AlertService:
         seq = await self._repo.next_sequence(enterprise_id)
         now = datetime.now(timezone.utc)
         entity = AlertEntity(
-            id=uuid.uuid4(),
             enterprise_id=enterprise_id,
             factory_id=factory_id,
             department_id=None,
@@ -125,7 +122,7 @@ class AlertService:
             assigned_to=None,
             shift_id=None,
             sla_due_at=now + timedelta(minutes=_SLA_MINUTES.get(severity, 60)),
-            created_on=now,
+            created_at=now,
             acknowledged_on=None,
             resolved_on=None,
         )
@@ -137,46 +134,53 @@ class AlertService:
 
     async def list_alerts(
         self,
-        enterprise_id: UUID,
+        enterprise_id: str,
         status: str | None = None,
         severity: str | None = None,
-        zone_id: UUID | None = None,
-        assigned_to: UUID | None = None,
+        zone_id: str | None = None,
+        assigned_to: str | None = None,
         page: int = 1,
         page_size: int = 20,
+        scope: ScopeFilter | None = None,
     ) -> tuple[list[dict], int]:
         items, total = await self._repo.list(
-            enterprise_id, status, severity, zone_id, assigned_to, page, page_size
+            enterprise_id, status, severity, zone_id, assigned_to, page, page_size, scope
         )
         return [self.to_dict(a) for a in items], total
 
-    async def get_alert(self, alert_id: UUID, enterprise_id: UUID) -> dict:
-        alert = await self._repo.get_by_id(alert_id, enterprise_id)
+    async def get_alert(self, alert_id: str, enterprise_id: str, scope: ScopeFilter | None = None) -> dict:
+        alert = await self._repo.get_by_id(alert_id, enterprise_id, scope)
         if not alert:
             raise NotFoundException("Alert", str(alert_id))
         return self.to_dict(alert)
 
-    async def acknowledge(self, alert_id: UUID, enterprise_id: UUID, user_id: UUID) -> dict:
+    async def acknowledge(
+        self, alert_id: str, enterprise_id: str, user_id: str, scope: ScopeFilter | None = None,
+    ) -> dict:
         return self.to_dict(
-            await self._transition(alert_id, enterprise_id, "Acknowledged", user_id)
+            await self._transition(alert_id, enterprise_id, "Acknowledged", user_id, scope=scope)
         )
 
     async def resolve(
-        self, alert_id: UUID, enterprise_id: UUID, user_id: UUID, note: str | None
+        self, alert_id: str, enterprise_id: str, user_id: str, note: str | None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         return self.to_dict(
-            await self._transition(alert_id, enterprise_id, "Resolved", user_id, note)
+            await self._transition(alert_id, enterprise_id, "Resolved", user_id, note, scope)
         )
 
     async def mark_false_positive(
-        self, alert_id: UUID, enterprise_id: UUID, user_id: UUID, reason: str
+        self, alert_id: str, enterprise_id: str, user_id: str, reason: str,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         return self.to_dict(
-            await self._transition(alert_id, enterprise_id, "FalsePositive", user_id, reason)
+            await self._transition(alert_id, enterprise_id, "FalsePositive", user_id, reason, scope)
         )
 
-    async def assign(self, alert_id: UUID, enterprise_id: UUID, assign_to: UUID) -> dict:
-        alert = await self._repo.get_by_id(alert_id, enterprise_id)
+    async def assign(
+        self, alert_id: str, enterprise_id: str, assign_to: str, scope: ScopeFilter | None = None,
+    ) -> dict:
+        alert = await self._repo.get_by_id(alert_id, enterprise_id, scope)
         if not alert:
             raise NotFoundException("Alert", str(alert_id))
         await self._repo.assign(alert_id, enterprise_id, assign_to)
@@ -187,13 +191,14 @@ class AlertService:
 
     async def _transition(
         self,
-        alert_id: UUID,
-        enterprise_id: UUID,
+        alert_id: str,
+        enterprise_id: str,
         to_status: str,
-        changed_by: UUID,
+        changed_by: str,
         comment: str | None = None,
+        scope: ScopeFilter | None = None,
     ) -> AlertEntity:
-        alert = await self._repo.get_by_id(alert_id, enterprise_id)
+        alert = await self._repo.get_by_id(alert_id, enterprise_id, scope)
         if not alert:
             raise NotFoundException("Alert", str(alert_id))
 
@@ -203,25 +208,25 @@ class AlertService:
                 message=f"Cannot move alert from '{alert.status}' to '{to_status}'",
                 status_code=422,
             )
-        return await self._repo.transition(alert_id, enterprise_id, to_status, changed_by, comment)
+        return await self._repo.transition(alert_id, enterprise_id, to_status, changed_by, comment, scope)
 
     @staticmethod
     def to_dict(a: AlertEntity) -> dict:
         return {
-            "id": str(a.id),
-            "enterprise_id": str(a.enterprise_id),
-            "factory_id": str(a.factory_id),
-            "zone_id": str(a.zone_id),
-            "camera_id": str(a.camera_id),
-            "violation_id": str(a.violation_id) if a.violation_id else None,
+            "id": a.id,
+            "enterprise_id": a.enterprise_id,
+            "factory_id": a.factory_id,
+            "zone_id": a.zone_id,
+            "camera_id": a.camera_id,
+            "violation_id": a.violation_id,
             "alert_number": a.alert_number,
             "alert_type": a.alert_type,
             "severity": a.severity,
             "status": a.status,
-            "assigned_to": str(a.assigned_to) if a.assigned_to else None,
-            "shift_id": str(a.shift_id) if a.shift_id else None,
+            "assigned_to": a.assigned_to,
+            "shift_id": a.shift_id,
             "sla_due_at": a.sla_due_at.isoformat() if a.sla_due_at else None,
-            "created_on": a.created_on.isoformat(),
+            "created_on": a.created_at.isoformat(),
             "acknowledged_on": a.acknowledged_on.isoformat() if a.acknowledged_on else None,
             "resolved_on": a.resolved_on.isoformat() if a.resolved_on else None,
         }

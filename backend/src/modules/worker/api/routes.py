@@ -23,11 +23,10 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> WorkerService:
 
 @router.get("", response_model=ApiResponse[list[WorkerResponse]], summary="List all workers")
 async def list_workers(
-    user: AuthUser = Depends(require_roles("SUPER_ADMIN", "HO_ADMIN", "FACTORY_MANAGER")),
+    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER")),
     svc: WorkerService = Depends(_get_service),
 ):
-    from uuid import UUID as _UUID
-    workers = await svc.list_workers(_UUID(user.enterprise_id))
+    workers = await svc.list_workers(user.enterprise_id)
     return ApiResponse(data=[_to_response(w) for w in workers])
 
 
@@ -41,9 +40,8 @@ async def heartbeat(
     ctx: WorkerContext = Depends(get_worker_context),
     svc: WorkerService = Depends(_get_service),
 ):
-    from uuid import UUID as _UUID
     worker = await svc.heartbeat(
-        enterprise_id=_UUID(ctx.enterprise_id),
+        enterprise_id=ctx.enterprise_id,
         worker_id=body.worker_id,
         hostname=body.hostname,
         model_version=body.model_version,

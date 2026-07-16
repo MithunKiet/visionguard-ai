@@ -19,7 +19,7 @@ class SetupZoneRequest(BaseModel):
     max_occupancy: int = Field(ge=1)
     zone_type: str = "Production"
     is_restricted: bool = False
-    ppe_required: list[str] = ["helmet", "vest"]
+    required_ppe_types: list[str] | None = None
 
 
 class SetupCameraRequest(BaseModel):

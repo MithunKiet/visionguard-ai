@@ -1,5 +1,3 @@
-from uuid import UUID
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +15,7 @@ from src.shared.security.dependencies import AuthUser, require_roles
 
 router = APIRouter(prefix="/setup", tags=["Setup Wizard"])
 
-_SETUP_ROLES = ("SUPER_ADMIN", "HO_ADMIN")
+_SETUP_ROLES = ("SYSTEM_ADMIN", "ENTERPRISE_ADMIN")
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> SetupWizardService:
@@ -29,7 +27,7 @@ async def get_progress(
     user: AuthUser = Depends(require_roles(*_SETUP_ROLES)),
     svc: SetupWizardService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.get_progress(UUID(user.user_id), UUID(user.enterprise_id)))
+    return ApiResponse(data=await svc.get_progress(user.user_id, user.enterprise_id))
 
 
 @router.post("/factory", response_model=ApiResponse[dict], summary="Step 1 — create factory")
@@ -39,7 +37,7 @@ async def setup_factory(
     svc: SetupWizardService = Depends(_get_service),
 ):
     return ApiResponse(data=await svc.create_factory(
-        UUID(user.user_id), UUID(user.enterprise_id), body.name, body.code, body.location
+        user.user_id, user.enterprise_id, body.name, body.code, body.location
     ))
 
 
@@ -50,7 +48,7 @@ async def setup_department(
     svc: SetupWizardService = Depends(_get_service),
 ):
     return ApiResponse(data=await svc.create_department(
-        UUID(user.user_id), UUID(user.enterprise_id), body.name, body.code
+        user.user_id, user.enterprise_id, body.name, body.code
     ))
 
 
@@ -61,8 +59,9 @@ async def setup_zone(
     svc: SetupWizardService = Depends(_get_service),
 ):
     return ApiResponse(data=await svc.create_zone(
-        UUID(user.user_id), UUID(user.enterprise_id), body.name, body.code,
-        body.max_occupancy, body.zone_type, body.is_restricted, body.ppe_required,
+        user.user_id, user.enterprise_id, body.name, body.code,
+        body.max_occupancy, body.zone_type, body.is_restricted,
+        required_ppe_types=body.required_ppe_types,
     ))
 
 
@@ -73,7 +72,7 @@ async def setup_camera(
     svc: SetupWizardService = Depends(_get_service),
 ):
     return ApiResponse(data=await svc.create_camera(
-        UUID(user.user_id), UUID(user.enterprise_id), body.name, body.code,
+        user.user_id, user.enterprise_id, body.name, body.code,
         body.rtsp_url, body.camera_type, body.position_desc, body.placement_confirmed,
     ))
 
@@ -84,10 +83,10 @@ async def setup_complete(
     svc: SetupWizardService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
-    data = await svc.complete(UUID(user.user_id), UUID(user.enterprise_id))
+    data = await svc.complete(user.user_id, user.enterprise_id)
     await AuditService(db).record(
-        enterprise_id=UUID(user.enterprise_id),
-        user_id=UUID(user.user_id),
+        enterprise_id=user.enterprise_id,
+        user_id=user.user_id,
         action="SETUP_COMPLETED",
         entity_type="setup_progress",
         new_value=data,

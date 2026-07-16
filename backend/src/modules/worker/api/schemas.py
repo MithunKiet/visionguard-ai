@@ -1,5 +1,4 @@
 from datetime import datetime
-from uuid import UUID
 from pydantic import BaseModel
 
 
@@ -11,8 +10,8 @@ class HeartbeatRequest(BaseModel):
 
 
 class WorkerResponse(BaseModel):
-    id: UUID
-    enterprise_id: UUID
+    id: str
+    enterprise_id: str
     worker_id: str
     hostname: str | None
     status: str

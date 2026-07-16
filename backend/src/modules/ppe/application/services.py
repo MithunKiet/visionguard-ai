@@ -1,18 +1,15 @@
 """
 PPEService — save violations from RabbitMQ events, serve API queries.
 """
-import uuid
 from datetime import datetime, timezone
-from uuid import UUID
 
 import structlog
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import NotFoundException
 from src.modules.ppe.domain.entities import ViolationEntity
 from src.modules.ppe.infrastructure.repositories import ViolationRepository
-from src.shared.database.models import Camera, Zone
+from src.shared.security.scope import ScopeFilter
 from src.shared.storage.minio_client import get_presigned_url
 
 log = structlog.get_logger()
@@ -39,20 +36,19 @@ class PPEService:
         violation_type = ROUTING_KEY_TO_TYPE.get(routing_key, routing_key)
 
         entity = ViolationEntity(
-            id=uuid.uuid4(),
-            enterprise_id=UUID(body["enterprise_id"]),
-            zone_id=UUID(body["zone_id"]),
-            camera_id=UUID(body["camera_id"]),
+            enterprise_id=body["enterprise_id"],
+            zone_id=body["zone_id"],
+            camera_id=body["camera_id"],
             violation_type=violation_type,
             confidence=float(body.get("confidence", 0.0)),
             snapshot_key=body.get("snapshot_key"),
             track_id=body.get("track_id"),
-            shift_id=UUID(body["shift_id"]) if body.get("shift_id") else None,
-            rule_id=UUID(body["rule_id"]) if body.get("rule_id") else None,
+            shift_id=body.get("shift_id"),
+            rule_id=body.get("rule_id"),
             is_false_positive=False,
             fp_reason=None,
             needs_review=float(body.get("confidence", 0.0)) < 0.60,
-            created_on=datetime.now(timezone.utc),
+            created_at=datetime.now(timezone.utc),
         )
         saved = await self._repo.create(entity)
         log.info(
@@ -68,28 +64,35 @@ class PPEService:
 
     async def list_violations(
         self,
-        enterprise_id: UUID,
-        zone_id: UUID | None = None,
-        camera_id: UUID | None = None,
+        enterprise_id: str,
+        zone_id: str | None = None,
+        camera_id: str | None = None,
         violation_type: str | None = None,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
         page: int = 1,
         page_size: int = 20,
+        scope: ScopeFilter | None = None,
     ) -> tuple[list[dict], int]:
         items, total = await self._repo.list(
             enterprise_id, zone_id, camera_id, violation_type,
-            from_dt, to_dt, None, page, page_size,
+            from_dt, to_dt, None, page, page_size, scope,
         )
-        return [await self.enrich(v) for v in items], total
+        return [self.enrich(v) for v in items], total
 
-    async def get_violation(self, violation_id: UUID, enterprise_id: UUID) -> dict:
-        v = await self._repo.get_by_id(violation_id, enterprise_id)
+    async def get_violation(
+        self, violation_id: str, enterprise_id: str, scope: ScopeFilter | None = None,
+    ) -> dict:
+        v = await self._repo.get_by_id(violation_id, enterprise_id, scope)
         if not v:
             raise NotFoundException("Violation", str(violation_id))
-        return await self.enrich(v)
+        return self.enrich(v)
 
-    async def enrich(self, v: ViolationEntity) -> dict:
+    def enrich(self, v: ViolationEntity) -> dict:
+        """Adds the presigned snapshot URL (not DB-bound) on top of the
+        zone/camera display fields the repository's joined query already
+        populated — no per-row DB queries here (see infrastructure/
+        repositories.py's _JOINED_COLUMNS for why)."""
         snapshot_url = None
         if v.snapshot_key:
             try:
@@ -97,27 +100,20 @@ class PPEService:
             except Exception as e:
                 log.warning("ppe.presigned_url_failed", snapshot_key=v.snapshot_key, error=str(e))
 
-        camera = (await self._db.execute(
-            select(Camera).where(Camera.id == v.camera_id)
-        )).scalar_one_or_none()
-        zone = (await self._db.execute(
-            select(Zone).where(Zone.id == v.zone_id)
-        )).scalar_one_or_none()
-
         return {
-            "id": str(v.id),
-            "enterprise_id": str(v.enterprise_id),
-            "zone_id": str(v.zone_id),
-            "zone_name": zone.name if zone else None,
-            "camera_id": str(v.camera_id),
-            "camera_name": camera.name if camera else None,
-            "camera_code": camera.code if camera else None,
+            "id": v.id,
+            "enterprise_id": v.enterprise_id,
+            "zone_id": v.zone_id,
+            "zone_name": v.zone_name,
+            "camera_id": v.camera_id,
+            "camera_name": v.camera_name,
+            "camera_code": v.camera_code,
             "violation_type": v.violation_type,
             "confidence": v.confidence,
             "snapshot_url": snapshot_url,
             "track_id": v.track_id,
-            "shift_id": str(v.shift_id) if v.shift_id else None,
+            "shift_id": v.shift_id,
             "is_false_positive": v.is_false_positive,
             "needs_review": v.needs_review,
-            "created_on": v.created_on.isoformat(),
+            "created_on": v.created_at.isoformat(),
         }

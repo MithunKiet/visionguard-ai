@@ -1,5 +1,4 @@
 from datetime import datetime
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,22 +19,22 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> AnalyticsService:
 async def violation_analytics(
     from_dt: datetime | None = Query(None, alias="from"),
     to_dt: datetime | None = Query(None, alias="to"),
-    zone_id: UUID | None = None,
+    zone_id: str | None = None,
     user: AuthUser = Depends(get_current_user),
     svc: AnalyticsService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.violations(UUID(user.enterprise_id), from_dt, to_dt, zone_id))
+    return ApiResponse(data=await svc.violations(user.enterprise_id, from_dt, to_dt, zone_id))
 
 
 @router.get("/occupancy", response_model=ApiResponse[dict], summary="Occupancy analytics")
 async def occupancy_analytics(
     from_dt: datetime | None = Query(None, alias="from"),
     to_dt: datetime | None = Query(None, alias="to"),
-    zone_id: UUID | None = None,
+    zone_id: str | None = None,
     user: AuthUser = Depends(get_current_user),
     svc: AnalyticsService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.occupancy(UUID(user.enterprise_id), from_dt, to_dt, zone_id))
+    return ApiResponse(data=await svc.occupancy(user.enterprise_id, from_dt, to_dt, zone_id))
 
 
 @router.get("/compliance", response_model=ApiResponse[dict], summary="Alert resolution + SLA compliance")
@@ -45,7 +44,7 @@ async def compliance_analytics(
     user: AuthUser = Depends(get_current_user),
     svc: AnalyticsService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.compliance(UUID(user.enterprise_id), from_dt, to_dt))
+    return ApiResponse(data=await svc.compliance(user.enterprise_id, from_dt, to_dt))
 
 
 @router.get("/safety-score", response_model=ApiResponse[dict], summary="Overall safety score (0-100)")
@@ -55,4 +54,4 @@ async def safety_score(
     user: AuthUser = Depends(get_current_user),
     svc: AnalyticsService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.safety_score(UUID(user.enterprise_id), from_dt, to_dt))
+    return ApiResponse(data=await svc.safety_score(user.enterprise_id, from_dt, to_dt))

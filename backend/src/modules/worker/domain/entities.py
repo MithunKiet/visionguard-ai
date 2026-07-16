@@ -1,12 +1,11 @@
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import UUID
 
 
 @dataclass
 class WorkerEntity:
-    id: UUID
-    enterprise_id: UUID
+    id: str  # public_id
+    enterprise_id: str  # enterprise's public_id
     worker_id: str          # string identifier from env (e.g. "worker-1")
     status: str             # Online / Offline / Degraded
     hostname: str | None = None

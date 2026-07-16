@@ -1,17 +1,20 @@
 """
 CameraService — CRUD, RTSP health check, worker assignment.
 """
-import uuid
-from uuid import UUID
-
 import structlog
 
 from src.core.exceptions import NotFoundException
 from src.modules.camera.domain.entities import CameraEntity
 from src.modules.camera.infrastructure.repositories import CameraRepository
 from src.modules.worker.infrastructure.repositories import WorkerRepository
+from src.shared.security.scope import ScopeFilter
 
 log = structlog.get_logger()
+
+# Zone-level fallback used only if a camera's zone somehow has no config row
+# (shouldn't happen — every zone gets one on creation — but keeps this
+# resolution defensive rather than crashing on a response).
+_DEFAULT_ZONE_PPE = ["helmet", "vest"]
 
 
 class CameraService:
@@ -24,14 +27,17 @@ class CameraService:
 
     async def list_cameras(
         self,
-        enterprise_id: UUID,
-        factory_id: UUID | None = None,
-        zone_id: UUID | None = None,
+        enterprise_id: str,
+        factory_id: str | None = None,
+        zone_id: str | None = None,
+        scope: ScopeFilter | None = None,
     ) -> list[CameraEntity]:
-        return await self._cameras.list(enterprise_id, factory_id, zone_id)
+        return await self._cameras.list(enterprise_id, factory_id, zone_id, scope)
 
-    async def get_camera(self, camera_id: UUID, enterprise_id: UUID) -> CameraEntity:
-        camera = await self._cameras.get_by_id(camera_id, enterprise_id)
+    async def get_camera(
+        self, camera_id: str, enterprise_id: str, scope: ScopeFilter | None = None,
+    ) -> CameraEntity:
+        camera = await self._cameras.get_by_id(camera_id, enterprise_id, scope)
         if not camera:
             raise NotFoundException("Camera", str(camera_id))
         return camera
@@ -40,20 +46,36 @@ class CameraService:
 
     async def create_camera(
         self,
-        enterprise_id: UUID,
-        factory_id: UUID,
-        zone_id: UUID,
+        enterprise_id: str,
+        zone_id: str,
         name: str,
         code: str,
         rtsp_url: str,
+        db,
         camera_type: str = "Fixed",
         position_desc: str | None = None,
         fps: float | None = None,
+        ppe_overrides: dict[str, bool] | None = None,
     ) -> CameraEntity:
+        # factory_id is derived from the zone, never taken from the caller —
+        # a camera's factory must always match its zone's, so there's no
+        # independent value to trust or cross-validate here.
+        from sqlalchemy import select
+        from src.shared.database.models import Enterprise, Factory, Zone
+        from src.shared.database.pid import to_pk, to_public_id
+
+        ent_pk = await to_pk(db, Enterprise, enterprise_id)
+        zone = (await db.execute(
+            select(Zone).where(Zone.public_id == zone_id, Zone.enterprise_id == ent_pk)
+        )).scalar_one_or_none()
+        if not zone:
+            raise NotFoundException("Zone", str(zone_id))
+
+        factory_public_id = await to_public_id(db, Factory, zone.factory_id)
+
         entity = CameraEntity(
-            id=uuid.uuid4(),
             enterprise_id=enterprise_id,
-            factory_id=factory_id,
+            factory_id=factory_public_id,
             zone_id=zone_id,
             name=name,
             code=code,
@@ -62,6 +84,7 @@ class CameraService:
             position_desc=position_desc,
             fps=fps,
             status="Active",
+            ppe_overrides={k: v for k, v in (ppe_overrides or {}).items() if v is not None},
         )
         camera = await self._cameras.create(entity)
 
@@ -75,11 +98,27 @@ class CameraService:
 
     async def update_camera(
         self,
-        camera_id: UUID,
-        enterprise_id: UUID,
+        camera_id: str,
+        enterprise_id: str,
+        scope: ScopeFilter | None = None,
         **fields,
     ) -> CameraEntity:
-        camera = await self.get_camera(camera_id, enterprise_id)
+        camera = await self.get_camera(camera_id, enterprise_id, scope)
+
+        # ppe_overrides is a partial patch merged into the existing dict —
+        # a code omitted from the patch is left untouched, and a code mapped
+        # to None clears that override (reverts to inheriting the zone's
+        # setting), rather than the whole-field replace the other fields get.
+        ppe_patch = fields.pop("ppe_overrides", None)
+        if ppe_patch is not None:
+            merged = dict(camera.ppe_overrides)
+            for code, value in ppe_patch.items():
+                if value is None:
+                    merged.pop(code, None)
+                else:
+                    merged[code] = value
+            camera.ppe_overrides = merged
+
         for key, val in fields.items():
             if val is not None and hasattr(camera, key):
                 setattr(camera, key, val)
@@ -87,12 +126,14 @@ class CameraService:
 
     # ── Manual on/off toggle ────────────────────────────────────────────────
 
-    async def set_active(self, camera_id: UUID, enterprise_id: UUID, active: bool) -> CameraEntity:
+    async def set_active(
+        self, camera_id: str, enterprise_id: str, active: bool, scope: ScopeFilter | None = None,
+    ) -> CameraEntity:
         """Turns the camera on/off from the operator's point of view — the
         assigned AI worker keeps reading the RTSP stream (so it reconnects
         instantly if turned back on) but skips all detection work while off,
         applied live via config_events, no worker restart needed."""
-        camera = await self.get_camera(camera_id, enterprise_id)
+        camera = await self.get_camera(camera_id, enterprise_id, scope)
         new_status = "Active" if active else "Inactive"
         await self._cameras.set_status(camera_id, new_status)
         camera.status = new_status
@@ -107,10 +148,69 @@ class CameraService:
         log.info("camera.status_changed", camera_id=str(camera_id), status=new_status)
         return camera
 
+    # ── Mandatory PPE resolution ────────────────────────────────────────────
+
+    @staticmethod
+    def _compute_enforced(zone_required_ppe: list[str] | None, ppe_overrides: dict) -> list[str]:
+        """Pure computation, no DB access — a code present in the camera's
+        ppe_overrides wins over its zone's required_ppe_types for that code;
+        codes not overridden fall back to the zone's list."""
+        zone_required = set(zone_required_ppe or _DEFAULT_ZONE_PPE)
+        overrides = ppe_overrides or {}
+        enforced = (zone_required - {c for c, v in overrides.items() if v is False}) | \
+                   {c for c, v in overrides.items() if v is True}
+        return sorted(enforced)
+
+    async def resolve_enforced_ppe(self, camera: CameraEntity, db) -> list[str]:
+        """Single-camera version — used by create/get/update/status endpoints
+        (N=1, a one-off query is fine there). List endpoints use
+        resolve_enforced_ppe_batch below instead — see its docstring."""
+        from sqlalchemy import select
+        from src.shared.database.models import Zone, ZoneConfig
+        from src.shared.database.pid import to_pk
+
+        zone_pk = await to_pk(db, Zone, camera.zone_id)
+        config = (await db.execute(
+            select(ZoneConfig).where(ZoneConfig.zone_id == zone_pk)
+        )).scalar_one_or_none()
+        return self._compute_enforced(config.required_ppe_types if config else None, camera.ppe_overrides)
+
+    async def resolve_enforced_ppe_batch(self, cameras: list[CameraEntity], db) -> dict[str, list[str]]:
+        """Batched version for list endpoints — resolves every camera's zone
+        config in 2 queries total (zone public_id -> pk, then zone configs),
+        instead of 2 queries PER camera (an N+1 that scales with page size).
+        Returns {camera.id (public_id): enforced_ppe_list}."""
+        from sqlalchemy import select
+        from src.shared.database.models import Zone, ZoneConfig
+
+        zone_ids = list({c.zone_id for c in cameras})
+        if not zone_ids:
+            return {}
+
+        zone_rows = (await db.execute(
+            select(Zone.public_id, Zone.id).where(Zone.public_id.in_(zone_ids))
+        )).all()
+        zone_pk_by_public_id = dict(zone_rows)
+
+        config_rows = (await db.execute(
+            select(ZoneConfig.zone_id, ZoneConfig.required_ppe_types)
+            .where(ZoneConfig.zone_id.in_(zone_pk_by_public_id.values()))
+        )).all()
+        required_ppe_by_zone_pk = dict(config_rows)
+
+        result = {}
+        for camera in cameras:
+            zone_pk = zone_pk_by_public_id.get(camera.zone_id)
+            zone_required = required_ppe_by_zone_pk.get(zone_pk)
+            result[camera.id] = self._compute_enforced(zone_required, camera.ppe_overrides)
+        return result
+
     # ── Delete ─────────────────────────────────────────────────────────────
 
-    async def delete_camera(self, camera_id: UUID, enterprise_id: UUID) -> None:
-        await self.get_camera(camera_id, enterprise_id)
+    async def delete_camera(
+        self, camera_id: str, enterprise_id: str, scope: ScopeFilter | None = None,
+    ) -> None:
+        await self.get_camera(camera_id, enterprise_id, scope)
         await self._cameras.delete(camera_id, enterprise_id)
         log.info("camera.deleted", camera_id=str(camera_id))
 
@@ -147,8 +247,10 @@ class CameraService:
 
     # ── Health ─────────────────────────────────────────────────────────────
 
-    async def get_camera_health(self, camera_id: UUID, enterprise_id: UUID) -> dict:
-        camera = await self.get_camera(camera_id, enterprise_id)
+    async def get_camera_health(
+        self, camera_id: str, enterprise_id: str, scope: ScopeFilter | None = None,
+    ) -> dict:
+        camera = await self.get_camera(camera_id, enterprise_id, scope)
         probe = await self.test_rtsp_connection(camera.rtsp_url)
         return {
             "camera_id": str(camera_id),
@@ -171,7 +273,8 @@ class CameraService:
         # Pick worker with fewest cameras
         counts = []
         for w in workers:
-            count = await self._cameras.count_by_worker(w.id)
+            worker_pk = await self._workers.get_internal_id(w.id)
+            count = await self._cameras.count_by_worker(worker_pk)
             counts.append((count, w))
 
         counts.sort(key=lambda x: x[0])

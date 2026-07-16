@@ -1,14 +1,27 @@
 """
 WorkerService — heartbeat, registry, camera-config dispatch.
 """
-from uuid import UUID
-
 import structlog
 
 from src.modules.worker.domain.entities import WorkerEntity
 from src.modules.worker.infrastructure.repositories import WorkerRepository
 
 log = structlog.get_logger()
+
+_DEFAULT_ZONE_PPE = ["helmet", "vest"]
+
+
+def _resolve_ppe_required(cam, config) -> list[str]:
+    """Effective mandatory-PPE list sent to the AI worker: a code in the
+    camera's ppe_overrides wins over its zone's required_ppe_types for that
+    code; codes not overridden fall back to the zone's list (or the
+    platform default if the zone somehow has no config row)."""
+    zone_required = set((config.required_ppe_types if config else _DEFAULT_ZONE_PPE) or [])
+    overrides = getattr(cam, "ppe_overrides", None) or {}
+
+    enforced = (zone_required - {c for c, v in overrides.items() if v is False}) | \
+               {c for c, v in overrides.items() if v is True}
+    return sorted(enforced)
 
 
 class WorkerService:
@@ -18,7 +31,7 @@ class WorkerService:
 
     async def heartbeat(
         self,
-        enterprise_id: UUID,
+        enterprise_id: str,
         worker_id: str,
         hostname: str | None,
         model_version: str | None,
@@ -34,26 +47,27 @@ class WorkerService:
         log.debug("worker.heartbeat", worker_id=worker_id)
         return worker
 
-    async def list_workers(self, enterprise_id: UUID) -> list[WorkerEntity]:
+    async def list_workers(self, enterprise_id: str) -> list[WorkerEntity]:
         return await self._repo.list_all(enterprise_id)
 
     async def get_worker_cameras_by_business_id(self, worker_id: str, db) -> list:
         """
-        Resolve the AI Worker's business id (e.g. "worker-1") to its DB row,
-        then return cameras + zone configs assigned to it.
+        Resolve the AI Worker's business id (e.g. "worker-1") to its internal
+        integer id, then return cameras + zone configs assigned to it.
         """
-        worker = await self._repo.get_by_worker_id(worker_id)
-        if not worker:
+        worker_db_id = await self._repo.get_internal_id_by_worker_id(worker_id)
+        if not worker_db_id:
             return []
-        return await self.get_worker_cameras(worker.id, db)
+        return await self.get_worker_cameras(worker_db_id, db)
 
-    async def get_worker_cameras(self, worker_db_id: UUID, db) -> list:
+    async def get_worker_cameras(self, worker_db_id: int, db) -> list:
         """
         Return cameras + zone configs assigned to this worker.
         Used by the AI Worker on startup to know what to watch.
         """
         from src.modules.camera.infrastructure.repositories import CameraRepository
-        from src.shared.database.models import ZoneConfig
+        from src.shared.database.models import Zone, ZoneConfig
+        from src.shared.database.pid import to_pk
         from sqlalchemy import select
 
         cam_repo = CameraRepository(db)
@@ -61,9 +75,12 @@ class WorkerService:
 
         result = []
         for cam in cameras:
-            # Fetch zone config for this camera's zone
+            # Fetch zone config for this camera's zone — cam.zone_id is the
+            # zone's public_id; ZoneConfig.zone_id is the internal FK, so
+            # resolve before querying.
+            zone_pk = await to_pk(db, Zone, cam.zone_id)
             config_result = await db.execute(
-                select(ZoneConfig).where(ZoneConfig.zone_id == cam.zone_id)
+                select(ZoneConfig).where(ZoneConfig.zone_id == zone_pk)
             )
             config = config_result.scalar_one_or_none()
 
@@ -85,7 +102,7 @@ class WorkerService:
                     "shoes_threshold": config.shoes_threshold if config else 0.70,
                     "mask_threshold": config.mask_threshold if config else 0.75,
                     "frame_sample_fps": config.frame_sample_fps if config else 2,
-                    "ppe_required": config.ppe_required if config else ["helmet", "vest"],
+                    "ppe_required": _resolve_ppe_required(cam, config),
                     "cooldown_seconds": config.cooldown_seconds if config else 120,
                     "required_consecutive_frames": config.required_consecutive_frames if config else 3,
                     "low_confidence_floor": config.low_confidence_floor if config else 0.40,

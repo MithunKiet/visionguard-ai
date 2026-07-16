@@ -1,14 +1,13 @@
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import UUID
 
 
-@dataclass
+@dataclass(kw_only=True)
 class OccupancyLogEntity:
-    id: UUID
-    enterprise_id: UUID
-    zone_id: UUID
-    camera_id: UUID
+    enterprise_id: str
+    zone_id: str
+    camera_id: str
     current_count: int
-    shift_id: UUID | None
     timestamp: datetime
+    id: str | None = None  # public_id — unset until persisted
+    shift_id: str | None = None

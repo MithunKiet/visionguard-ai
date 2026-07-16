@@ -1,5 +1,3 @@
-from uuid import UUID
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,10 +8,11 @@ from src.modules.factory.infrastructure.repositories import FactoryRepository
 from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import AuthUser, get_current_user, require_roles
+from src.shared.security.scope import get_scope
 
 router = APIRouter(prefix="/factories", tags=["Factories"])
 
-_ADMIN_ROLES = ("SUPER_ADMIN", "HO_ADMIN", "FACTORY_MANAGER")
+_ADMIN_ROLES = ("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER")
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> FactoryService:
@@ -25,7 +24,7 @@ async def list_factories(
     user: AuthUser = Depends(get_current_user),
     svc: FactoryService = Depends(_get_service),
 ):
-    factories = await svc.list_factories(UUID(user.enterprise_id))
+    factories = await svc.list_factories(user.enterprise_id, get_scope(user))
     return ApiResponse(data=[svc.to_dict(f) for f in factories])
 
 
@@ -37,11 +36,11 @@ async def create_factory(
     db: AsyncSession = Depends(get_db),
 ):
     factory = await svc.create_factory(
-        UUID(user.enterprise_id), body.name, body.code, body.location, body.plant_head_id
+        user.enterprise_id, body.name, body.code, body.location, body.plant_head_id
     )
     await AuditService(db).record(
-        enterprise_id=UUID(user.enterprise_id),
-        user_id=UUID(user.user_id),
+        enterprise_id=user.enterprise_id,
+        user_id=user.user_id,
         action="FACTORY_CREATED",
         entity_type="factory",
         entity_id=factory.id,
@@ -52,28 +51,28 @@ async def create_factory(
 
 @router.get("/{factory_id}", response_model=ApiResponse[dict], summary="Get factory")
 async def get_factory(
-    factory_id: UUID,
+    factory_id: str,
     user: AuthUser = Depends(get_current_user),
     svc: FactoryService = Depends(_get_service),
 ):
-    factory = await svc.get_factory(factory_id, UUID(user.enterprise_id))
+    factory = await svc.get_factory(factory_id, user.enterprise_id)
     return ApiResponse(data=svc.to_dict(factory))
 
 
 @router.put("/{factory_id}", response_model=ApiResponse[dict], summary="Update factory")
 async def update_factory(
-    factory_id: UUID,
+    factory_id: str,
     body: UpdateFactoryRequest,
     user: AuthUser = Depends(require_roles(*_ADMIN_ROLES)),
     svc: FactoryService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
     factory = await svc.update_factory(
-        factory_id, UUID(user.enterprise_id), **body.model_dump(exclude_none=True)
+        factory_id, user.enterprise_id, **body.model_dump(exclude_none=True)
     )
     await AuditService(db).record(
-        enterprise_id=UUID(user.enterprise_id),
-        user_id=UUID(user.user_id),
+        enterprise_id=user.enterprise_id,
+        user_id=user.user_id,
         action="FACTORY_UPDATED",
         entity_type="factory",
         entity_id=factory_id,
@@ -84,15 +83,15 @@ async def update_factory(
 
 @router.delete("/{factory_id}", response_model=ApiResponse[None], summary="Delete factory")
 async def delete_factory(
-    factory_id: UUID,
-    user: AuthUser = Depends(require_roles("SUPER_ADMIN", "HO_ADMIN")),
+    factory_id: str,
+    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN")),
     svc: FactoryService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
-    await svc.delete_factory(factory_id, UUID(user.enterprise_id))
+    await svc.delete_factory(factory_id, user.enterprise_id)
     await AuditService(db).record(
-        enterprise_id=UUID(user.enterprise_id),
-        user_id=UUID(user.user_id),
+        enterprise_id=user.enterprise_id,
+        user_id=user.user_id,
         action="FACTORY_DELETED",
         entity_type="factory",
         entity_id=factory_id,

@@ -1,5 +1,4 @@
 from datetime import datetime
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +8,7 @@ from src.modules.ppe.infrastructure.repositories import ViolationRepository
 from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse, MetaResponse
 from src.shared.security.dependencies import AuthUser, get_current_user
+from src.shared.security.scope import get_scope
 import math
 
 router = APIRouter(prefix="/violations", tags=["PPE Violations"])
@@ -20,8 +20,8 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> PPEService:
 
 @router.get("", response_model=ApiResponse[list], summary="List violations")
 async def list_violations(
-    zone_id: UUID | None = None,
-    camera_id: UUID | None = None,
+    zone_id: str | None = None,
+    camera_id: str | None = None,
     violation_type: str | None = None,
     from_dt: datetime | None = Query(None, alias="from"),
     to_dt: datetime | None = Query(None, alias="to"),
@@ -30,11 +30,11 @@ async def list_violations(
     user: AuthUser = Depends(get_current_user),
     svc: PPEService = Depends(_get_service),
 ):
-    from uuid import UUID as _UUID
     items, total = await svc.list_violations(
-        _UUID(user.enterprise_id),
+        user.enterprise_id,
         zone_id, camera_id, violation_type,
         from_dt, to_dt, page, page_size,
+        get_scope(user),
     )
     return ApiResponse(
         data=items,
@@ -49,10 +49,9 @@ async def list_violations(
 
 @router.get("/{violation_id}", response_model=ApiResponse[dict], summary="Get violation detail")
 async def get_violation(
-    violation_id: UUID,
+    violation_id: str,
     user: AuthUser = Depends(get_current_user),
     svc: PPEService = Depends(_get_service),
 ):
-    from uuid import UUID as _UUID
-    item = await svc.get_violation(violation_id, _UUID(user.enterprise_id))
+    item = await svc.get_violation(violation_id, user.enterprise_id, get_scope(user))
     return ApiResponse(data=item)

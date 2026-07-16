@@ -89,7 +89,6 @@ async def _route_event(routing_key: str, body: dict) -> None:
 
 
 async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
-    from uuid import UUID
     from src.shared.database.session import AsyncSessionFactory
     from src.modules.ppe.application.services import PPEService
     from src.modules.ppe.infrastructure.repositories import ViolationRepository
@@ -105,17 +104,17 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
             from datetime import datetime, timezone
             from src.modules.shifts.application.services import ShiftService
             shift = await ShiftService(db).find_active_for_factory(
-                UUID(body["enterprise_id"]), UUID(body["factory_id"]), datetime.now(timezone.utc)
+                body["enterprise_id"], body["factory_id"], datetime.now(timezone.utc)
             )
             if shift:
-                body["shift_id"] = str(shift.id)
+                body["shift_id"] = shift.public_id
 
         ppe_svc = PPEService(ViolationRepository(db), db)
         violation = await ppe_svc.handle_violation_event(routing_key, body)
 
         await manager.broadcast(str(violation.enterprise_id), {
             "type": "violation.created",
-            "data": await ppe_svc.enrich(violation),
+            "data": ppe_svc.enrich(violation),
         })
 
         # Maintenance mode: record the violation (above) but never alert/notify
@@ -125,7 +124,7 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
             return
 
         # factory_id required for alert; AI worker must include it in the event payload
-        factory_id = UUID(body["factory_id"]) if body.get("factory_id") else violation.zone_id
+        factory_id = body["factory_id"] if body.get("factory_id") else violation.zone_id
         alert_svc = AlertService(AlertRepository(db))
         alert = await alert_svc.create_from_violation(violation, factory_id)
 
@@ -166,7 +165,6 @@ async def _handle_occupancy_updated(body: dict) -> None:
 
 
 async def _handle_overcrowding(body: dict) -> None:
-    from uuid import UUID
     from src.shared.database.session import AsyncSessionFactory
     from src.modules.alerts.application.services import AlertService
     from src.modules.alerts.infrastructure.repositories import AlertRepository
@@ -179,16 +177,16 @@ async def _handle_overcrowding(body: dict) -> None:
 
     async with AsyncSessionFactory() as db:
         from src.modules.maintenance.application.services import MaintenanceService
-        if await MaintenanceService.is_in_maintenance(db, UUID(body["camera_id"])):
+        if await MaintenanceService.is_in_maintenance(db, body["camera_id"]):
             log.info("alert.suppressed_maintenance", camera_id=body["camera_id"])
             return
 
         alert_svc = AlertService(AlertRepository(db))
         alert = await alert_svc.create_event_alert(
-            enterprise_id=UUID(body["enterprise_id"]),
-            factory_id=UUID(body["factory_id"]),
-            zone_id=UUID(body["zone_id"]),
-            camera_id=UUID(body["camera_id"]),
+            enterprise_id=body["enterprise_id"],
+            factory_id=body["factory_id"],
+            zone_id=body["zone_id"],
+            camera_id=body["camera_id"],
             alert_type="OVERCROWDING",
             severity="High",
         )
@@ -215,7 +213,6 @@ async def _handle_camera_spec_mismatch(body: dict) -> None:
     violation, so it's Low severity and skips email/Slack notification —
     it still shows up on the dashboard and in the audit trail with the
     actual vs. expected numbers for whoever manages the cameras."""
-    from uuid import UUID
     from src.shared.database.session import AsyncSessionFactory
     from src.modules.alerts.application.services import AlertService
     from src.modules.alerts.infrastructure.repositories import AlertRepository
@@ -230,21 +227,21 @@ async def _handle_camera_spec_mismatch(body: dict) -> None:
     async with AsyncSessionFactory() as db:
         alert_svc = AlertService(AlertRepository(db))
         alert = await alert_svc.create_event_alert(
-            enterprise_id=UUID(body["enterprise_id"]),
-            factory_id=UUID(body["factory_id"]),
-            zone_id=UUID(body["zone_id"]),
-            camera_id=UUID(body["camera_id"]),
+            enterprise_id=body["enterprise_id"],
+            factory_id=body["factory_id"],
+            zone_id=body["zone_id"],
+            camera_id=body["camera_id"],
             alert_type="CAMERA_SPEC_MISMATCH",
             severity="Low",
             cooldown_seconds=600,
         )
 
         await AuditService(db).record(
-            enterprise_id=UUID(body["enterprise_id"]),
+            enterprise_id=body["enterprise_id"],
             user_id=None,
             action="CAMERA_SPEC_MISMATCH",
             entity_type="camera",
-            entity_id=UUID(body["camera_id"]),
+            entity_id=body["camera_id"],
             new_value={
                 "actual_fps": body.get("actual_fps"),
                 "actual_resolution": f"{body.get('actual_width')}x{body.get('actual_height')}",
@@ -274,7 +271,6 @@ async def _handle_camera_reconnected(body: dict) -> None:
 
 
 async def _set_camera_status(body: dict, status: str) -> None:
-    from uuid import UUID
     from src.shared.database.session import AsyncSessionFactory
     from src.modules.camera.infrastructure.repositories import CameraRepository
     from src.modules.realtime.manager import manager
@@ -285,7 +281,7 @@ async def _set_camera_status(body: dict, status: str) -> None:
         return
 
     async with AsyncSessionFactory() as db:
-        await CameraRepository(db).set_status(UUID(camera_id), status)
+        await CameraRepository(db).set_status(camera_id, status)
 
     if enterprise_id:
         await manager.broadcast(enterprise_id, {

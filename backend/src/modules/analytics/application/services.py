@@ -3,12 +3,12 @@ AnalyticsService — aggregate safety KPIs from violations, alerts, and
 occupancy logs. Read-only; every query is scoped by enterprise_id.
 """
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
 
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.database.models import Alert, OccupancyLog, PPEViolation, Zone
+from src.shared.database.models import Alert, Enterprise, OccupancyLog, PPEViolation, Zone
+from src.shared.database.pid import to_pk
 
 # Weight of each severity when computing the safety score penalty
 _SEVERITY_WEIGHTS = {"Critical": 10, "High": 5, "Medium": 2, "Low": 1}
@@ -27,25 +27,26 @@ class AnalyticsService:
 
     async def violations(
         self,
-        enterprise_id: UUID,
+        enterprise_id: str,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
-        zone_id: UUID | None = None,
+        zone_id: str | None = None,
     ) -> dict:
         """Violation counts by day, by type, and by zone over the range."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
+        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         base = select(PPEViolation).where(
-            PPEViolation.enterprise_id == enterprise_id,
-            PPEViolation.created_on >= from_dt,
-            PPEViolation.created_on <= to_dt,
+            PPEViolation.enterprise_id == ent_pk,
+            PPEViolation.created_at >= from_dt,
+            PPEViolation.created_at <= to_dt,
             PPEViolation.is_false_positive.is_(False),
         )
         if zone_id:
-            base = base.where(PPEViolation.zone_id == zone_id)
+            base = base.where(PPEViolation.zone_id == await to_pk(self._db, Zone, zone_id))
         sub = base.subquery()
 
         by_day = (await self._db.execute(
-            select(func.date_trunc("day", sub.c.created_on).label("day"), func.count())
+            select(func.date_trunc("day", sub.c.created_at).label("day"), func.count())
             .group_by("day").order_by("day")
         )).all()
 
@@ -72,13 +73,14 @@ class AnalyticsService:
 
     async def occupancy(
         self,
-        enterprise_id: UUID,
+        enterprise_id: str,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
-        zone_id: UUID | None = None,
+        zone_id: str | None = None,
     ) -> dict:
         """Average and peak occupancy per zone over the range."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
+        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         q = (
             select(
                 Zone.name,
@@ -88,14 +90,14 @@ class AnalyticsService:
             )
             .join(Zone, Zone.id == OccupancyLog.zone_id)
             .where(
-                OccupancyLog.enterprise_id == enterprise_id,
+                OccupancyLog.enterprise_id == ent_pk,
                 OccupancyLog.timestamp >= from_dt,
                 OccupancyLog.timestamp <= to_dt,
             )
             .group_by(Zone.name, Zone.max_occupancy)
         )
         if zone_id:
-            q = q.where(OccupancyLog.zone_id == zone_id)
+            q = q.where(OccupancyLog.zone_id == await to_pk(self._db, Zone, zone_id))
         rows = (await self._db.execute(q)).all()
         return {
             "from": from_dt.isoformat(),
@@ -113,13 +115,14 @@ class AnalyticsService:
 
     async def compliance(
         self,
-        enterprise_id: UUID,
+        enterprise_id: str,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
     ) -> dict:
         """Alert-resolution compliance: how many alerts were resolved, and how
         many within their SLA window."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
+        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         row = (await self._db.execute(
             select(
                 func.count(),
@@ -134,9 +137,9 @@ class AnalyticsService:
                     else_=0,
                 )),
             ).where(
-                Alert.enterprise_id == enterprise_id,
-                Alert.created_on >= from_dt,
-                Alert.created_on <= to_dt,
+                Alert.enterprise_id == ent_pk,
+                Alert.created_at >= from_dt,
+                Alert.created_at <= to_dt,
             )
         )).one()
         total, resolved, within_sla = row[0], int(row[1] or 0), int(row[2] or 0)
@@ -152,19 +155,20 @@ class AnalyticsService:
 
     async def safety_score(
         self,
-        enterprise_id: UUID,
+        enterprise_id: str,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
     ) -> dict:
         """0–100 score: starts at 100 and subtracts severity-weighted alert
         counts normalized per day (min 0). A quiet factory scores 100."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
+        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         rows = (await self._db.execute(
             select(Alert.severity, func.count())
             .where(
-                Alert.enterprise_id == enterprise_id,
-                Alert.created_on >= from_dt,
-                Alert.created_on <= to_dt,
+                Alert.enterprise_id == ent_pk,
+                Alert.created_at >= from_dt,
+                Alert.created_at <= to_dt,
                 Alert.status != "FalsePositive",
             )
             .group_by(Alert.severity)

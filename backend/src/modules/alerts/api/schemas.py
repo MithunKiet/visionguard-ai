@@ -1,4 +1,3 @@
-from uuid import UUID
 from pydantic import BaseModel
 
 
@@ -34,4 +33,4 @@ class FalsePositiveRequest(BaseModel):
 
 
 class AssignRequest(BaseModel):
-    user_id: UUID
+    user_id: str

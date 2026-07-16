@@ -1,5 +1,3 @@
-from uuid import UUID
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,10 +8,11 @@ from src.modules.department.infrastructure.repositories import DepartmentReposit
 from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import AuthUser, get_current_user, require_roles
+from src.shared.security.scope import get_scope
 
 router = APIRouter(prefix="/departments", tags=["Departments"])
 
-_ADMIN_ROLES = ("SUPER_ADMIN", "HO_ADMIN", "FACTORY_MANAGER")
+_ADMIN_ROLES = ("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER")
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> DepartmentService:
@@ -22,11 +21,13 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> DepartmentService:
 
 @router.get("", response_model=ApiResponse[list], summary="List departments (with factory name)")
 async def list_departments(
-    factory_id: UUID | None = None,
+    factory_id: str | None = None,
     user: AuthUser = Depends(get_current_user),
     svc: DepartmentService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.list_departments_with_factory_name(UUID(user.enterprise_id), factory_id))
+    return ApiResponse(data=await svc.list_departments_with_factory_name(
+        user.enterprise_id, factory_id, get_scope(user)
+    ))
 
 
 @router.post("", response_model=ApiResponse[dict], summary="Create department")
@@ -37,11 +38,11 @@ async def create_department(
     db: AsyncSession = Depends(get_db),
 ):
     department = await svc.create_department(
-        UUID(user.enterprise_id), body.factory_id, body.name, body.code, body.head_user_id
+        user.enterprise_id, body.factory_id, body.name, body.code, body.head_user_id
     )
     await AuditService(db).record(
-        enterprise_id=UUID(user.enterprise_id),
-        user_id=UUID(user.user_id),
+        enterprise_id=user.enterprise_id,
+        user_id=user.user_id,
         action="DEPARTMENT_CREATED",
         entity_type="department",
         entity_id=department.id,
@@ -52,28 +53,28 @@ async def create_department(
 
 @router.get("/{department_id}", response_model=ApiResponse[dict], summary="Get department")
 async def get_department(
-    department_id: UUID,
+    department_id: str,
     user: AuthUser = Depends(get_current_user),
     svc: DepartmentService = Depends(_get_service),
 ):
-    department = await svc.get_department(department_id, UUID(user.enterprise_id))
+    department = await svc.get_department(department_id, user.enterprise_id)
     return ApiResponse(data=svc.to_dict(department))
 
 
 @router.put("/{department_id}", response_model=ApiResponse[dict], summary="Update department")
 async def update_department(
-    department_id: UUID,
+    department_id: str,
     body: UpdateDepartmentRequest,
     user: AuthUser = Depends(require_roles(*_ADMIN_ROLES)),
     svc: DepartmentService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
     department = await svc.update_department(
-        department_id, UUID(user.enterprise_id), **body.model_dump(exclude_none=True)
+        department_id, user.enterprise_id, **body.model_dump(exclude_none=True)
     )
     await AuditService(db).record(
-        enterprise_id=UUID(user.enterprise_id),
-        user_id=UUID(user.user_id),
+        enterprise_id=user.enterprise_id,
+        user_id=user.user_id,
         action="DEPARTMENT_UPDATED",
         entity_type="department",
         entity_id=department_id,
@@ -84,15 +85,15 @@ async def update_department(
 
 @router.delete("/{department_id}", response_model=ApiResponse[None], summary="Delete department")
 async def delete_department(
-    department_id: UUID,
-    user: AuthUser = Depends(require_roles("SUPER_ADMIN", "HO_ADMIN")),
+    department_id: str,
+    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN")),
     svc: DepartmentService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
-    await svc.delete_department(department_id, UUID(user.enterprise_id))
+    await svc.delete_department(department_id, user.enterprise_id)
     await AuditService(db).record(
-        enterprise_id=UUID(user.enterprise_id),
-        user_id=UUID(user.user_id),
+        enterprise_id=user.enterprise_id,
+        user_id=user.user_id,
         action="DEPARTMENT_DELETED",
         entity_type="department",
         entity_id=department_id,

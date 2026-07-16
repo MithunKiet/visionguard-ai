@@ -1,5 +1,3 @@
-from uuid import UUID
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,11 +17,11 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> NotificationService:
 
 @router.get("", response_model=ApiResponse[list], summary="List configured notification recipients")
 async def list_recipients(
-    zone_id: UUID | None = None,
+    zone_id: str | None = None,
     user: AuthUser = Depends(get_current_user),
     svc: NotificationService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.list_recipients(UUID(user.enterprise_id), zone_id))
+    return ApiResponse(data=await svc.list_recipients(user.enterprise_id, zone_id))
 
 
 @router.post(
@@ -32,20 +30,20 @@ async def list_recipients(
 )
 async def add_recipient(
     body: AddRecipientRequest,
-    user: AuthUser = Depends(require_roles("SUPER_ADMIN", "HO_ADMIN", "FACTORY_MANAGER")),
+    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER")),
     svc: NotificationService = Depends(_get_service),
 ):
     return ApiResponse(data=await svc.add_recipient(
-        UUID(user.enterprise_id), body.user_id, body.zone_id,
+        user.enterprise_id, body.user_id, body.zone_id,
         body.level, body.notify_email, body.notify_desktop,
     ))
 
 
 @router.delete("/{recipient_id}", response_model=ApiResponse[dict], summary="Remove a recipient")
 async def remove_recipient(
-    recipient_id: UUID,
-    user: AuthUser = Depends(require_roles("SUPER_ADMIN", "HO_ADMIN", "FACTORY_MANAGER")),
+    recipient_id: str,
+    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER")),
     svc: NotificationService = Depends(_get_service),
 ):
-    await svc.remove_recipient(recipient_id, UUID(user.enterprise_id))
+    await svc.remove_recipient(recipient_id, user.enterprise_id)
     return ApiResponse(data={"deleted": True})

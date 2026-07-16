@@ -1,6 +1,5 @@
 import math
 from datetime import datetime
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +9,7 @@ from src.modules.occupancy.infrastructure.repositories import OccupancyRepositor
 from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse, MetaResponse
 from src.shared.security.dependencies import AuthUser, get_current_user
+from src.shared.security.scope import get_scope
 
 router = APIRouter(prefix="/occupancy", tags=["Occupancy"])
 
@@ -23,12 +23,12 @@ async def current_occupancy(
     user: AuthUser = Depends(get_current_user),
     svc: OccupancyService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.current(UUID(user.enterprise_id)))
+    return ApiResponse(data=await svc.current(user.enterprise_id, get_scope(user)))
 
 
 @router.get("/history", response_model=ApiResponse[list], summary="Occupancy log history")
 async def occupancy_history(
-    zone_id: UUID | None = None,
+    zone_id: str | None = None,
     from_dt: datetime | None = Query(None, alias="from"),
     to_dt: datetime | None = Query(None, alias="to"),
     page: int = Query(1, ge=1),
@@ -37,7 +37,7 @@ async def occupancy_history(
     svc: OccupancyService = Depends(_get_service),
 ):
     items, total = await svc.history(
-        UUID(user.enterprise_id), zone_id, from_dt, to_dt, page, page_size
+        user.enterprise_id, zone_id, from_dt, to_dt, page, page_size, get_scope(user)
     )
     return ApiResponse(
         data=items,

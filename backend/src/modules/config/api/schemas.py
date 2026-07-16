@@ -10,7 +10,7 @@ class UpdateZoneConfigRequest(BaseModel):
     mask_threshold: float | None = Field(None, ge=0.1, le=1.0)
     max_occupancy: int | None = Field(None, ge=1)
     frame_sample_fps: int | None = Field(None, ge=1, le=25)
-    ppe_required: list[str] | None = None
+    required_ppe_types: list[str] | None = None
     cooldown_seconds: int | None = Field(None, ge=0)
     required_consecutive_frames: int | None = Field(None, ge=1, le=30)
     low_confidence_floor: float | None = Field(None, ge=0.0, le=1.0)

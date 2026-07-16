@@ -1,5 +1,4 @@
 from datetime import time
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -7,7 +6,7 @@ _VALID_DAYS = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"}
 
 
 class CreateShiftRequest(BaseModel):
-    factory_id: UUID
+    factory_id: str
     name: str = Field(min_length=1, max_length=100)
     start_time: time
     end_time: time

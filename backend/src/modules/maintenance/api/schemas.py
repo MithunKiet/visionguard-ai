@@ -1,14 +1,13 @@
 from datetime import date, datetime
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
 class ScheduleMaintenanceRequest(BaseModel):
-    camera_id: UUID
+    camera_id: str
     scheduled_date: date
     maintenance_type: str = Field(min_length=1, max_length=50)
-    assigned_to: UUID | None = None
+    assigned_to: str | None = None
     notes: str | None = None
 
 

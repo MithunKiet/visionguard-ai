@@ -2,14 +2,13 @@
 OccupancyService — persist occupancy readings from RabbitMQ events, serve
 current + historical occupancy queries.
 """
-import uuid
 from datetime import datetime, timezone
-from uuid import UUID
 
 import structlog
 
 from src.modules.occupancy.domain.entities import OccupancyLogEntity
 from src.modules.occupancy.infrastructure.repositories import OccupancyRepository
+from src.shared.security.scope import ScopeFilter
 
 log = structlog.get_logger()
 
@@ -23,12 +22,11 @@ class OccupancyService:
 
     async def handle_occupancy_event(self, body: dict) -> OccupancyLogEntity:
         entity = OccupancyLogEntity(
-            id=uuid.uuid4(),
-            enterprise_id=UUID(body["enterprise_id"]),
-            zone_id=UUID(body["zone_id"]),
-            camera_id=UUID(body["camera_id"]),
+            enterprise_id=body["enterprise_id"],
+            zone_id=body["zone_id"],
+            camera_id=body["camera_id"],
             current_count=int(body.get("count", 0)),
-            shift_id=UUID(body["shift_id"]) if body.get("shift_id") else None,
+            shift_id=body.get("shift_id"),
             timestamp=datetime.now(timezone.utc),
         )
         saved = await self._repo.create(entity)
@@ -37,30 +35,31 @@ class OccupancyService:
 
     # ── API ────────────────────────────────────────────────────────────────
 
-    async def current(self, enterprise_id: UUID) -> list[dict]:
-        return await self._repo.current_per_zone(enterprise_id)
+    async def current(self, enterprise_id: str, scope: ScopeFilter | None = None) -> list[dict]:
+        return await self._repo.current_per_zone(enterprise_id, scope)
 
     async def history(
         self,
-        enterprise_id: UUID,
-        zone_id: UUID | None = None,
+        enterprise_id: str,
+        zone_id: str | None = None,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
         page: int = 1,
         page_size: int = 50,
+        scope: ScopeFilter | None = None,
     ) -> tuple[list[dict], int]:
         items, total = await self._repo.history(
-            enterprise_id, zone_id, from_dt, to_dt, page, page_size
+            enterprise_id, zone_id, from_dt, to_dt, page, page_size, scope
         )
         return [self.to_dict(o) for o in items], total
 
     @staticmethod
     def to_dict(o: OccupancyLogEntity) -> dict:
         return {
-            "id": str(o.id),
-            "zone_id": str(o.zone_id),
-            "camera_id": str(o.camera_id),
+            "id": o.id,
+            "zone_id": o.zone_id,
+            "camera_id": o.camera_id,
             "current_count": o.current_count,
-            "shift_id": str(o.shift_id) if o.shift_id else None,
+            "shift_id": o.shift_id,
             "timestamp": o.timestamp.isoformat(),
         }
