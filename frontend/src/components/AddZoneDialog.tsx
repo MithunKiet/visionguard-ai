@@ -3,14 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dropdown } from "semantic-ui-react";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { api } from "../api/client";
 import { SearchableSelect } from "./SearchableSelect";
+import { DEFAULT_ZONE_PPE_CODES, usePpeTypes } from "./ppeItems";
 
 interface AddZoneDialogProps {
   open: boolean;
@@ -27,6 +31,7 @@ const EMPTY_FORM = {
   max_occupancy: "10",
   zone_type: "Production",
   is_restricted: false,
+  required_ppe_types: DEFAULT_ZONE_PPE_CODES as string[],
 };
 
 export function AddZoneDialog({ open, onClose }: AddZoneDialogProps) {
@@ -46,16 +51,19 @@ export function AddZoneDialog({ open, onClose }: AddZoneDialogProps) {
     enabled: open && !!form.factory_id,
   });
 
+  const { data: ppeTypes } = usePpeTypes();
+
   const createMutation = useMutation({
     mutationFn: async () =>
       (await api.post("/zones", {
-        factory_id: form.factory_id,
+        // factory_id is derived server-side from department_id — not sent.
         department_id: form.department_id,
         name: form.name.trim(),
         code: form.code.trim(),
         max_occupancy: Number(form.max_occupancy),
         zone_type: form.zone_type,
         is_restricted: form.is_restricted,
+        required_ppe_types: form.required_ppe_types,
       })).data.data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["zones"] });
@@ -147,9 +155,45 @@ export function AddZoneDialog({ open, onClose }: AddZoneDialogProps) {
             </div>
           </Stack>
 
+          <div>
+            <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+              Mandatory PPE
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+              Cameras in this zone will only be flagged for missing items checked here — a camera
+              can still override this individually later.
+            </Typography>
+            <Stack direction="row" flexWrap="wrap">
+              {(ppeTypes ?? []).map((t) => (
+                <FormControlLabel
+                  key={t.code}
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={form.required_ppe_types.includes(t.code)}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          required_ppe_types: e.target.checked
+                            ? [...f.required_ppe_types, t.code]
+                            : f.required_ppe_types.filter((c) => c !== t.code),
+                        }))
+                      }
+                    />
+                  }
+                  label={t.name}
+                />
+              ))}
+              {ppeTypes && ppeTypes.length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  No PPE types defined yet — add one from the Zones page.
+                </Typography>
+              )}
+            </Stack>
+          </div>
+
           <Alert severity="info">
-            A default PPE config (helmet + vest required) is created automatically for this zone —
-            adjust thresholds later from Config.
+            Detection thresholds (confidence, cooldown, etc.) can be adjusted later from Config.
           </Alert>
         </Stack>
       </DialogContent>

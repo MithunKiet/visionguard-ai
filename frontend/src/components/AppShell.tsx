@@ -15,6 +15,7 @@ import Stack from "@mui/material/Stack";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import DashboardIcon from "@mui/icons-material/SpaceDashboard";
+import CorporateFareIcon from "@mui/icons-material/CorporateFare";
 import FactoryIcon from "@mui/icons-material/Factory";
 import ApartmentIcon from "@mui/icons-material/Apartment";
 import MapIcon from "@mui/icons-material/Map";
@@ -22,6 +23,7 @@ import VideocamIcon from "@mui/icons-material/Videocam";
 import GridViewIcon from "@mui/icons-material/GridView";
 import WarningIcon from "@mui/icons-material/WarningAmber";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import LogoutIcon from "@mui/icons-material/Logout";
 import CircleIcon from "@mui/icons-material/Circle";
 import { api } from "../api/client";
@@ -37,6 +39,8 @@ async function fetchBranding() {
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: <DashboardIcon /> },
+  // Platform-wide, cross-tenant master — only System Admins manage other enterprises.
+  { to: "/enterprises", label: "Enterprises", icon: <CorporateFareIcon />, roles: ["SYSTEM_ADMIN"] },
   { to: "/factories", label: "Factories", icon: <FactoryIcon /> },
   { to: "/departments", label: "Departments", icon: <ApartmentIcon /> },
   { to: "/zones", label: "Zones", icon: <MapIcon /> },
@@ -44,6 +48,12 @@ const NAV = [
   { to: "/live", label: "Live Grid", icon: <GridViewIcon /> },
   { to: "/violations", label: "Violations", icon: <WarningIcon /> },
   { to: "/alerts", label: "Alerts", icon: <NotificationsActiveIcon /> },
+  {
+    to: "/users",
+    label: "Users",
+    icon: <PeopleAltIcon />,
+    roles: ["SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER"],
+  },
 ];
 
 export function AppShell() {
@@ -144,7 +154,7 @@ export function AppShell() {
           </Stack>
         </Toolbar>
         <List sx={{ px: 1 }}>
-          {NAV.map((item) => (
+          {NAV.filter((item) => !item.roles || item.roles.some((r) => user?.roles?.includes(r))).map((item) => (
             <ListItemButton
               key={item.to}
               component={NavLink}
@@ -213,7 +223,7 @@ export function AppShell() {
             />
             {isMasterSession && <Chip size="small" color="warning" label="Master session" />}
             <Typography variant="body2" color="text.secondary">
-              {user?.name} · {user?.role}
+              {user?.name} · {user?.roles?.join(", ")}
             </Typography>
             <Box
               sx={{

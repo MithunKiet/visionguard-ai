@@ -25,7 +25,10 @@ export function useLiveFeed(maxEvents = 50) {
     let retryDelay = 2000;
 
     const connect = () => {
-      const ws = new WebSocket(`${WS_URL}/api/v1/ws/live?token=${accessToken}`);
+      // Token travels as the WebSocket subprotocol, not a `?token=` query
+      // param — keeps it out of server access logs and browser history (see
+      // backend/src/modules/realtime/routes.py).
+      const ws = new WebSocket(`${WS_URL}/api/v1/ws/live`, [accessToken]);
       wsRef.current = ws;
 
       ws.onopen = () => {

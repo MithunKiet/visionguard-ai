@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AddIcon from "@mui/icons-material/Add";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
+import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -10,9 +12,11 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { api } from "../api/client";
 import { AddCameraDialog } from "../components/AddCameraDialog";
+import { formatEnforcedPpe, usePpeTypes } from "../components/ppeItems";
 
 async function fetchCameras() {
   const resp = await api.get("/cameras");
@@ -34,11 +38,13 @@ const STATUS_COLOR: Record<string, "success" | "error" | "warning" | "default"> 
 export function Cameras() {
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
+  const [editCamera, setEditCamera] = useState<any | null>(null);
   const { data: cameras, isLoading } = useQuery({
     queryKey: ["cameras"],
     queryFn: fetchCameras,
     refetchInterval: 15000,
   });
+  const { data: ppeTypes } = usePpeTypes();
 
   const testMutation = useMutation({
     mutationFn: testConnection,
@@ -57,6 +63,7 @@ export function Cameras() {
       </Stack>
 
       <AddCameraDialog open={addOpen} onClose={() => setAddOpen(false)} />
+      <AddCameraDialog open={!!editCamera} onClose={() => setEditCamera(null)} camera={editCamera} />
 
       <Paper variant="outlined">
         <Table>
@@ -66,6 +73,7 @@ export function Cameras() {
               <TableCell>Code</TableCell>
               <TableCell>RTSP URL</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>This camera enforces</TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -78,6 +86,7 @@ export function Cameras() {
                 <TableCell>
                   <Chip size="small" label={cam.status} color={STATUS_COLOR[cam.status] ?? "default"} />
                 </TableCell>
+                <TableCell>{formatEnforcedPpe(cam.enforces, ppeTypes)}</TableCell>
                 <TableCell align="right">
                   <Button
                     size="small"
@@ -86,12 +95,17 @@ export function Cameras() {
                   >
                     Test Connection
                   </Button>
+                  <Tooltip title="Edit camera">
+                    <IconButton size="small" onClick={() => setEditCamera(cam)}>
+                      <EditOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 </TableCell>
               </TableRow>
             ))}
             {!isLoading && (cameras ?? []).length === 0 && (
               <TableRow>
-                <TableCell colSpan={5}>
+                <TableCell colSpan={6}>
                   <Typography variant="body2" color="text.secondary">
                     No cameras registered yet.
                   </Typography>

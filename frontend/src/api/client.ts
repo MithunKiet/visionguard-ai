@@ -21,23 +21,41 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-let refreshPromise: Promise<string> | null = null;
-
-async function refreshAccessToken(): Promise<string> {
-  const { refreshToken, user } = useAuthStore.getState();
+async function doRefresh(): Promise<string> {
+  const { user } = useAuthStore.getState();
+  // No body at all — the backend's RefreshRequest schema requires
+  // refresh_token if a body is sent, so `{}` would 422. Sending nothing lets
+  // FastAPI fall through to the httpOnly cookie the backend set on
+  // login/refresh, forwarded automatically via withCredentials.
   const resp = await axios.post(
     `${API_URL}/api/v1/auth/refresh`,
-    refreshToken ? { refresh_token: refreshToken } : {},
+    undefined,
     { withCredentials: true }
   );
   const data = resp.data.data;
   useAuthStore.getState().setSession({
     access_token: data.access_token,
-    refresh_token: data.refresh_token,
     user: user!,
     is_master_session: useAuthStore.getState().isMasterSession,
   });
   return data.access_token;
+}
+
+let refreshPromise: Promise<string> | null = null;
+
+// The refresh cookie is single-use/rotating (backend revokes it and issues a
+// new one on every call) — two concurrent callers would otherwise race, with
+// the second getting a 401 on the now-revoked cookie and clearing the
+// session the first call just established. Every caller (the 401 retry
+// below, and AuthBootstrap's boot-time silent refresh, which React
+// StrictMode can double-invoke in dev) shares one in-flight request instead.
+export function refreshAccessToken(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = doRefresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
 }
 
 api.interceptors.response.use(
@@ -47,12 +65,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && original && !original._retry) {
       original._retry = true;
       try {
-        if (!refreshPromise) {
-          refreshPromise = refreshAccessToken().finally(() => {
-            refreshPromise = null;
-          });
-        }
-        const token = await refreshPromise;
+        const token = await refreshAccessToken();
         original.headers = original.headers ?? {};
         (original.headers as any).Authorization = `Bearer ${token}`;
         return api(original);

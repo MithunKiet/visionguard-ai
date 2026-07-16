@@ -10,6 +10,7 @@ import { ThemeProvider } from "@mui/material/styles";
 import "semantic-ui-css/semantic.min.css";
 import { theme } from "./theme";
 import { router } from "./router";
+import { AuthBootstrap } from "./components/AuthBootstrap";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -20,7 +21,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <RouterProvider router={router} />
+        <AuthBootstrap>
+          <RouterProvider router={router} />
+        </AuthBootstrap>
       </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>
