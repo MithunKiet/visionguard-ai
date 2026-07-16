@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from src.core.lifespan import lifespan
 from src.core.exceptions import register_exception_handlers
@@ -26,6 +27,13 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
 
+    # /metrics — scraped by Prometheus (infra/prometheus/prometheus.yml).
+    # excluded_handlers keeps health checks and the metrics endpoint itself
+    # out of its own request-count/latency series.
+    Instrumentator(excluded_handlers=["/health", "/metrics"]).instrument(app).expose(
+        app, endpoint="/metrics", include_in_schema=False
+    )
+
     # Register routers
     _register_routers(app)
 
@@ -38,6 +46,8 @@ def _register_routers(app: FastAPI) -> None:
 
     # Phase 1
     from src.modules.identity.api.routes import router as identity_router
+    from src.modules.users.api.routes import router as users_router
+    from src.modules.roles.api.routes import router as roles_router
     from src.modules.camera.api.routes import router as camera_router
     from src.modules.worker.api.routes import router as worker_router
     from src.modules.ppe.api.routes import router as ppe_router
@@ -50,6 +60,8 @@ def _register_routers(app: FastAPI) -> None:
     from src.modules.department.api.routes import router as department_router
 
     app.include_router(identity_router, prefix="/api/v1")
+    app.include_router(users_router, prefix="/api/v1")
+    app.include_router(roles_router, prefix="/api/v1")
     app.include_router(camera_router, prefix="/api/v1")
     app.include_router(worker_router, prefix="/api/v1")
     app.include_router(ppe_router, prefix="/api/v1")
@@ -66,19 +78,23 @@ def _register_routers(app: FastAPI) -> None:
     from src.modules.audit.api.routes import router as audit_router
     from src.modules.shifts.api.routes import router as shifts_router
     from src.modules.maintenance.api.routes import router as maintenance_router
+    from src.modules.ppe_types.api.routes import router as ppe_types_router
 
     app.include_router(config_router, prefix="/api/v1")
     app.include_router(audit_router, prefix="/api/v1")
     app.include_router(shifts_router, prefix="/api/v1")
     app.include_router(maintenance_router, prefix="/api/v1")
+    app.include_router(ppe_types_router, prefix="/api/v1")
 
     # Phase 3 — Enterprise
     from src.modules.analytics.api.routes import router as analytics_router
     from src.modules.reports.api.routes import router as reports_router
     from src.modules.enterprise.api.routes import router as enterprise_router
+    from src.modules.enterprise.api.routes import enterprises_router
     from src.modules.onboarding.api.routes import router as onboarding_router
 
     app.include_router(analytics_router, prefix="/api/v1")
     app.include_router(reports_router, prefix="/api/v1")
+    app.include_router(enterprises_router, prefix="/api/v1")
     app.include_router(enterprise_router, prefix="/api/v1")
     app.include_router(onboarding_router, prefix="/api/v1")

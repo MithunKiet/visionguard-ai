@@ -27,7 +27,7 @@ class TestJwt:
         claims = {
             "sub": "11111111-1111-1111-1111-111111111111",
             "enterprise_id": "22222222-2222-2222-2222-222222222222",
-            "role": "SUPER_ADMIN",
+            "roles": ["SYSTEM_ADMIN"],
             "email": "admin@example.com",
         }
         claims.update(overrides)
@@ -37,7 +37,7 @@ class TestJwt:
         token = self._issue()
         payload = decode_token(token)
         assert payload["sub"] == "11111111-1111-1111-1111-111111111111"
-        assert payload["role"] == "SUPER_ADMIN"
+        assert payload["roles"] == ["SYSTEM_ADMIN"]
         assert payload["type"] == "access"
         assert "jti" in payload
         assert "exp" in payload

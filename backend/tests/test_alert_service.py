@@ -20,7 +20,7 @@ class FakeAlertRepository:
         self.alerts[entity.id] = entity
         return entity
 
-    async def get_by_id(self, alert_id, enterprise_id):
+    async def get_by_id(self, alert_id, enterprise_id, scope=None):
         alert = self.alerts.get(alert_id)
         if alert and alert.enterprise_id == enterprise_id:
             return alert
@@ -36,7 +36,7 @@ class FakeAlertRepository:
     async def next_sequence(self, enterprise_id) -> int:
         return len(self.alerts) + 1
 
-    async def transition(self, alert_id, enterprise_id, to_status, changed_by, comment=None):
+    async def transition(self, alert_id, enterprise_id, to_status, changed_by, comment=None, scope=None):
         alert = self.alerts[alert_id]
         self.history.append((alert.status, to_status, changed_by, comment))
         alert.status = to_status
@@ -61,7 +61,7 @@ def _violation(**overrides) -> ViolationEntity:
         is_false_positive=False,
         fp_reason=None,
         needs_review=False,
-        created_on=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
     )
     defaults.update(overrides)
     return ViolationEntity(**defaults)
@@ -86,7 +86,7 @@ class TestCreateFromViolation:
         assert alert.alert_type == "PPE_VIOLATION_HELMET"
         assert alert.status == "Open"
         assert alert.alert_number.startswith("ALT-")
-        assert alert.sla_due_at > alert.created_on
+        assert alert.sla_due_at > alert.created_at
 
     async def test_deduplicates_within_cooldown(self, svc):
         v = _violation()

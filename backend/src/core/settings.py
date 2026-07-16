@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 
@@ -69,6 +70,37 @@ class Settings(BaseSettings):
 
     # Delivery retry attempts for outbound notification channels (email/slack/webhook)
     NOTIFY_RETRY_ATTEMPTS: int = 3
+
+    # Fail fast rather than silently serving traffic with credentials that are
+    # publicly known from this repo's own .env.example — every value checked
+    # here ships as a documented placeholder, not a real secret.
+    @model_validator(mode="after")
+    def _guard_production_secrets(self) -> "Settings":
+        if self.ENVIRONMENT != "production":
+            return self
+
+        insecure: List[str] = []
+        if "change-me" in self.JWT_SECRET.lower() or len(self.JWT_SECRET) < 32:
+            insecure.append("JWT_SECRET (set a real random secret, e.g. `openssl rand -hex 64`)")
+        if self.WORKER_API_KEY == "dev-worker-key-change-me":
+            insecure.append("WORKER_API_KEY")
+        if "vgpass" in self.DATABASE_URL:
+            insecure.append("DATABASE_URL (still using the default 'vgpass' password)")
+        if "redispass" in self.REDIS_URL:
+            insecure.append("REDIS_URL (still using the default 'redispass' password)")
+        if "vgpass" in self.RABBITMQ_URL:
+            insecure.append("RABBITMQ_URL (still using the default 'vgpass' password)")
+        if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
+            insecure.append("MINIO_ACCESS_KEY / MINIO_SECRET_KEY")
+        if self.DEBUG:
+            insecure.append("DEBUG (must be false in production)")
+
+        if insecure:
+            raise ValueError(
+                "Refusing to start with ENVIRONMENT=production while these settings still use "
+                "insecure development defaults: " + "; ".join(insecure)
+            )
+        return self
 
 
 settings = Settings()

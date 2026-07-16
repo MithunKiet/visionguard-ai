@@ -18,8 +18,8 @@ class ConnectionManager:
     def __init__(self):
         self._rooms: dict[str, set[WebSocket]] = {}
 
-    async def connect(self, enterprise_id: str, ws: WebSocket) -> None:
-        await ws.accept()
+    async def connect(self, enterprise_id: str, ws: WebSocket, subprotocol: str | None = None) -> None:
+        await ws.accept(subprotocol=subprotocol)
         self._rooms.setdefault(enterprise_id, set()).add(ws)
         log.info("ws.connected", enterprise_id=enterprise_id, count=len(self._rooms[enterprise_id]))
 

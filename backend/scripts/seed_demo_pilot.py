@@ -3,7 +3,7 @@ Seed a demo Factory -> Department -> Zone (+ ZoneConfig) -> Camera, and
 pre-register the AI Worker row so the camera can be assigned to it before
 the worker container ever sends its first heartbeat.
 
-Run AFTER seed_super_admin.py (needs the Enterprise + SUPER_ADMIN's id).
+Run AFTER seed_super_admin.py (needs the Enterprise + SYSTEM_ADMIN's id).
 
 Usage (run from backend/ directory):
     python -m scripts.seed_demo_pilot
@@ -28,12 +28,29 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 
 from src.core.settings import settings
 from src.shared.database.models import (
-    Enterprise, Factory, Department, Zone, ZoneConfig, Camera, AIWorker,
+    Enterprise, Factory, Department, Zone, ZoneConfig, Camera, AIWorker, Role, User, UserRole,
 )
+from src.shared.security.password import hash_password
 
 ENTERPRISE_CODE = os.getenv("SEED_ENTERPRISE_CODE", "VGD")
 WORKER_ID       = os.getenv("SEED_WORKER_ID", "worker-1")
 CAMERA_RTSP_URL = os.getenv("SEED_CAMERA_RTSP_URL", "rtsp://mediamtx:8554/factory-cam-01")
+DEMO_PASSWORD   = os.getenv("SEED_DEMO_PASSWORD", "Demo@1234")
+
+# One demo user per role so each role's permissions can be exercised in
+# isolation, plus one user holding two roles at once (FACTORY_MANAGER +
+# SAFETY_OFFICER) to demonstrate that a user isn't limited to a single role.
+# factory_id/department_id/assigned_zone_ids are set per-role to match what
+# that role would realistically be scoped to.
+_DEMO_USERS = [
+    {"email": "enterprise.admin@visionguard.ai", "name": "Enterprise Admin", "roles": ["ENTERPRISE_ADMIN"]},
+    {"email": "factory.manager@visionguard.ai", "name": "Factory Manager", "roles": ["FACTORY_MANAGER"], "scope": "factory"},
+    {"email": "safety.officer@visionguard.ai", "name": "Safety Officer", "roles": ["SAFETY_OFFICER"], "scope": "factory"},
+    {"email": "supervisor@visionguard.ai", "name": "Supervisor", "roles": ["SUPERVISOR"], "scope": "zone"},
+    {"email": "viewer@visionguard.ai", "name": "Viewer", "roles": ["VIEWER"], "scope": "factory"},
+    {"email": "multi.role@visionguard.ai", "name": "Multi Role Demo",
+     "roles": ["FACTORY_MANAGER", "SAFETY_OFFICER"], "scope": "factory"},
+]
 
 
 async def seed() -> None:
@@ -52,7 +69,7 @@ async def seed() -> None:
             select(Factory).where(Factory.enterprise_id == enterprise.id, Factory.code == "F1")
         )).scalar_one_or_none()
         if not factory:
-            factory = Factory(id=uuid.uuid4(), enterprise_id=enterprise.id,
+            factory = Factory(enterprise_id=enterprise.id,
                                name="Demo Factory", code="F1", location="Pilot Site")
             db.add(factory)
             await db.flush()
@@ -62,7 +79,7 @@ async def seed() -> None:
             select(Department).where(Department.factory_id == factory.id, Department.code == "D1")
         )).scalar_one_or_none()
         if not department:
-            department = Department(id=uuid.uuid4(), enterprise_id=enterprise.id,
+            department = Department(enterprise_id=enterprise.id,
                                      factory_id=factory.id, name="Shop Floor", code="D1")
             db.add(department)
             await db.flush()
@@ -72,7 +89,7 @@ async def seed() -> None:
             select(Zone).where(Zone.factory_id == factory.id, Zone.code == "Z1")
         )).scalar_one_or_none()
         if not zone:
-            zone = Zone(id=uuid.uuid4(), enterprise_id=enterprise.id, factory_id=factory.id,
+            zone = Zone(enterprise_id=enterprise.id, factory_id=factory.id,
                         department_id=department.id, name="Assembly Line 1", code="Z1",
                         max_occupancy=20, zone_type="Production")
             db.add(zone)
@@ -83,8 +100,8 @@ async def seed() -> None:
             select(ZoneConfig).where(ZoneConfig.zone_id == zone.id)
         )).scalar_one_or_none()
         if not zone_config:
-            zone_config = ZoneConfig(id=uuid.uuid4(), enterprise_id=enterprise.id, zone_id=zone.id,
-                                      ppe_required=["helmet", "vest"])
+            zone_config = ZoneConfig(enterprise_id=enterprise.id, zone_id=zone.id,
+                                      required_ppe_types=["helmet", "vest"])
             db.add(zone_config)
             print("[seed] ZoneConfig created for Assembly Line 1 (helmet + vest required)")
 
@@ -92,7 +109,7 @@ async def seed() -> None:
             select(AIWorker).where(AIWorker.worker_id == WORKER_ID)
         )).scalar_one_or_none()
         if not worker:
-            worker = AIWorker(id=uuid.uuid4(), enterprise_id=enterprise.id,
+            worker = AIWorker(enterprise_id=enterprise.id,
                                worker_id=WORKER_ID, status="Offline", gpu_available=False)
             db.add(worker)
             await db.flush()
@@ -102,7 +119,7 @@ async def seed() -> None:
             select(Camera).where(Camera.zone_id == zone.id, Camera.code == "CAM1")
         )).scalar_one_or_none()
         if not camera:
-            camera = Camera(id=uuid.uuid4(), enterprise_id=enterprise.id, factory_id=factory.id,
+            camera = Camera(enterprise_id=enterprise.id, factory_id=factory.id,
                              zone_id=zone.id, worker_id=worker.id, name="Assembly Line 1 - Cam 1",
                              code="CAM1", rtsp_url=CAMERA_RTSP_URL, camera_type="Fixed",
                              status="Active", fps=2.0)
@@ -111,7 +128,37 @@ async def seed() -> None:
         else:
             print("[seed] Camera CAM1 already exists")
 
+        for spec in _DEMO_USERS:
+            existing = (await db.execute(
+                select(User).where(User.email == spec["email"])
+            )).scalar_one_or_none()
+            if existing:
+                print(f"[seed] User already exists: {spec['email']} ({', '.join(spec['roles'])})")
+                continue
+
+            scope = spec.get("scope")
+            new_user = User(
+                
+                enterprise_id=enterprise.id,
+                name=spec["name"],
+                email=spec["email"],
+                password_hash=hash_password(DEMO_PASSWORD),
+                status="Active",
+                is_first_login=True,
+                setup_completed=True,
+                factory_id=factory.id if scope in ("factory", "zone") else None,
+                department_id=department.id if scope == "zone" else None,
+                assigned_zone_ids=[zone.public_id] if scope == "zone" else [],
+            )
+            db.add(new_user)
+            await db.flush()
+            for role_code in spec["roles"]:
+                role = (await db.execute(select(Role).where(Role.code == role_code))).scalar_one()
+                db.add(UserRole(user_public_id=new_user.public_id, role_public_id=role.public_id))
+            print(f"[seed] User created: {spec['email']} ({', '.join(spec['roles'])})")
+
         await db.commit()
+        print(f"[seed] Demo user password (all of the above): {DEMO_PASSWORD}")
 
     await engine.dispose()
     print(f"[seed] Enterprise ID: {enterprise.id}  <- set as ENTERPRISE_ID for the AI Worker")

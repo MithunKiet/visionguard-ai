@@ -47,3 +47,6 @@ pytest-cov==6.0.0
 # Reports
 reportlab==4.2.5
 openpyxl==3.1.5
+
+# Observability — exposes /metrics for Prometheus (see infra/prometheus/prometheus.yml)
+prometheus-fastapi-instrumentator==7.0.0

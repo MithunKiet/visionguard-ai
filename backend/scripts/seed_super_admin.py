@@ -1,5 +1,5 @@
 """
-Seed the first SUPER_ADMIN user and a default Enterprise.
+Seed the first SYSTEM_ADMIN user and a default Enterprise.
 
 Usage (run from backend/ directory):
     python -m scripts.seed_super_admin
@@ -29,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from src.core.settings import settings
-from src.shared.database.models import Enterprise, User
+from src.shared.database.models import Enterprise, Role, User, UserRole
 from src.shared.security.password import hash_password
 
 
@@ -53,7 +53,7 @@ async def seed() -> None:
 
         if not enterprise:
             enterprise = Enterprise(
-                id=uuid.uuid4(),
+                
                 name=ENTERPRISE_NAME,
                 code=ENTERPRISE_CODE,
                 status="Active",
@@ -72,19 +72,21 @@ async def seed() -> None:
 
         if not user:
             user = User(
-                id=uuid.uuid4(),
+                
                 enterprise_id=enterprise.id,
                 name=ADMIN_NAME,
                 email=ADMIN_EMAIL,
                 password_hash=hash_password(ADMIN_PASSWORD),
-                role="SUPER_ADMIN",
                 status="Active",
                 is_first_login=True,
                 setup_completed=False,
             )
             db.add(user)
+            await db.flush()
+            role = (await db.execute(select(Role).where(Role.code == "SYSTEM_ADMIN"))).scalar_one()
+            db.add(UserRole(user_public_id=user.public_id, role_public_id=role.public_id))
             await db.commit()
-            print(f"[seed] SUPER_ADMIN created: {ADMIN_EMAIL}")
+            print(f"[seed] SYSTEM_ADMIN created: {ADMIN_EMAIL}")
             print(f"[seed] Password: {ADMIN_PASSWORD}  ← change this immediately!")
         else:
             print(f"[seed] Admin already exists: {user.email}")

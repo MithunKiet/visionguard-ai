@@ -11,7 +11,17 @@ router = APIRouter(tags=["Realtime"])
 
 
 @router.websocket("/ws/live")
-async def ws_live(websocket: WebSocket, token: str):
+async def ws_live(websocket: WebSocket):
+    # Browsers can't attach custom headers (e.g. Authorization) to a
+    # WebSocket handshake, and a `?token=` query param leaks the JWT into
+    # server access logs and browser history. Sec-WebSocket-Protocol isn't
+    # part of the request URI, so the frontend sends the token as the
+    # (single) proposed subprotocol instead — we just echo it back on accept
+    # as required by the WebSocket handshake spec.
+    token = websocket.headers.get("sec-websocket-protocol")
+    if not token:
+        await websocket.close(code=4401)
+        return
     try:
         payload = decode_token(token)
         if payload.get("type") != "access":
@@ -21,7 +31,7 @@ async def ws_live(websocket: WebSocket, token: str):
         return
 
     enterprise_id = payload["enterprise_id"]
-    await manager.connect(enterprise_id, websocket)
+    await manager.connect(enterprise_id, websocket, subprotocol=token)
     try:
         while True:
             # Client -> server messages aren't used yet; just keep the connection alive.
