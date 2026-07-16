@@ -187,8 +187,9 @@ visionguard-ai/
 ├── infra/
 │   ├── nginx/                        Nginx reverse proxy config
 │   ├── prometheus/                   Prometheus scrape config
-│   ├── grafana/                      Grafana dashboards (JSON)
-│   └── loki/                         Loki log aggregation config
+│   ├── grafana/provisioning/         Grafana datasource + dashboards (auto-provisioned)
+│   ├── camera-feeder/                Looping RTSP demo feed (docker-compose service)
+│   └── backup/                       Postgres + MinIO backup/restore scripts
 │
 ├── docs/
 │   ├── ARCHITECTURE.md               System architecture diagrams
@@ -338,7 +339,7 @@ See `.env.example` for the full list.
 | API Docs (Swagger) | `http://localhost:8000/docs` | — |
 | RabbitMQ Console | `http://localhost:15672` | `visionguard / visionguard123` |
 | MinIO Console | `http://localhost:9001` | `visionguard / visionguard123` |
-| Grafana | `http://localhost:3000` | `admin / admin` |
+| Grafana | `http://localhost:3001` | `admin / admin` |
 | Prometheus | `http://localhost:9090` | — |
 | PostgreSQL | `localhost:5432` | — |
 | Redis | `localhost:6379` | — |
@@ -528,18 +529,31 @@ Failed events → Dead Letter Queue → auto-retry (3 attempts) → manual revie
 ## Monitoring
 
 ```bash
-docker compose up prometheus grafana loki -d
+docker compose up prometheus grafana -d
 ```
 
-**Grafana Dashboards** (`http://localhost:3000`):
+Backend and both AI workers expose Prometheus metrics at `/metrics` (see `infra/prometheus/prometheus.yml` for scrape targets). Grafana auto-provisions the Prometheus datasource and one starter dashboard from `infra/grafana/provisioning/` — no manual setup needed.
+
+**Grafana Dashboards** (`http://localhost:3001`, `admin / admin`):
 
 | Dashboard | What it shows |
 |---|---|
-| System Overview | API health, error rate, latency |
-| AI Worker Health | Inference latency (p50/p90/p99), frame rate, queue depth |
-| Alert Operations | Alert volume, resolution time, open alerts by zone |
-| Camera Health | Online/offline count, reconnection rate |
-| DLQ Monitor | Failed event depth, retry rate |
+| System Overview | API request rate/error rate/p95 latency by endpoint, AI worker frame-processing rate, detection queue depth, cameras connected |
+
+Add more dashboards by dropping additional JSON exports into `infra/grafana/provisioning/dashboards/json/` — Grafana picks them up automatically (`updateIntervalSeconds: 30`).
+
+---
+
+## Backups
+
+PostgreSQL (all relational data) and MinIO (violation snapshots, reports, logos, models) are the durable stores — Redis and RabbitMQ hold only cache/in-flight queue state and don't need backing up; both rebuild themselves after a restore.
+
+```bash
+./infra/backup/backup.sh              # -> ./backups/<timestamp>/{postgres.dump, minio/}
+./infra/backup/restore.sh <timestamp> # DESTRUCTIVE — overwrites current data, asks for confirmation
+```
+
+Backups are written to `./backups/` (git-ignored). Schedule `backup.sh` via cron/Task Scheduler for automated retention; it's a plain script, not a docker-compose service, so it runs on whatever cadence the host schedules it.
 
 ---
 

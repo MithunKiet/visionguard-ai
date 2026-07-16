@@ -48,3 +48,11 @@ frontend/vite.config.d.ts
 ai-worker/training/datasets/
 ai-worker/training/runs/
 ai-worker/training/dataset.yaml
+ai-worker/training/raw_labeled/
+
+# Local demo video for the camera-feeder service (see infra/camera-feeder)
+media/*
+!media/.gitkeep
+
+# Local backups (see infra/backup) — contain real data, never commit
+/backups/

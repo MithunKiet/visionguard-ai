@@ -20,19 +20,32 @@ If you don't have an NVIDIA GPU, edit `docker-compose.yml` and remove the `deplo
 ## 1. Bring up infrastructure
 
 ```bash
-docker compose up -d postgres redis rabbitmq minio mediamtx
+docker compose up -d postgres redis rabbitmq minio mediamtx camera-feeder
 docker compose ps   # wait for postgres/redis/rabbitmq/minio to show healthy
 ```
 
-## 2. Push a looping test video into the RTSP simulator
+## 2. Feed the RTSP simulator
 
-Any local MP4 works (a factory floor / person walking clip is ideal). Requires `ffmpeg` on the host:
+The `camera-feeder` service (started above) automatically loops a video into `rtsp://mediamtx:8554/factory-cam-01` — no manual `ffmpeg` command needed each session.
+
+- Drop a real clip (a factory floor / person walking clip is ideal for PPE detection testing) at `./media/sample.mp4` and restart the service: `docker compose restart camera-feeder`.
+- If no file is present, it streams a synthetic test pattern instead — fine for verifying the pipeline is wired up, but it won't produce PPE detections.
+
+To feed a second/third camera path (`factory-cam-02`/`03`), run another instance with `CAMERA_STREAM_PATH` set, e.g.:
+
+```bash
+CAMERA_STREAM_PATH=factory-cam-02 docker compose run --rm -d --name vg_camera_feeder_2 camera-feeder
+```
+
+<details>
+<summary>Manual alternative (host ffmpeg, no Docker service)</summary>
 
 ```bash
 ffmpeg -re -stream_loop -1 -i sample.mp4 -c copy -f rtsp rtsp://localhost:8554/factory-cam-01
 ```
 
 Leave this running in its own terminal.
+</details>
 
 ## 3. Migrate + seed
 
@@ -126,5 +139,5 @@ this is a camera-health signal, not a safety violation.
 ## Troubleshooting
 
 - `401` from `/workers/heartbeat` or `/workers/{id}/cameras`: `WORKER_API_KEY` mismatch between backend and ai-worker, or missing `ENTERPRISE_ID` on the ai-worker container.
-- WebSocket never connects: check the browser console for the `/api/v1/ws/live?token=...` handshake — the JWT must not be expired; log out/in to refresh.
+- WebSocket never connects: check the browser console for the `/api/v1/ws/live` handshake (the JWT now travels as the Sec-WebSocket-Protocol header, not a query param) — the JWT must not be expired; log out/in to refresh.
 - No violations ever appear: expected if using the fallback YOLO model — use `publish_test_violation.py` to demo the pipeline instead.
