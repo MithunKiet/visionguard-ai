@@ -18,6 +18,18 @@ class WorkerSettings(BaseSettings):
     YOLO_MODEL_PATH: str = "models/yolov8s-ppe.pt"
     METRICS_PORT: int = 8001
 
+    # Option B (no local fine-tuned model yet): call a community-trained PPE
+    # model hosted on Roboflow for helmet/vest/gloves/shoes item detection,
+    # combined with the local COCO fallback's person boxes via spatial
+    # overlap (see detector.py _remote_violations_for_person). Only used
+    # when YOLO_MODEL_PATH doesn't exist AND this key is set — leave empty
+    # to keep the plain demo-mode rotation fallback.
+    ROBOFLOW_API_KEY: str = ""
+    ROBOFLOW_MODEL_ID: str = "ppe-detection-yolov11-42krk/1"
+    ROBOFLOW_API_URL: str = "https://detect.roboflow.com"
+    ROBOFLOW_CONFIDENCE: float = 0.4
+    ROBOFLOW_TIMEOUT_SECONDS: float = 5.0
+
     # Must match backend's WORKER_API_KEY — authenticates service-to-service calls
     # (heartbeat, camera assignment fetch) that happen before any user is logged in.
     WORKER_API_KEY: str = "dev-worker-key-change-me"

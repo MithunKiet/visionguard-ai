@@ -10,6 +10,14 @@ log = structlog.get_logger()
 
 RECONNECT_DELAYS = [5, 15, 60]   # seconds — retry backoff per AI Worker rule #5
 
+# Bounds how long a single blocking OpenCV call can occupy its worker thread
+# for — without this, a camera whose TCP handshake or RTSP negotiation hangs
+# (firewalled IP, dead NVR) ties up that thread indefinitely. Doesn't affect
+# well-behaved cameras; only kicks in when the source genuinely isn't
+# responding within a reasonable window.
+_OPEN_TIMEOUT_MSEC = 10_000
+_READ_TIMEOUT_MSEC = 10_000
+
 
 class FrameReader:
 
@@ -31,16 +39,30 @@ class FrameReader:
 
     async def read_frames(self) -> AsyncGenerator[np.ndarray, None]:
         while True:
-            cap = cv2.VideoCapture(self.rtsp_url)
+            # cv2.VideoCapture(...) blocks on DNS/TCP/RTSP-handshake work —
+            # potentially for seconds on an unreachable camera. This process
+            # runs every CameraWorker (all cameras + heartbeat + zone_sync)
+            # as tasks sharing one event loop (see main.py), so this and
+            # every other blocking OpenCV call below runs in a thread via
+            # asyncio.to_thread — a stalled camera then only occupies its
+            # own thread, never freezing frame reading for every other
+            # camera on this worker.
+            cap = await asyncio.to_thread(self._open_capture)
 
-            if not cap.isOpened():
+            if not await asyncio.to_thread(cap.isOpened):
+                # Always release, even on a failed open — some backends
+                # (FFmpeg included) still allocate handles on a failed
+                # connect attempt, and this loop retries forever, so a
+                # chronically-unreachable camera would otherwise leak one
+                # handle per retry (every 5-60s) for as long as the worker runs.
+                await asyncio.to_thread(cap.release)
                 await self._handle_failure()
                 continue
 
-            stream_fps = cap.get(cv2.CAP_PROP_FPS) or 25
+            stream_fps = await asyncio.to_thread(cap.get, cv2.CAP_PROP_FPS) or 25
             self.stream_fps = stream_fps
-            self.stream_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or None
-            self.stream_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or None
+            self.stream_width = int(await asyncio.to_thread(cap.get, cv2.CAP_PROP_FRAME_WIDTH)) or None
+            self.stream_height = int(await asyncio.to_thread(cap.get, cv2.CAP_PROP_FRAME_HEIGHT)) or None
             frame_idx = 0
             self._failure_count = 0
 
@@ -48,10 +70,10 @@ class FrameReader:
             camera_connected.labels(camera_id=self.camera_id).set(1)
 
             while True:
-                ret, frame = cap.read()
+                ret, frame = await asyncio.to_thread(cap.read)
                 if not ret:
                     log.warning("frame_reader.read_failed", camera_id=self.camera_id)
-                    cap.release()
+                    await asyncio.to_thread(cap.release)
                     await self._handle_failure()
                     break
 
@@ -63,6 +85,18 @@ class FrameReader:
                     yield frame
 
                 await asyncio.sleep(0)   # yield control to event loop
+
+    def _open_capture(self) -> cv2.VideoCapture:
+        # CAP_ANY, not CAP_FFMPEG — explicitly forcing the FFmpeg backend
+        # here logs a spurious "can't be used to capture by name" warning
+        # on every single connect attempt in this OpenCV build; CAP_ANY lets
+        # OpenCV pick FFmpeg itself (same backend actually used either way
+        # for an rtsp:// URL) without the warning, and the timeout params
+        # still apply.
+        return cv2.VideoCapture(self.rtsp_url, cv2.CAP_ANY, [
+            cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, _OPEN_TIMEOUT_MSEC,
+            cv2.CAP_PROP_READ_TIMEOUT_MSEC, _READ_TIMEOUT_MSEC,
+        ])
 
     async def _handle_failure(self) -> None:
         camera_connected.labels(camera_id=self.camera_id).set(0)

@@ -51,17 +51,26 @@ async def fetch_assigned_cameras() -> list[dict]:
 
 
 async def send_heartbeat() -> None:
-    """AI Worker rule #11: heartbeat every 30 seconds, HTTP + event for observability."""
+    """AI Worker rule #11: heartbeat every 30 seconds, HTTP + event for observability.
+
+    Both calls are independently guarded — a transient RabbitMQ hiccup here
+    must not propagate out of this task, since it's gathered alongside every
+    CameraWorker task in main(); an unhandled exception here would otherwise
+    take down the whole process (all cameras on this worker), not just the
+    heartbeat."""
     while True:
         await asyncio.sleep(30)
         try:
             await register_worker()
         except Exception as e:
             log.warning("ai_worker.heartbeat_failed", error=str(e))
-        await publish("events.worker_heartbeat", {
-            "event": "worker_heartbeat",
-            "worker_id": settings.WORKER_ID,
-        })
+        try:
+            await publish("events.worker_heartbeat", {
+                "event": "worker_heartbeat",
+                "worker_id": settings.WORKER_ID,
+            })
+        except Exception as e:
+            log.warning("ai_worker.heartbeat_publish_failed", error=str(e))
 
 
 async def main() -> None:
@@ -109,7 +118,14 @@ async def main() -> None:
     await config_sync.start()
 
     try:
-        await asyncio.gather(*tasks)
+        # return_exceptions=True: one task's unhandled exception (heartbeat,
+        # a CameraWorker that somehow escapes its own circuit breaker, etc.)
+        # must not tear down every other camera on this worker — log it and
+        # keep the rest of the process running instead of crashing whole-sale.
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for task, result in zip(tasks, results):
+            if isinstance(result, Exception):
+                log.error("ai_worker.task_failed", task=task.get_name(), error=str(result))
     finally:
         await config_sync.stop()
         await close_publisher()

@@ -29,6 +29,7 @@ from typing import List
 from ultralytics import YOLO
 
 from src.config.settings import settings
+from src.pipeline.remote_ppe_client import RoboflowPPEClient
 from src.pipeline.types import Detection
 
 log = structlog.get_logger()
@@ -62,8 +63,10 @@ FEET_VISIBLE_BOTTOM_FRAC = 0.80
 # with an arm/hand reaching toward the bottom of frame (common with laptop
 # webcams) can also push the bbox bottom edge down without feet being in
 # frame at all, so the bottom-edge check alone isn't reliable — require the
-# bbox shape to actually look like a standing body too.
-FEET_VISIBLE_MIN_ASPECT = 1.6
+# bbox shape to actually look like a standing body too. A seated upper-body/
+# torso shot (head+shoulders+chest) can still reach ~1.6-2x, so the floor
+# needs to sit close to the documented standing-body range, not just above 1.
+FEET_VISIBLE_MIN_ASPECT = 2.2
 
 PPE_CLASSES = {
     0: "helmet",
@@ -84,6 +87,29 @@ VIOLATION_CLASSES = {"no_helmet", "no_vest", "no_gloves", "no_safety_shoes"}
 # runs end-to-end (person detection only, no real PPE violation classes).
 _FALLBACK_MODEL = "yolov8n.pt"
 
+# Option B remote mode (no local fine-tuned model, but a Roboflow-hosted
+# community PPE model is configured): that model only reports item PRESENCE,
+# not absence and not "person" — so violations are inferred by combining it
+# with the local COCO fallback's person boxes. Each item is only expected in
+# a coarse vertical band of the person's bbox (no pose estimation available).
+#
+# Deliberately limited to helmet/vest: the default hosted model
+# (ppe-detection-yolov11-42krk/1) was verified to only ever emit "helmet" and
+# "Vest" classes — it has no gloves/shoes classes at all. Since absence is
+# inferred from "item never reported", a class the model can't report would
+# be reported missing on every single person, every time — a guaranteed false
+# positive, not a real detection. If a Roboflow model that genuinely covers
+# gloves/shoes is configured later, extend this map (and ITEM_REGION below).
+ITEM_TO_VIOLATION = {
+    "helmet": "no_helmet",
+    "vest": "no_vest",
+}
+ITEM_REGION = {"helmet": "head", "vest": "torso"}
+REGION_FRAC = {"head": (0.0, 0.30), "torso": (0.15, 0.75), "feet": (0.70, 1.0)}
+# Horizontal slack around the person bbox — items like gloves/shoes can
+# protrude slightly past the torso outline the local model boxed.
+REMOTE_MATCH_HORIZONTAL_SLACK = 0.2
+
 
 class PPEDetector:
 
@@ -91,9 +117,20 @@ class PPEDetector:
         device = "cuda" if settings.USE_GPU else "cpu"
 
         self._ppe_mode = os.path.isfile(settings.YOLO_MODEL_PATH)
+        self._remote_mode = not self._ppe_mode and bool(settings.ROBOFLOW_API_KEY)
         model_path = settings.YOLO_MODEL_PATH if self._ppe_mode else _FALLBACK_MODEL
 
-        if not self._ppe_mode:
+        if self._remote_mode:
+            log.warning(
+                "detector.ppe_model_missing",
+                expected=settings.YOLO_MODEL_PATH,
+                fallback=f"COCO person-detection + Roboflow hosted model ({settings.ROBOFLOW_MODEL_ID})",
+                note="No local fine-tuned weights. Using a Roboflow-hosted community PPE model for "
+                     "helmet/vest detection only (that model has no gloves/shoes classes), combined "
+                     "with local person detection via bbox-region overlap.",
+            )
+            self._remote_client = RoboflowPPEClient()
+        elif not self._ppe_mode:
             log.warning(
                 "detector.ppe_model_missing",
                 expected=settings.YOLO_MODEL_PATH,
@@ -104,11 +141,14 @@ class PPEDetector:
                      "against real camera frames. Replace with a fine-tuned PPE model for real "
                      "violation detection.",
             )
+            self._remote_client = None
+        else:
+            self._remote_client = None
 
         log.info("detector.loading", model=model_path, device=device)
         self._model = YOLO(model_path)
         self._model.to(device)
-        log.info("detector.ready", device=device, ppe_mode=self._ppe_mode)
+        log.info("detector.ready", device=device, ppe_mode=self._ppe_mode, remote_mode=self._remote_mode)
 
     def preprocess(self, frame: np.ndarray) -> np.ndarray:
         """Rule 13: CLAHE preprocessing on every frame before YOLO inference."""
@@ -131,7 +171,18 @@ class PPEDetector:
         """
         processed = [self.preprocess(f) for f in frames]
         results_list = self._model(processed, verbose=False)
-        return [self._parse_results(r) for r in results_list]
+
+        if self._remote_mode:
+            # Sent unprocessed — the remote model was trained on plain
+            # images, not our CLAHE-enhanced ones used for local inference.
+            remote_preds_list = [self._remote_client.detect(f) for f in frames]
+        else:
+            remote_preds_list = [None] * len(frames)
+
+        return [
+            self._parse_results(r, remote_preds)
+            for r, remote_preds in zip(results_list, remote_preds_list)
+        ]
 
     @staticmethod
     def _visible_zones(x1: int, y1: int, x2: int, y2: int, frame_height: int) -> set:
@@ -149,7 +200,44 @@ class PPEDetector:
             zones.add("feet")
         return zones
 
-    def _parse_results(self, results) -> List[Detection]:
+    def _remote_violations_for_person(
+        self, x1: int, y1: int, x2: int, y2: int, frame_height: int,
+        remote_preds: list, confidence: float,
+    ) -> List[Detection]:
+        """Roboflow-hosted model only reports item PRESENCE — no "no_X"
+        classes and no "person" class of its own. Absence (violation) is
+        inferred: for each item type, look for a same-class remote box whose
+        center falls inside this person's bbox within the item's expected
+        vertical band; if none is found (and that zone is even plausibly
+        visible for this shot), report the corresponding violation."""
+        visible = self._visible_zones(x1, y1, x2, y2, frame_height)
+        width = max(1, x2 - x1)
+        slack = REMOTE_MATCH_HORIZONTAL_SLACK * width
+        violations = []
+
+        for item, violation_name in ITEM_TO_VIOLATION.items():
+            zone = ITEM_REGION[item]
+            if zone not in visible:
+                continue
+            lo_frac, hi_frac = REGION_FRAC[zone]
+            band_top = y1 + lo_frac * (y2 - y1)
+            band_bottom = y1 + hi_frac * (y2 - y1)
+            found = any(
+                str(p.get("class", "")).lower() == item
+                and (x1 - slack) <= p.get("x", -1) <= (x2 + slack)
+                and band_top <= p.get("y", -1) <= band_bottom
+                for p in remote_preds
+            )
+            if not found:
+                violations.append(Detection(
+                    class_name=violation_name,
+                    confidence=confidence,
+                    bbox=(x1, y1, x2, y2),
+                    is_violation=True,
+                ))
+        return violations
+
+    def _parse_results(self, results, remote_preds: list | None = None) -> List[Detection]:
         detections = []
         frame_height = results.orig_shape[0] if getattr(results, "orig_shape", None) else None
 
@@ -161,6 +249,13 @@ class PPEDetector:
             if self._ppe_mode:
                 class_name = PPE_CLASSES.get(cls_id, "unknown")
                 is_violation = class_name in VIOLATION_CLASSES
+            elif self._remote_mode:
+                class_name = self._model.names.get(cls_id, "unknown")
+                is_violation = False
+                if class_name == "person":
+                    detections.extend(self._remote_violations_for_person(
+                        x1, y1, x2, y2, frame_height, remote_preds or [], confidence,
+                    ))
             else:
                 class_name = self._model.names.get(cls_id, "unknown")
                 is_violation = False
