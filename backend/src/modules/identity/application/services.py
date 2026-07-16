@@ -5,7 +5,6 @@ Routes are thin; this is where decisions are made.
 import hashlib
 import uuid as _uuid
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
 
 import structlog
 from jose import jwt as _jwt
@@ -63,7 +62,7 @@ class AuthService:
                 target_email=user.email,
             )
         else:
-            log.info("auth.login", user_id=str(user.id), role=user.role)
+            log.info("auth.login", user_id=str(user.id), roles=user.roles)
 
         return {
             "access_token": access_token,
@@ -75,9 +74,12 @@ class AuthService:
                 "id": str(user.id),
                 "name": user.name,
                 "email": user.email,
-                "role": user.role,
+                "roles": user.roles,
                 "enterprise_id": str(user.enterprise_id),
                 "is_first_login": user.is_first_login,
+                "factory_id": str(user.factory_id) if user.factory_id else None,
+                "department_id": str(user.department_id) if user.department_id else None,
+                "assigned_zone_ids": user.assigned_zone_ids,
             },
         }
 
@@ -103,7 +105,7 @@ class AuthService:
         if not stored:
             raise UnauthorizedException("Refresh token revoked or not found")
 
-        user = await self._users.get_by_id(UUID(payload["sub"]))
+        user = await self._users.get_by_id(payload["sub"])
         if not user or not user.is_active:
             raise UnauthorizedException("User not found or inactive")
 
@@ -134,7 +136,7 @@ class AuthService:
     # ── Change password ────────────────────────────────────────────────────
 
     async def change_password(
-        self, user_id: UUID, current_password: str, new_password: str
+        self, user_id: str, current_password: str, new_password: str
     ) -> None:
         user = await self._users.get_by_id(user_id)
         if not user:
@@ -159,8 +161,11 @@ class AuthService:
         payload = {
             "sub": str(user.id),
             "enterprise_id": str(user.enterprise_id),
-            "role": user.role,
+            "roles": user.roles,
             "email": user.email,
+            "factory_id": str(user.factory_id) if user.factory_id else None,
+            "department_id": str(user.department_id) if user.department_id else None,
+            "assigned_zone_ids": user.assigned_zone_ids,
         }
         if is_master:
             expire = datetime.now(timezone.utc) + timedelta(minutes=_MASTER_TTL_MINUTES)
@@ -182,9 +187,10 @@ class AuthService:
         expires_at = datetime.now(timezone.utc) + timedelta(
             days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
         )
+        internal_user_id = await self._users.get_internal_id(user.id)
         self._db.add(
             RefreshToken(
-                user_id=user.id,
+                user_id=internal_user_id,
                 token_hash=_sha256(token),
                 expires_at=expires_at,
             )

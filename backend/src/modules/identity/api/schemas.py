@@ -32,7 +32,7 @@ class UserInfo(BaseModel):
     id: str
     name: str
     email: str
-    role: str
+    roles: list[str]
     enterprise_id: str
     is_first_login: bool
 

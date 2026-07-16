@@ -8,9 +8,9 @@ Usage:
     async def endpoint(user: AuthUser = Depends(get_current_user)):
         ...
 
-    # Role-gated:
+    # Role-gated (a user need only hold ONE of the listed roles):
     @router.get("/admin")
-    async def admin_endpoint(user: AuthUser = Depends(require_roles("SUPER_ADMIN", "HO_ADMIN"))):
+    async def admin_endpoint(user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN"))):
         ...
 """
 from uuid import UUID
@@ -25,11 +25,15 @@ from src.shared.security.jwt import decode_token
 
 class AuthUser:
     def __init__(self, payload: dict):
-        self.user_id: str       = payload["sub"]
-        self.enterprise_id: str = payload["enterprise_id"]
-        self.role: str          = payload["role"]
-        self.jti: str           = payload["jti"]
-        self.email: str         = payload.get("email", "")
+        self.user_id: str                = payload["sub"]
+        self.enterprise_id: str          = payload["enterprise_id"]
+        self.roles: list[str]            = payload.get("roles", [])
+        self.jti: str                    = payload["jti"]
+        self.email: str                  = payload.get("email", "")
+        # Data-visibility scope — see shared/security/scope.py.
+        self.factory_id: str | None      = payload.get("factory_id")
+        self.department_id: str | None   = payload.get("department_id")
+        self.assigned_zone_ids: list[str] = payload.get("assigned_zone_ids") or []
 
 
 async def get_current_user(
@@ -48,11 +52,13 @@ async def get_current_user(
 
 
 def require_roles(*roles: str):
-    """Dependency factory — gates an endpoint to users with specific roles."""
+    """Dependency factory — gates an endpoint to users holding at least one
+    of the listed roles (a user can hold several roles at once)."""
+    allowed = set(roles)
     async def _check(user: AuthUser = Depends(get_current_user)) -> AuthUser:
-        if user.role not in roles:
+        if not allowed & set(user.roles):
             raise ForbiddenException(
-                f"Role '{user.role}' is not permitted. Required one of: {list(roles)}"
+                f"Role(s) {user.roles} not permitted. Required one of: {list(roles)}"
             )
         return user
     return _check

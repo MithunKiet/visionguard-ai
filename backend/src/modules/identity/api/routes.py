@@ -35,14 +35,13 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     result = await svc.login(body.email, body.password)
-    from uuid import UUID
     from src.modules.audit.application.services import AuditService
     await AuditService(db).record(
-        enterprise_id=UUID(result["user"]["enterprise_id"]),
-        user_id=UUID(result["user"]["id"]),
+        enterprise_id=result["user"]["enterprise_id"],
+        user_id=result["user"]["id"],
         action="USER_LOGIN",
         entity_type="user",
-        entity_id=UUID(result["user"]["id"]),
+        entity_id=result["user"]["id"],
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
@@ -111,9 +110,8 @@ async def change_password(
     current_user: AuthUser = Depends(get_current_user),
     svc: AuthService = Depends(_get_auth_service),
 ):
-    from uuid import UUID
     await svc.change_password(
-        UUID(current_user.user_id),
+        current_user.user_id,
         body.current_password,
         body.new_password,
     )
@@ -121,11 +119,11 @@ async def change_password(
     from src.shared.database.session import AsyncSessionFactory
     async with AsyncSessionFactory() as audit_db:
         await AuditService(audit_db).record(
-            enterprise_id=UUID(current_user.enterprise_id),
-            user_id=UUID(current_user.user_id),
+            enterprise_id=current_user.enterprise_id,
+            user_id=current_user.user_id,
             action="PASSWORD_CHANGED",
             entity_type="user",
-            entity_id=UUID(current_user.user_id),
+            entity_id=current_user.user_id,
         )
     return ApiResponse(data=None)
 
@@ -135,6 +133,6 @@ async def me(current_user: AuthUser = Depends(get_current_user)):
     return ApiResponse(data={
         "user_id": current_user.user_id,
         "enterprise_id": current_user.enterprise_id,
-        "role": current_user.role,
+        "roles": current_user.roles,
         "email": current_user.email,
     })
