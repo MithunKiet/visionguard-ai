@@ -1,6 +1,7 @@
 """
 CameraService — CRUD, RTSP health check, worker assignment.
 """
+import os
 import structlog
 
 from src.core.exceptions import NotFoundException
@@ -227,6 +228,12 @@ class CameraService:
         def _probe():
             try:
                 import cv2
+                # Forces TCP instead of FFmpeg's default UDP for RTSP — many
+                # corporate/WiFi networks drop the dynamically-negotiated
+                # RTP/UDP ports RTSP-over-UDP needs, silently failing the
+                # connection (see ai-worker/src/pipeline/frame_reader.py for
+                # the same fix on the actual detection pipeline).
+                os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
                 start = time.monotonic()
                 cap = cv2.VideoCapture(rtsp_url)
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)

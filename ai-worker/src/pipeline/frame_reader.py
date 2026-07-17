@@ -1,4 +1,5 @@
 import asyncio
+import os
 import structlog
 import cv2
 import numpy as np
@@ -7,6 +8,13 @@ from typing import AsyncGenerator
 from src.health.metrics import camera_connected, frame_reader_reconnects_total
 
 log = structlog.get_logger()
+
+# OpenCV's FFmpeg backend has no cv2.CAP_PROP_* for RTSP transport — this env
+# var (read at VideoCapture-open time) is the only way to set it. Forces TCP
+# instead of FFmpeg's default UDP: many corporate/WiFi networks drop the
+# dynamically-negotiated RTP/UDP ports RTSP-over-UDP needs, silently failing
+# the connection, while TCP uses the single already-open RTSP port.
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
 
 RECONNECT_DELAYS = [5, 15, 60]   # seconds — retry backoff per AI Worker rule #5
 

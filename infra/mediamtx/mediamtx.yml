@@ -27,3 +27,8 @@ paths:
     source: publisher
   factory-cam-03:
     source: publisher
+  # Real cameras with an external RTSP source (phone/IP camera) get relayed
+  # here by a one-off ffmpeg pull-then-push process — see docs/E2E_PILOT_RUNBOOK.md.
+  # Lets Live Grid's mediamtx-WebRTC viewer show them like the demo cameras.
+  phone-cam-1:
+    source: publisher

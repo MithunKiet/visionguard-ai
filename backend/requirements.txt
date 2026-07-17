@@ -50,3 +50,7 @@ openpyxl==3.1.5
 
 # Observability — exposes /metrics for Prometheus (see infra/prometheus/prometheus.yml)
 prometheus-fastapi-instrumentator==7.0.0
+
+# RTSP connection testing (camera module's test-connection/health-check
+# endpoints) — same version as ai-worker for consistency.
+opencv-python-headless==4.10.0.84
