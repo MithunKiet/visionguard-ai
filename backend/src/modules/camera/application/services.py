@@ -2,6 +2,7 @@
 CameraService — CRUD, RTSP health check, worker assignment.
 """
 import os
+import cv2
 import structlog
 
 from src.core.exceptions import NotFoundException
@@ -11,6 +12,14 @@ from src.modules.worker.infrastructure.repositories import WorkerRepository
 from src.shared.security.scope import ScopeFilter
 
 log = structlog.get_logger()
+
+# OpenCV's FFmpeg backend has no cv2.CAP_PROP_* for RTSP transport — this env
+# var (read at VideoCapture-open time) is the only way to set it. Forces TCP
+# instead of FFmpeg's default UDP: many corporate/WiFi networks drop the
+# dynamically-negotiated RTP/UDP ports RTSP-over-UDP needs, silently failing
+# the connection (see ai-worker/src/pipeline/frame_reader.py for the same fix
+# on the actual detection pipeline). Set once at import time, not per-call.
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
 
 # Zone-level fallback used only if a camera's zone somehow has no config row
 # (shouldn't happen — every zone gets one on creation — but keeps this
@@ -227,13 +236,6 @@ class CameraService:
 
         def _probe():
             try:
-                import cv2
-                # Forces TCP instead of FFmpeg's default UDP for RTSP — many
-                # corporate/WiFi networks drop the dynamically-negotiated
-                # RTP/UDP ports RTSP-over-UDP needs, silently failing the
-                # connection (see ai-worker/src/pipeline/frame_reader.py for
-                # the same fix on the actual detection pipeline).
-                os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
                 start = time.monotonic()
                 cap = cv2.VideoCapture(rtsp_url)
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)

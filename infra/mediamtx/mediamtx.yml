@@ -14,11 +14,21 @@ webrtc: yes
 webrtcAddress: :8889
 webrtcAdditionalHosts: [localhost, 127.0.0.1]
 
-# To push a stream use:
-#   ffmpeg -re -stream_loop -1 -i your_video.mp4 -c copy -f rtsp rtsp://localhost:8554/factory-cam-01
+# To push a stream use (publish credentials below, via MTX_PATHDEFAULTS_*
+# env vars set on the mediamtx container — see docker-compose.yml):
+#   ffmpeg -re -stream_loop -1 -i your_video.mp4 -c copy -f rtsp rtsp://publisher:PASSWORD@localhost:8554/factory-cam-01
 #
-# AI Worker connects to:
+# AI Worker connects to (read-only, no credentials needed):
 #   rtsp://mediamtx:8554/factory-cam-01
+
+# Applies to every path below unless a path overrides it. publishUser/
+# publishPass come from MTX_PATHDEFAULTS_PUBLISHUSER/MTX_PATHDEFAULTS_PUBLISHPASS
+# (mediamtx's own env-var config override, not docker-compose interpolation —
+# never hardcode the actual credential here). Reads stay unauthenticated:
+# the AI-worker and Live Grid's WebRTC viewer both need read access without
+# passing credentials through today's connection paths.
+pathDefaults:
+  source: publisher
 
 paths:
   factory-cam-01:

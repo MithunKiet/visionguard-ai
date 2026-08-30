@@ -41,10 +41,10 @@ CAMERA_STREAM_PATH=factory-cam-02 docker compose run --rm -d --name vg_camera_fe
 <summary>Manual alternative (host ffmpeg, no Docker service)</summary>
 
 ```bash
-ffmpeg -re -stream_loop -1 -i sample.mp4 -c copy -f rtsp rtsp://localhost:8554/factory-cam-01
+ffmpeg -re -stream_loop -1 -i sample.mp4 -c copy -f rtsp rtsp://publisher:dev-only-change-in-production@localhost:8554/factory-cam-01
 ```
 
-Leave this running in its own terminal.
+(Credentials match `MEDIAMTX_PUBLISH_USER`/`MEDIAMTX_PUBLISH_PASSWORD` in `.env` — publish is password-protected, see `infra/mediamtx/mediamtx.yml`.) Leave this running in its own terminal.
 </details>
 
 ## 3. Migrate + seed
@@ -128,7 +128,7 @@ spec (min 1080p @ 15 FPS) — e.g. a 720p test source:
 ```bash
 ffmpeg -re -stream_loop -1 -f lavfi -i testsrc=size=1280x720:rate=25 \
   -c:v libx264 -preset ultrafast -pix_fmt yuv420p -rtsp_transport tcp \
-  -f rtsp rtsp://localhost:8554/factory-cam-01
+  -f rtsp rtsp://publisher:dev-only-change-in-production@localhost:8554/factory-cam-01
 ```
 ai-worker logs `camera_worker.spec_mismatch actual_resolution=1280x720
 expected_resolution=1920x1080` on connect; a Low-severity `CAMERA_SPEC_MISMATCH`

@@ -78,8 +78,16 @@ services:
   mediamtx:
     image: bluenviron/mediamtx:latest
     container_name: vg_mediamtx
+    environment:
+      # Publish credentials (mediamtx's own MTX_ env-var config override —
+      # not docker-compose interpolation, so these are safe to reference
+      # from mediamtx.yml's pathDefaults without hardcoding a secret there).
+      # Without this, anyone who can reach port 8554 could publish/replace
+      # any camera's video feed.
+      MTX_PATHDEFAULTS_PUBLISHUSER: ${MEDIAMTX_PUBLISH_USER:-publisher}
+      MTX_PATHDEFAULTS_PUBLISHPASS: ${MEDIAMTX_PUBLISH_PASSWORD:-dev-only-change-in-production}
     ports:
-      - "8554:8554"       # RTSP
+      - "8554:8554"       # RTSP — only camera-feeder/relay processes publish here
       - "8889:8889"       # WebRTC — Live Grid page in the frontend embeds this
       - "8189:8189/udp"   # WebRTC ICE (must be published for the browser to actually connect)
     volumes:
@@ -96,6 +104,8 @@ services:
     entrypoint: ["/bin/bash", "/feeder/entrypoint.sh"]
     environment:
       CAMERA_STREAM_PATH: ${CAMERA_STREAM_PATH:-factory-cam-01}
+      MEDIAMTX_PUBLISH_USER: ${MEDIAMTX_PUBLISH_USER:-publisher}
+      MEDIAMTX_PUBLISH_PASSWORD: ${MEDIAMTX_PUBLISH_PASSWORD:-dev-only-change-in-production}
     volumes:
       - ./infra/camera-feeder/entrypoint.sh:/feeder/entrypoint.sh:ro
       - ./media:/media:ro

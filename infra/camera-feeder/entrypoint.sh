@@ -8,7 +8,9 @@
 set -u
 
 STREAM_PATH="${CAMERA_STREAM_PATH:-factory-cam-01}"
-TARGET="rtsp://mediamtx:8554/${STREAM_PATH}"
+PUBLISH_USER="${MEDIAMTX_PUBLISH_USER:-publisher}"
+PUBLISH_PASS="${MEDIAMTX_PUBLISH_PASSWORD:-dev-only-change-in-production}"
+TARGET="rtsp://${PUBLISH_USER}:${PUBLISH_PASS}@mediamtx:8554/${STREAM_PATH}"
 VIDEO="/media/sample.mp4"
 
 echo "[camera-feeder] waiting for mediamtx:8554…"
@@ -19,7 +21,7 @@ echo "[camera-feeder] mediamtx is up."
 
 while true; do
   if [ -f "$VIDEO" ]; then
-    echo "[camera-feeder] streaming $VIDEO -> $TARGET"
+    echo "[camera-feeder] streaming $VIDEO -> rtsp://mediamtx:8554/${STREAM_PATH}"   # credentials redacted from logs
     ffmpeg -re -stream_loop -1 -i "$VIDEO" -c copy -rtsp_transport tcp -f rtsp "$TARGET"
   else
     echo "[camera-feeder] no file at $VIDEO — streaming a synthetic test pattern instead."

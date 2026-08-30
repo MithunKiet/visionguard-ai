@@ -49,5 +49,15 @@ class WorkerSettings(BaseSettings):
     MIN_EXPECTED_WIDTH: int = 1920
     MIN_EXPECTED_HEIGHT: int = 1080
 
+    # OpenCV's FFmpeg backend has no cv2.CAP_PROP_* for RTSP transport — this
+    # is passed via OPENCV_FFMPEG_CAPTURE_OPTIONS at VideoCapture-open time
+    # (see pipeline/frame_reader.py). TCP default: many corporate/WiFi
+    # networks drop the dynamically-negotiated RTP/UDP ports RTSP-over-UDP
+    # needs, silently failing the connection. Applies to every camera this
+    # worker process handles — override to "udp" only if your cameras/network
+    # specifically need it (e.g. lower latency over a network where UDP is
+    # reliable and TCP retransmits would lag).
+    RTSP_TRANSPORT: str = "tcp"
+
 
 settings = WorkerSettings()
