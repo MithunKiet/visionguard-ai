@@ -102,6 +102,7 @@ class AnalyticsService:
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
         zone_id: str | None = None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         """Average and peak occupancy per zone over the range."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
@@ -193,13 +194,13 @@ class AnalyticsService:
         enterprise_id: str,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         """0–100 score: starts at 100 and subtracts severity-weighted alert
         counts normalized per day (min 0). A quiet factory scores 100."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        rows = (await self._db.execute(
-            select(Alert.severity, func.count())
+        q = select(Alert.severity, func.count())
             .where(
                 Alert.enterprise_id == ent_pk,
                 Alert.created_at >= from_dt,
@@ -207,7 +208,9 @@ class AnalyticsService:
                 Alert.status != "FalsePositive",
             )
             .group_by(Alert.severity)
-        )).all()
+        )
+        q = await apply_zone_scope(self._db, q, scope or ScopeFilter(unrestricted=True), Alert.factory_id, Alert.zone_id)
+        rows = (await self._db.execute(q)).all()
 
         days = max(1, (to_dt - from_dt).days)
         penalty = sum(_SEVERITY_WEIGHTS.get(sev, 1) * count for sev, count in rows) / days
