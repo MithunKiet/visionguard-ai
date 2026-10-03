@@ -7,6 +7,7 @@ from src.modules.analytics.application.services import AnalyticsService
 from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import AuthUser, get_current_user
+from src.shared.security.scope import get_scope
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
@@ -23,7 +24,7 @@ async def violation_analytics(
     user: AuthUser = Depends(get_current_user),
     svc: AnalyticsService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.violations(user.enterprise_id, from_dt, to_dt, zone_id))
+    return ApiResponse(data=await svc.violations(user.enterprise_id, from_dt, to_dt, zone_id, get_scope(user)))
 
 
 @router.get("/occupancy", response_model=ApiResponse[dict], summary="Occupancy analytics")
@@ -34,7 +35,7 @@ async def occupancy_analytics(
     user: AuthUser = Depends(get_current_user),
     svc: AnalyticsService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.occupancy(user.enterprise_id, from_dt, to_dt, zone_id))
+    return ApiResponse(data=await svc.occupancy(user.enterprise_id, from_dt, to_dt, zone_id, get_scope(user)))
 
 
 @router.get("/compliance", response_model=ApiResponse[dict], summary="Alert resolution + SLA compliance")
@@ -44,7 +45,7 @@ async def compliance_analytics(
     user: AuthUser = Depends(get_current_user),
     svc: AnalyticsService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.compliance(user.enterprise_id, from_dt, to_dt))
+    return ApiResponse(data=await svc.compliance(user.enterprise_id, from_dt, to_dt, get_scope(user)))
 
 
 @router.get("/safety-score", response_model=ApiResponse[dict], summary="Overall safety score (0-100)")
@@ -54,4 +55,4 @@ async def safety_score(
     user: AuthUser = Depends(get_current_user),
     svc: AnalyticsService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.safety_score(user.enterprise_id, from_dt, to_dt))
+    return ApiResponse(data=await svc.safety_score(user.enterprise_id, from_dt, to_dt, get_scope(user)))
