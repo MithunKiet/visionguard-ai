@@ -61,7 +61,7 @@ class WorkerRepository:
         gpu_available: bool,
     ) -> WorkerEntity:
         existing = await self._db.execute(
-            select(AIWorker).where(AIWorker.worker_id == worker_id)
+            select(AIWorker).join(Enterprise, Enterprise.id == AIWorker.enterprise_id).where(AIWorker.worker_id == worker_id, Enterprise.public_id == enterprise_id)
         )
         existing_row = existing.scalar_one_or_none()
         now = datetime.now(timezone.utc)
@@ -69,7 +69,7 @@ class WorkerRepository:
         if existing_row:
             await self._db.execute(
                 update(AIWorker)
-                .where(AIWorker.worker_id == worker_id)
+                .where(AIWorker.worker_id == worker_id, AIWorker.enterprise_id == existing_row.enterprise_id)
                 .values(
                     status="Online",
                     last_heartbeat=now,
