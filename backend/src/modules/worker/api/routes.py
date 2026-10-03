@@ -61,7 +61,7 @@ async def get_worker_cameras(
     svc: WorkerService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
-    cameras = await svc.get_worker_cameras_by_business_id(worker_id, db)
+    cameras = await svc.get_worker_cameras_by_business_id(worker_id, db, ctx.enterprise_id)
     return ApiResponse(data=cameras)
 
 
