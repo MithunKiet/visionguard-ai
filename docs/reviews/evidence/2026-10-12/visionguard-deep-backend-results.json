@@ -1,0 +1,77 @@
+[
+  {
+    "id": "AUTH-SCOPE-FACTORY",
+    "reproduced": true,
+    "detail": "Factory manager reads a different factory in same enterprise; HTTP 200"
+  },
+  {
+    "id": "AUTH-SCOPE-FACTORY-WRITE",
+    "reproduced": true,
+    "detail": "Factory manager updates another factory; HTTP 200"
+  },
+  {
+    "id": "AUTH-SCOPE-CONFIG",
+    "reproduced": true,
+    "detail": "Factory manager reads another factory zone config; HTTP 200"
+  },
+  {
+    "id": "AUTH-SCOPE-MAINTENANCE",
+    "reproduced": true,
+    "detail": "Factory manager suppresses another factory camera alerts; HTTP 200"
+  },
+  {
+    "id": "AUTH-SCOPE-CAMERA-CREATE",
+    "reproduced": true,
+    "detail": "Factory manager creates camera in another factory; HTTP 200"
+  },
+  {
+    "id": "AUTH-INACTIVE-TOKEN",
+    "reproduced": true,
+    "detail": "Existing access token still accepted after database account suspension; HTTP 200"
+  },
+  {
+    "id": "DATA-CROSS-TENANT-DEPARTMENT",
+    "reproduced": true,
+    "detail": "Department in tenant A accepted factory foreign key belonging to tenant B"
+  },
+  {
+    "id": "DATA-CROSS-TENANT-NOTIFY",
+    "reproduced": true,
+    "detail": "Tenant A zone recipient accepted a tenant B user; no notification sent by this probe"
+  },
+  {
+    "id": "DATA-CROSS-TENANT-SHIFT",
+    "reproduced": true,
+    "detail": "Tenant A shift accepted tenant B factory"
+  },
+  {
+    "id": "ALERT-NUMBER-TENANTS",
+    "reproduced": true,
+    "detail": "Second tenant first alert fails global alert_number uniqueness: IntegrityError"
+  },
+  {
+    "id": "EVENT-DUPLICATE",
+    "reproduced": true,
+    "detail": "Replaying identical event_id creates 2 violation records"
+  },
+  {
+    "id": "EVENT-TIMESTAMP",
+    "reproduced": true,
+    "detail": "2020 event timestamp persisted as processing time instead"
+  },
+  {
+    "id": "ALERT-TRANSITION-RESPONSE",
+    "reproduced": true,
+    "detail": "FalsePositive response lacks newly written resolved_on timestamp"
+  },
+  {
+    "id": "FALSE-POSITIVE-DATA",
+    "reproduced": true,
+    "detail": "FalsePositive alert leaves source violation is_false_positive=false"
+  },
+  {
+    "id": "LOW-CONFIDENCE-DROPPED",
+    "reproduced": true,
+    "detail": "Low-confidence review event creates no review record"
+  }
+]

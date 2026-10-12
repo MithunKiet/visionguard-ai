@@ -1,0 +1,17 @@
+[
+  {
+    "id": "AUTH-REFRESH-RACE",
+    "reproduced": true,
+    "detail": "One rotating refresh token produced 2 successful concurrent refresh responses"
+  },
+  {
+    "id": "CAMERA-URL-PROTOCOL",
+    "reproduced": true,
+    "detail": "Viewer can use RTSP test endpoint to read a local JPEG path rather than an RTSP URL; HTTP 200"
+  },
+  {
+    "id": "CONFIG-CONCURRENT-VERSION",
+    "reproduced": true,
+    "detail": "Two concurrent updates: starting version 1, final version 2, returned versions [2, 2]"
+  }
+]
