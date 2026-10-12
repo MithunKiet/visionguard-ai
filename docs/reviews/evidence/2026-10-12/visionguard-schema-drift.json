@@ -1,0 +1,1108 @@
+[
+  {
+    "table": "enterprises",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "enterprises",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "enterprises",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "roles",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "roles",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "roles",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "identity.users",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "identity.users",
+    "column": "factory_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "identity.users",
+    "column": "department_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "identity.users",
+    "column": "invited_by",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "identity.users",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "identity.users",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "identity.users",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "identity.refresh_tokens",
+    "column": "user_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "identity.refresh_tokens",
+    "column": "user_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "identity.refresh_tokens",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "identity.refresh_tokens",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "identity.refresh_tokens",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "factories",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "factories",
+    "column": "plant_head_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "factories",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "factories",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "factories",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "departments",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "departments",
+    "column": "factory_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "departments",
+    "column": "head_user_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "departments",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "departments",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "departments",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "zones",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "zones",
+    "column": "factory_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "zones",
+    "column": "department_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "zones",
+    "column": "supervisor_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "zones",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "zones",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "zones",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "worker.ai_workers",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "worker.ai_workers",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "worker.ai_workers",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "worker.ai_workers",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "worker.ai_workers",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "cameras",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "cameras",
+    "column": "factory_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "cameras",
+    "column": "zone_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "cameras",
+    "column": "worker_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "cameras",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "cameras",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "cameras",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "config.zone_configs",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "config.zone_configs",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "config.zone_configs",
+    "column": "zone_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "config.zone_configs",
+    "column": "zone_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "config.zone_configs",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "config.zone_configs",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "ppe_types",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "ppe_types",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "ppe_types",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "ppe_types",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "ppe_types",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "config.zone_rules",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "config.zone_rules",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "config.zone_rules",
+    "column": "zone_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "config.zone_rules",
+    "column": "zone_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "config.zone_rules",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "config.zone_rules",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "config.zone_rules",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "config.config_history",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "config.config_history",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "config.config_history",
+    "column": "zone_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "config.config_history",
+    "column": "zone_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "config.config_history",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "config.config_history",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "reports.reports",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "reports.reports",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "reports.reports",
+    "column": "generated_by",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "reports.reports",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "reports.reports",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "shifts",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "shifts",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "shifts",
+    "column": "factory_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "shifts",
+    "column": "factory_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "shifts",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "shifts",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "occupancy.logs",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "occupancy.logs",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "occupancy.logs",
+    "column": "zone_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "occupancy.logs",
+    "column": "zone_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "occupancy.logs",
+    "column": "camera_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "occupancy.logs",
+    "column": "camera_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "occupancy.logs",
+    "column": "shift_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "occupancy.logs",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "occupancy.logs",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "ppe.violations",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "ppe.violations",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "ppe.violations",
+    "column": "zone_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "ppe.violations",
+    "column": "zone_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "ppe.violations",
+    "column": "camera_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "ppe.violations",
+    "column": "camera_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "ppe.violations",
+    "column": "shift_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "ppe.violations",
+    "column": "rule_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "ppe.violations",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "ppe.violations",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "factory_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "factory_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "department_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "zone_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "zone_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "camera_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "camera_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "violation_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "assigned_to",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "shift_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alerts",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "alerts.alert_history",
+    "column": "alert_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alert_history",
+    "column": "alert_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "alerts.alert_history",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "alerts.alert_history",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "alerts.alert_history",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "notifications.notification_log",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "notifications.notification_log",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "notifications.notification_log",
+    "column": "alert_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "notifications.notification_log",
+    "column": "recipient_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "notifications.notification_log",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "notifications.notification_log",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "notifications.notification_recipients",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "notifications.notification_recipients",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "notifications.notification_recipients",
+    "column": "zone_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "notifications.notification_recipients",
+    "column": "user_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "notifications.notification_recipients",
+    "column": "user_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "notifications.notification_recipients",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "notifications.notification_recipients",
+    "column": "created_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "notifications.notification_recipients",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "audit.audit_log",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "audit.audit_log",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "audit.audit_log",
+    "column": "user_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "audit.audit_log",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "audit.audit_log",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "camera_maintenance",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "camera_maintenance",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "camera_maintenance",
+    "column": "camera_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "camera_maintenance",
+    "column": "camera_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "camera_maintenance",
+    "column": "assigned_to",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "camera_maintenance",
+    "column": "completed_by",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "camera_maintenance",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "camera_maintenance",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "onboarding.setup_progress",
+    "column": "user_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "onboarding.setup_progress",
+    "column": "user_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "onboarding.setup_progress",
+    "column": "enterprise_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "onboarding.setup_progress",
+    "column": "enterprise_id",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  },
+  {
+    "table": "onboarding.setup_progress",
+    "column": "factory_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "onboarding.setup_progress",
+    "column": "department_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "onboarding.setup_progress",
+    "column": "zone_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "onboarding.setup_progress",
+    "column": "camera_id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "onboarding.setup_progress",
+    "column": "id",
+    "kind": "type",
+    "db": "BIGINT",
+    "orm": "INTEGER"
+  },
+  {
+    "table": "onboarding.setup_progress",
+    "column": "updated_at",
+    "kind": "nullability",
+    "db": true,
+    "orm": false
+  }
+]

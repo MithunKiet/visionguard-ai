@@ -1,0 +1,997 @@
+[
+  {
+    "id": "AUTH-01",
+    "priority": "P1",
+    "evidence": "Reproduced earlier; source confirmed",
+    "title": "Worker tenant isolation टूटती है",
+    "impact": "Worker-camera lookup tenant context को ignore करता है। Heartbeat भी worker_id alone से existing worker update करता है और caller enterprise को response में दर्शाता है; shared key के साथ दूसरे tenant की identity/data प्रभावित हो सकती है।",
+    "fix": "Worker identity को enterprise के साथ resolve करें; per-worker scoped credentials और event authorization लागू करें।",
+    "acceptance": "Wrong enterprise/worker combination पर 403/404, camera URLs न लौटें और दूसरे tenant की heartbeat row न बदले।",
+    "sources": [
+      [
+        "backend/src/modules/worker/api/routes.py",
+        "async def get_worker_cameras("
+      ],
+      [
+        "backend/src/modules/worker/infrastructure/repositories.py",
+        "async def upsert_heartbeat("
+      ]
+    ]
+  },
+  {
+    "id": "AUTH-02",
+    "priority": "P1",
+    "evidence": "Reproduced",
+    "title": "Factory/zone permissions सभी endpoints पर लागू नहीं हैं",
+    "impact": "Factory manager ने दूसरी factory पढ़ी/बदली, उसके zone config पढ़े, maintenance mode से alerts suppress किए और camera create किया। Factory/department detail/mutation, config, maintenance, shifts, notifications, analytics, reports और WebSocket में narrower scope लगातार लागू नहीं होता।",
+    "fix": "एक साझा authorization policy से read, create, update और service-to-service paths में tenant + factory + zone scope enforce करें।",
+    "acceptance": "दो factories और zone-scoped viewer वाली permission matrix में हर operation के allow/deny checks हों; maintenance suppression भी scope-protected हो।",
+    "sources": [
+      [
+        "backend/src/modules/factory/api/routes.py",
+        "async def get_factory("
+      ],
+      [
+        "backend/src/modules/maintenance/api/routes.py",
+        "async def enable_maintenance_mode("
+      ],
+      [
+        "backend/src/modules/config/api/routes.py",
+        "async def update_zone_config("
+      ]
+    ]
+  },
+  {
+    "id": "AUTH-03",
+    "priority": "P1",
+    "evidence": "Reproduced",
+    "title": "Cross-tenant foreign keys स्वीकार होते हैं",
+    "impact": "Tenant A department और shift में tenant B factory स्वीकार हुई; tenant A notification recipient में tenant B user स्वीकार हुआ। Generic to_pk केवल ID resolve करता है, ownership नहीं। User factory/department/assigned zones, plant heads, supervisors और alert assignees पर भी यही validation चाहिए।",
+    "fix": "हर referenced entity की tenant और parent hierarchy validate करें; जहाँ संभव हो composite tenant-aware constraints जोड़ें।",
+    "acceptance": "Cross-tenant references 4xx से reject हों; notification किसी दूसरे tenant के user तक न जाए; foreign factory/department/zone combinations भी reject हों।",
+    "sources": [
+      [
+        "backend/src/shared/database/pid.py",
+        "async def to_pk("
+      ],
+      [
+        "backend/src/modules/department/infrastructure/repositories.py",
+        "async def create("
+      ],
+      [
+        "backend/src/modules/users/infrastructure/repositories.py",
+        "async def create("
+      ],
+      [
+        "backend/src/modules/notifications/infrastructure/repositories.py",
+        "async def create("
+      ]
+    ]
+  },
+  {
+    "id": "AUTH-04",
+    "priority": "P1",
+    "evidence": "Reproduced",
+    "title": "Logout और suspension पुराने access tokens नहीं रोकते",
+    "impact": "Logout 200 के बाद token /auth/me पर चला। Account Inactive करने के बाद भी पुराना token चला। Authorization JWT signature/type पढ़ती है; Redis blacklist, current account status और changed roles/scope नहीं जाँचती। WebSocket authentication केवल handshake पर होती है।",
+    "fix": "Revocation/session version और account/role changes enforce करें; active WebSocket sessions को expire/revoke करें।",
+    "acceptance": "Logout, deactivate, password/security reset और permission removal के बाद पुराने HTTP/WS access reject हों।",
+    "sources": [
+      [
+        "backend/src/shared/security/dependencies.py",
+        "async def get_current_user("
+      ],
+      [
+        "backend/src/modules/identity/application/services.py",
+        "async def logout("
+      ],
+      [
+        "backend/src/modules/realtime/routes.py",
+        "async def ws_live("
+      ]
+    ]
+  },
+  {
+    "id": "AUTH-05",
+    "priority": "P1",
+    "evidence": "Reproduced",
+    "title": "Refresh token rotation concurrent requests में single-use नहीं है",
+    "impact": "एक refresh token की चार concurrent requests में दो HTTP 200 responses मिले। Validation और revocation अलग commits हैं; SELECT में lock/atomic consume नहीं है।",
+    "fix": "Atomic conditional update/row lock से token consume करें; rotation परिवार और reuse handling तय करें।",
+    "acceptance": "Concurrent renewal में exactly one success; old token replay denied; transaction failure orphaned/extra valid tokens न बनाए।",
+    "sources": [
+      [
+        "backend/src/modules/identity/application/services.py",
+        "async def refresh("
+      ]
+    ]
+  },
+  {
+    "id": "AUTH-06",
+    "priority": "P1",
+    "evidence": "Source confirmed; browser behavior not exercised",
+    "title": "Frontend logout server को logout नहीं करता; query cache tenant-aware नहीं है",
+    "impact": "AppShell logout केवल local session clear और navigate करता है; refresh cookie/server session untouched रहते हैं। Shared QueryClient clear नहीं होता और keys में user/tenant नहीं है; cached branding दस मिनट तक previous tenant की दिख सकती है और other cached lists briefly दिख सकती हैं।",
+    "fix": "Server logout await करें, cookie revoke करें, auth transitions पर cancel/clear queries करें और user/tenant-qualified keys रखें।",
+    "acceptance": "Same tab में A logout → B login पर A का cached data न दिखे; logout के बाद silent refresh denied हो।",
+    "sources": [
+      [
+        "frontend/src/components/AppShell.tsx",
+        "const handleLogout = () =>"
+      ],
+      [
+        "frontend/src/main.tsx",
+        "const queryClient = new QueryClient("
+      ],
+      [
+        "frontend/src/api/client.ts",
+        "async function doRefresh("
+      ]
+    ]
+  },
+  {
+    "id": "AUTH-07",
+    "priority": "P1",
+    "evidence": "Source confirmed",
+    "title": "Login abuse और mandatory password-change controls अधूरे हैं",
+    "impact": "Application-level login throttling/lockout नहीं मिला। is_first_login flag लौटता है लेकिन frontend सीधे dashboard खोलता है; backend temporary-password sessions को password-change तक सीमित नहीं करता। totp_enabled/pyotp मौजूद हैं, लेकिन MFA verification flow नहीं मिला।",
+    "fix": "Login abuse controls और forced first-password-change flow लागू करें। MFA को वास्तव में implement करें या unsupported capability स्पष्ट करें।",
+    "acceptance": "Repeated failed login bounded हो; first-login user privileged operations न करे जब तक password बदले; MFA-enabled login second factor मांगे।",
+    "sources": [
+      [
+        "backend/src/modules/identity/application/services.py",
+        "async def login("
+      ],
+      [
+        "frontend/src/pages/Login.tsx",
+        "navigate(\"/\", { replace: true });"
+      ],
+      [
+        "backend/src/core/app.py",
+        "def create_app("
+      ]
+    ]
+  },
+  {
+    "id": "AUTH-08",
+    "priority": "P1",
+    "evidence": "Source confirmed; media server not started for this review",
+    "title": "Live video app permissions को bypass कर सकता है",
+    "impact": "MediaMTX reads intentionally unauthenticated हैं और WebRTC ports published हैं। App में login से camera visibility control करने पर भी direct video path की authorization नहीं बनती।",
+    "fix": "Streaming layer में scoped short-lived access/session authorization रखें; publish/read accounts अलग करें और direct unauthenticated access रोकें।",
+    "acceptance": "Logged-out client तथा wrong tenant direct viewer/WebRTC requests से video न पढ़ें; authorized assigned users stream पढ़ सकें।",
+    "sources": [
+      [
+        "infra/mediamtx/mediamtx.yml",
+        "Reads stay unauthenticated"
+      ],
+      [
+        "docker-compose.yml",
+        "webrtc"
+      ],
+      [
+        "frontend/src/pages/LiveGrid.tsx",
+        "<iframe"
+      ]
+    ]
+  },
+  {
+    "id": "AUTH-09",
+    "priority": "P1",
+    "evidence": "Source confirmed",
+    "title": "Camera/provider credentials responses और logs में leak हो सकते हैं",
+    "impact": "API raw rtsp_url लौटाती है, जिसमें username/password हो सकते हैं। FrameReader connection log वही URL लिखता है। Roboflow HTTP exception str में api_key query URL शामिल हो सकती है और उसे log किया जाता है।",
+    "fix": "Credentials URLs से अलग सुरक्षित bindings में रखें; display/response/logs redact करें; HTTP error logging से sensitive parameters हटाएँ।",
+    "acceptance": "Credential-bearing test URL/key sentinel responses और logs में न मिले; camera access का secret केवल आवश्यक service को मिले।",
+    "sources": [
+      [
+        "backend/src/modules/camera/api/routes.py",
+        "\"rtsp_url\": c.rtsp_url"
+      ],
+      [
+        "ai-worker/src/pipeline/frame_reader.py",
+        "log.info(\"frame_reader.connected\""
+      ],
+      [
+        "ai-worker/src/pipeline/remote_ppe_client.py",
+        "log.warning(\"remote_ppe.detect_failed\""
+      ]
+    ]
+  },
+  {
+    "id": "AUTH-10",
+    "priority": "P1",
+    "evidence": "Reproduced protocol-validation failure; no external exploit attempted",
+    "title": "RTSP test endpoint arbitrary file/protocol input स्वीकार करता है",
+    "impact": "Viewer ने rtsp_url में स्थानीय JPEG path दिया और endpoint ने reachable=true लौटाया। Schema plain str है और OpenCV arbitrary input खोलता है; protocol/network restriction तथा endpoint-specific probe timeout/rate control नहीं है।",
+    "fix": "Only supported streaming protocols और approved camera hosts/subnets allow करें; local file paths तथा unrelated internal destinations reject करें। Factory camera private subnets को blanket-block न करें।",
+    "acceptance": "Local paths/file/http metadata destinations reject हों; allowed real RTSP cameras काम करें; slow probe bounded समय में समाप्त हो।",
+    "sources": [
+      [
+        "backend/src/modules/camera/api/schemas.py",
+        "class TestConnectionRequest("
+      ],
+      [
+        "backend/src/modules/camera/application/services.py",
+        "async def test_rtsp_connection("
+      ]
+    ]
+  },
+  {
+    "id": "AI-01",
+    "priority": "P1",
+    "evidence": "Source confirmed",
+    "title": "Trained model के बिना synthetic violations बनते हैं",
+    "impact": "Default fallback generic COCO person detection के ऊपर rotating fake helmet/vest/gloves/shoes violations बनाता है। Demo wiring का pass होना real PPE accuracy साबित नहीं करता। Production-mode model capability guard नहीं मिला।",
+    "fix": "Explicit demo mode रखें; production में validated PPE artifact और class-map manifest आवश्यक करें; synthetic records unmistakably label करें।",
+    "acceptance": "Missing/incorrect production model पर inference fail closed या unavailable state दिखाए; synthetic evidence real compliance reports में न मिले।",
+    "sources": [
+      [
+        "ai-worker/src/pipeline/detector.py",
+        "elif not self._ppe_mode:"
+      ]
+    ]
+  },
+  {
+    "id": "AI-02",
+    "priority": "P1",
+    "evidence": "Source confirmed; remote outage not tested on a real provider",
+    "title": "Remote inference failure false PPE violations में बदल सकती है",
+    "impact": "Roboflow failure [] returns करती है। Detector no item detected को item missing समझता है; इसलिए quota/timeout/network failure helmet/vest false positives बना सकती है। Batch में remote requests serial हैं, जिससे latency भी बढ़ती है।",
+    "fix": "Inference error और valid empty prediction अलग करें; degraded state/metrics दें; bounded concurrency और latency budget रखें।",
+    "acceptance": "Provider 429/503/timeout पर synthetic missing-PPE alert न बने; failure visible हो और recovery पर normal detection लौटे।",
+    "sources": [
+      [
+        "ai-worker/src/pipeline/remote_ppe_client.py",
+        "except Exception as e:"
+      ],
+      [
+        "ai-worker/src/pipeline/detector.py",
+        "def _remote_violations_for_person("
+      ]
+    ]
+  },
+  {
+    "id": "AI-03",
+    "priority": "P1",
+    "evidence": "Reproduced",
+    "title": "Consecutive-frame voting वास्तव में consecutive नहीं है",
+    "impact": "Positive → clean → positive → clean → positive sequence से required_frames=3 violation निकला। Missing detection के frame में previous per-track counter reset नहीं होता; medium-confidence path भी high-confidence streak नहीं तोड़ता।",
+    "fix": "हर frame में सभी active track/item streaks update/reset करें और confidence-state transition स्पष्ट करें।",
+    "acceptance": "तीन uninterrupted positive frames पर ही confirmation; clean/absent/insufficient-confidence frames streak reset करें।",
+    "sources": [
+      [
+        "ai-worker/src/pipeline/ppe_validator.py",
+        "def evaluate("
+      ]
+    ]
+  },
+  {
+    "id": "AI-04",
+    "priority": "P1",
+    "evidence": "Reproduced with real config-sync/validator functions",
+    "title": "Initial और hot-reload config contracts mismatch हैं",
+    "impact": "Initial worker config में ppe_required/config_version हैं; hot config में required_ppe_types/version। Initial version=5 ने stale hot version=2 स्वीकार किया। Hot replacement effective per-camera overrides खो देता है और validator default helmet/vest पर लौट सकता है।",
+    "fix": "एक versioned validated config DTO use करें; effective camera PPE compute करें; सभी producer/consumer keys और event version semantics समान करें।",
+    "acceptance": "Initial and hot config equivalent behavior दें; stale updates reject हों; camera overrides तथा changed PPE list reload के बाद सुरक्षित रहें।",
+    "sources": [
+      [
+        "backend/src/modules/worker/application/services.py",
+        "async def get_worker_cameras("
+      ],
+      [
+        "backend/src/modules/config/application/services.py",
+        "async def to_dict("
+      ],
+      [
+        "ai-worker/src/config/zone_sync.py",
+        "def _apply_zone_config("
+      ]
+    ]
+  },
+  {
+    "id": "AI-05",
+    "priority": "P1",
+    "evidence": "Reproduced",
+    "title": "PPE selection/threshold handling में तीन अलग bugs हैं",
+    "impact": "ppe_required=[] को defaults बना दिया जाता है। shoes_threshold=.99 के बावजूद .80 no_safety_shoes detection accepted हुई क्योंकि lookup safety_shoes_threshold मांगता है। no_mask event mapping नहीं है; custom catalog entries से model support स्वतः नहीं आता।",
+    "fix": "Empty और omitted config अलग रखें; canonical item/class/threshold mapping तथा model capability validation जोड़ें।",
+    "acceptance": "No PPE selected → no PPE violations; shoes threshold सही लागू हो; mask/custom unsupported classes UI/API में स्पष्ट रहें।",
+    "sources": [
+      [
+        "ai-worker/src/pipeline/ppe_validator.py",
+        "ppe_required ="
+      ],
+      [
+        "ai-worker/src/pipeline/ppe_validator.py",
+        "threshold ="
+      ],
+      [
+        "backend/src/modules/ppe_types/application/services.py",
+        "class PpeTypeService:"
+      ]
+    ]
+  },
+  {
+    "id": "AI-06",
+    "priority": "P1",
+    "evidence": "Reproduced",
+    "title": "Low-confidence review events silently drop होते हैं",
+    "impact": "Worker events.low_confidence_violation publish करता है; backend dispatch इसे handle नहीं करता। Event unhandled warning के बाद process context normally exits, इसलिए message acknowledged हो सकती है और review record नहीं बनता।",
+    "fix": "Review event schema/handler और persistent review lifecycle implement करें; unsupported events की explicit failure/DLQ policy रखें।",
+    "acceptance": "Low-confidence event durable review record बनाए और operator approve/reject कर सके; replay idempotent हो।",
+    "sources": [
+      [
+        "ai-worker/src/pipeline/camera_worker.py",
+        "if v.get(\"review\"):"
+      ],
+      [
+        "backend/src/shared/messaging/consumer.py",
+        "async def _route_event("
+      ]
+    ]
+  },
+  {
+    "id": "AI-07",
+    "priority": "P1",
+    "evidence": "Source confirmed",
+    "title": "Camera assignment/update/delete running worker में reconcile नहीं होते",
+    "impact": "Worker cameras केवल startup पर fetch करता है। Config sync सिर्फ zone config और camera status संभालता है। New camera assignments, RTSP edits, deletion और model_updated events running task/model lifecycle को update नहीं करते।",
+    "fix": "Periodic reconciliation plus assignment/model events से camera tasks create/update/stop करें; validated atomic model swap implement करें।",
+    "acceptance": "Running worker में camera add/delete/URL-change बिना restart लागू हों; failed swap old model सुरक्षित रखे।",
+    "sources": [
+      [
+        "ai-worker/src/main.py",
+        "cameras = await fetch_assigned_cameras()"
+      ],
+      [
+        "ai-worker/src/config/zone_sync.py",
+        "async def _on_message("
+      ],
+      [
+        "backend/src/modules/camera/application/services.py",
+        "async def update_camera("
+      ]
+    ]
+  },
+  {
+    "id": "AI-08",
+    "priority": "P2",
+    "evidence": "Source confirmed",
+    "title": "Camera/worker failure status और recovery अधूरे हैं",
+    "impact": "Normal RTSP disconnect FrameReader में retry होता है लेकिन corresponding offline/reconnected event publish नहीं मिला। mark_offline caller नहीं मिला; list_active केवल status Online देखता है, heartbeat age नहीं। Circuit-open camera का automatic rearm नहीं है। Spec checks cached initial stream properties पढ़ते हैं।",
+    "fix": "Heartbeat expiry supervision, stream state events, recovery/reassignment और live feed quality measurements implement करें।",
+    "acceptance": "RTSP/worker disconnect पर bounded time में dashboard offline हो; stale worker को new cameras न मिलें; recovered stream/task स्वतः वापिस आए।",
+    "sources": [
+      [
+        "ai-worker/src/pipeline/frame_reader.py",
+        "async def _handle_failure("
+      ],
+      [
+        "backend/src/modules/worker/infrastructure/repositories.py",
+        "async def list_active("
+      ],
+      [
+        "ai-worker/src/pipeline/camera_worker.py",
+        "CIRCUIT_BREAKER_THRESHOLD"
+      ]
+    ]
+  },
+  {
+    "id": "AI-09",
+    "priority": "P2",
+    "evidence": "Track-id omission reproduced; other details source confirmed",
+    "title": "Person evidence में track/bbox/model identity सुरक्षित नहीं रहती",
+    "impact": "Validator internally per-person tracking करता है लेकिन confirmed output track_id नहीं देता। CameraWorker published event में bbox भी omit करता है। Snapshot key second-resolution timestamp पर आधारित है, जिससे same camera/type writes collide हो सकते हैं। Current tracker IOU based है; employee identity recognition नहीं है।",
+    "fix": "Track ID, bbox, capture time, model/config version और unique event-based snapshot key persist करें; employee identification को अलग capability मानें।",
+    "acceptance": "Two simultaneous people के violations uniquely attributable हों; same-second evidence overwrite न हो; API relevant person annotation लौटाए।",
+    "sources": [
+      [
+        "ai-worker/src/pipeline/ppe_validator.py",
+        "confirmed.append({"
+      ],
+      [
+        "ai-worker/src/pipeline/camera_worker.py",
+        "await publish(f\"events."
+      ],
+      [
+        "ai-worker/src/pipeline/camera_worker.py",
+        "async def _capture_snapshot("
+      ]
+    ]
+  },
+  {
+    "id": "AI-10",
+    "priority": "P2",
+    "evidence": "Source confirmed",
+    "title": "Zone occupancy में multi-camera/ROI semantics नहीं हैं",
+    "impact": "Current occupancy latest reading per zone चुनती है; camera counts aggregate/deduplicate नहीं करती। Worker पूरे frame के persons गिनता है, zone polygon/ROI नहीं मिला। Zone.max_occupancy और ZoneConfig.max_occupancy अलग-अलग update हो सकते हैं।",
+    "fix": "Zone geometry और camera overlap policy तय करें; canonical capacity field, aggregation and freshness state लागू करें।",
+    "acceptance": "दो non-overlapping cameras का correct zone total मिले; overlapping views double count न करें; capacity update worker और UI में एक साथ लागू हो।",
+    "sources": [
+      [
+        "backend/src/modules/occupancy/infrastructure/repositories.py",
+        "async def current_per_zone("
+      ],
+      [
+        "ai-worker/src/pipeline/camera_worker.py",
+        "async def _publish_occupancy("
+      ],
+      [
+        "backend/src/modules/zone/application/services.py",
+        "async def update_zone("
+      ]
+    ]
+  },
+  {
+    "id": "AI-11",
+    "priority": "P1",
+    "evidence": "Source confirmed; model training not run",
+    "title": "Model quality gate deployment को रोकती नहीं है",
+    "impact": "Training script metrics print करके best.pt copy कर देता है; documented helmet mAP threshold और held-out factory footage gate enforce नहीं होता। Dataset preparation random image split करता है, जिससे neighboring video frames train/val में leak हो सकते हैं। Model class-ID compatibility validation नहीं मिली।",
+    "fix": "Grouped camera/video/site splits, held-out tests और enforced per-class deployment gate रखें; artifact checksum, class map और rollback manifest रखें।",
+    "acceptance": "Below-target/unsupported model deploy न हो; target factory की unseen footage पर precision/recall, false-alert rate और per-class performance report हो।",
+    "sources": [
+      [
+        "ai-worker/training/train.py",
+        "metrics = model.val("
+      ],
+      [
+        "ai-worker/training/train.py",
+        "shutil.copy2(best, target)"
+      ],
+      [
+        "ai-worker/training/prepare_dataset.py",
+        "shuffle(labeled)"
+      ],
+      [
+        "ai-worker/src/pipeline/detector.py",
+        "PPE_CLASSES ="
+      ]
+    ]
+  },
+  {
+    "id": "AI-12",
+    "priority": "P2",
+    "evidence": "Source confirmed; hardware benchmarks unrun",
+    "title": "CPU/GPU/runtime sizing का reproducible contract नहीं है",
+    "impact": "README DEVICE=cpu बताता है, लेकिन actual setting USE_GPU है। Detector requested cuda पर .to(device) करता है; automatic GPU availability fallback नहीं दिखा। Compose GPU reservation mandatory है और torch/model/runtime compatibility fully pinned नहीं है। Frame freshness/backpressure और target capacity benchmark नहीं हुआ।",
+    "fix": "CPU/GPU profiles, compatible pinned inference stack और explicit capability checks दें; oldest-frame age, throughput, memory and dropped-frame metrics benchmark करें।",
+    "acceptance": "CPU-only documented command काम करे; absent GPU पर clear startup behavior हो; target camera load पर agreed p95 latency/freshness और resource limits meet हों।",
+    "sources": [
+      [
+        "README.md",
+        "DEVICE=cpu"
+      ],
+      [
+        "ai-worker/src/config/settings.py",
+        "USE_GPU:"
+      ],
+      [
+        "ai-worker/src/pipeline/detector.py",
+        "self._model.to(device)"
+      ],
+      [
+        "ai-worker/requirements.txt",
+        "ultralytics=="
+      ]
+    ]
+  },
+  {
+    "id": "DATA-01",
+    "priority": "P1",
+    "evidence": "Reproduced",
+    "title": "Alert numbers tenants के बीच collide करते हैं",
+    "impact": "next_sequence tenant-wise COUNT+1 है, लेकिन ALT-year-sequence globally unique है। Tenant A और B का पहला alert same number बनता है; B की creation IntegrityError से fail हुई। Concurrent same-tenant creation में भी race है।",
+    "fix": "Atomic sequence plus tenant/year namespace या globally unique identifier अपनाएँ; dedup race भी atomic करें।",
+    "acceptance": "दो tenants के first alerts और parallel creations बिना collisions बनें; numbering replay-safe हो।",
+    "sources": [
+      [
+        "backend/src/modules/alerts/infrastructure/repositories.py",
+        "async def next_sequence("
+      ],
+      [
+        "backend/src/modules/alerts/application/services.py",
+        "alert_number ="
+      ],
+      [
+        "backend/src/shared/database/models.py",
+        "alert_number    ="
+      ]
+    ]
+  },
+  {
+    "id": "DATA-02",
+    "priority": "P1",
+    "evidence": "Duplicate replay reproduced; partial-commit behavior source confirmed",
+    "title": "Events idempotent/transactional नहीं हैं",
+    "impact": "Identical event_id replay से दो violation records बने। event_id durable store नहीं होता। Violation, alert, notifications और broadcasts अलग steps/commits हैं; later failure पहले committed data छोड़ देता है और retry duplicate/inconsistent state बना सकती है।",
+    "fix": "Inbox/event-id uniqueness + one transactional business operation + transactional outbox रखें; acknowledgement commit के बाद और recovery policy defined हो।",
+    "acceptance": "Duplicate/redelivered message से one logical violation/alert बने; failure injection के बाद restart/retry complete state recover करे।",
+    "sources": [
+      [
+        "backend/src/shared/messaging/consumer.py",
+        "async def _handle_ppe_violation("
+      ],
+      [
+        "backend/src/modules/ppe/infrastructure/repositories.py",
+        "await self._db.commit()"
+      ],
+      [
+        "backend/src/shared/database/models.py",
+        "class PPEViolation("
+      ]
+    ]
+  },
+  {
+    "id": "DATA-03",
+    "priority": "P1",
+    "evidence": "Reproduced concurrency; delivery failure risk source confirmed",
+    "title": "Config version increment और publication atomic नहीं हैं",
+    "impact": "दो concurrent updates version 1 से दोनों version 2 बने; worker एक update stale मानकर drop कर सकता है। Database commit के बाद publish failure में config saved रहती है पर running workers stale रह सकते हैं; exclusive queue downtime में missed events recover नहीं करती।",
+    "fix": "Optimistic locking/atomic increment + durable outbox रखें; startup/periodic full-config reconciliation करें।",
+    "acceptance": "दो successful writes distinct monotonic versions दें; broker outage और worker restart के बाद latest config लागू हो।",
+    "sources": [
+      [
+        "backend/src/modules/config/application/services.py",
+        "config.version ="
+      ],
+      [
+        "backend/src/modules/config/application/services.py",
+        "await publish_config_event("
+      ],
+      [
+        "ai-worker/src/config/zone_sync.py",
+        "exclusive=True"
+      ]
+    ]
+  },
+  {
+    "id": "DATA-04",
+    "priority": "P2",
+    "evidence": "Reproduced; transition race source confirmed",
+    "title": "False-positive data और transition responses inconsistent हैं",
+    "impact": "Alert FalsePositive करने पर source violation.is_false_positive false रहता है, इसलिए analytics/report filtering गलत रहती है। Transition response नए resolved_on/acknowledged_on timestamps refresh नहीं करती। Concurrent transitions में expected-state guard नहीं है।",
+    "fix": "Alert/violation state एक transaction में synchronize करें; refreshed entity लौटाएँ; state transitions conditional/versioned करें।",
+    "acceptance": "False positive compliance counts से exclude हो; response timestamps persisted values से match हों; conflicting transitions reject हों।",
+    "sources": [
+      [
+        "backend/src/modules/alerts/application/services.py",
+        "async def mark_false_positive("
+      ],
+      [
+        "backend/src/modules/alerts/infrastructure/repositories.py",
+        "async def transition("
+      ],
+      [
+        "backend/src/modules/ppe/infrastructure/repositories.py",
+        "async def mark_false_positive("
+      ]
+    ]
+  },
+  {
+    "id": "DATA-05",
+    "priority": "P2",
+    "evidence": "Event-time loss reproduced; timezone gap source confirmed",
+    "title": "Capture/event time और factory-local shift time गलत interpret हो सकते हैं",
+    "impact": "2020 event timestamp processing-time record बन गया। PPE/occupancy service body timestamp ignore करती हैं; shift tagging processing-time UTC पर होती है। Factory timezone model/config नहीं मिला, इसलिए India के local shift hours को UTC evaluate किया जा सकता है।",
+    "fix": "Capture, emitted और ingested timestamps अलग persist करें; validated timezone per factory और late/out-of-order event handling रखें।",
+    "acceptance": "Delayed event original occurrence और local active shift से जुड़ा हो; overnight shifts अलग timezone में सही date/day use करें।",
+    "sources": [
+      [
+        "backend/src/modules/ppe/application/services.py",
+        "created_at=datetime.now("
+      ],
+      [
+        "backend/src/modules/occupancy/application/services.py",
+        "timestamp=datetime.now("
+      ],
+      [
+        "backend/src/modules/shifts/application/services.py",
+        "now_t = at.time()"
+      ]
+    ]
+  },
+  {
+    "id": "DATA-06",
+    "priority": "P2",
+    "evidence": "Schema-aware reflection confirmed",
+    "title": "ORM और migrated schema drift; Alembic autogeneration unsafe है",
+    "impact": "Fresh head database में 90 INTEGER/BIGINT width differences और 68 nullability differences मिले; missing columns zero। Alembic check failed। include_schemas absent होने से existing non-public schema tables भी additions की तरह दिखाई देती हैं; raw autogenerate output blindly apply नहीं करना चाहिए।",
+    "fix": "Schemas-aware Alembic configuration और metadata/migrations reconciliation करें; populated-data upgrades test करें।",
+    "acceptance": "Clean head पर correct schema-aware autogeneration no unintended operations दे; existing IDs/FKs/data preserve हों।",
+    "sources": [
+      [
+        "backend/alembic/env.py",
+        "context.configure(connection="
+      ],
+      [
+        "backend/alembic/versions/0012_baseentity_int_pk_public_id.py",
+        "BIGINT GENERATED"
+      ],
+      [
+        "backend/src/shared/database/base.py",
+        "Integer,"
+      ]
+    ]
+  },
+  {
+    "id": "DATA-07",
+    "priority": "P2",
+    "evidence": "Source confirmed",
+    "title": "Hierarchy lifecycle और input validation अधूरे हैं",
+    "impact": "Soft-deleted parent ownership lookup में deleted/status checks कई create paths पर absent हैं; children/tasks consistently deactivate नहीं होते। Factory/department/zone/camera codes, UUIDs, enums और relationships पर uniform validation/constraints नहीं हैं। Null PATCH values कई fields पर drop होती हैं, इसलिए nullable assignment clear करना संभव नहीं। Setup wizard replay progress/child relationships reset नहीं करता।",
+    "fix": "Canonical schemas, business uniqueness, parent-state/hierarchy validation और defined clear/delete/replay semantics लागू करें।",
+    "acceptance": "Deleted parent under child-create denied हो; invalid IDs/duplicate roles/codes friendly 4xx दें; explicit null assignment clear करे; setup retry duplicate/inconsistent hierarchy न बनाए।",
+    "sources": [
+      [
+        "backend/src/modules/zone/application/services.py",
+        "Department.public_id == department_id"
+      ],
+      [
+        "backend/src/modules/users/application/services.py",
+        "fields = {k: v for k, v in fields.items() if v is not None}"
+      ],
+      [
+        "backend/src/modules/onboarding/application/services.py",
+        "progress.last_completed_step = max("
+      ]
+    ]
+  },
+  {
+    "id": "DATA-08",
+    "priority": "P2",
+    "evidence": "Source confirmed",
+    "title": "Queue delivery और notifications की recovery अधूरी है",
+    "impact": "Webhook retries और email delivery consumer callback में inline हैं; slow channels acknowledgements/live alert broadcast delay कर सकते हैं। Failed mail durable retry job नहीं बनाता। DLQ configured है, लेकिन replay tooling/retry policy नहीं मिली। Worker cooldown before snapshot/publish success mark हो सकता है, जिससे transient failure के बाद retry suppressed हो।",
+    "fix": "Durable notification jobs/outbox, bounded retries and DLQ operator tooling रखें; delivery acknowledgement के अनुसार retry/cooldown semantics तय करें।",
+    "acceptance": "SMTP/webhook/storage/broker failure के बाद alert evidence और delivery recover हो; duplicates control हों; detection loop/outbound delays bounded रहें।",
+    "sources": [
+      [
+        "backend/src/modules/notifications/application/services.py",
+        "async def notify_zone_violation("
+      ],
+      [
+        "backend/src/shared/messaging/consumer.py",
+        "async with message.process(requeue=False):"
+      ],
+      [
+        "ai-worker/src/pipeline/ppe_validator.py",
+        "self._tracker.mark_fired(key)"
+      ]
+    ]
+  },
+  {
+    "id": "DATA-09",
+    "priority": "P2",
+    "evidence": "Source confirmed",
+    "title": "Audit append-only guarantee और coverage अधूरी है",
+    "impact": "Audit failure केवल log होकर swallow होती है और rollback नहीं किया जाता। Database immutability/append-only enforcement नहीं मिला। Camera CRUD, shifts और recipient operations का audit coverage consistent नहीं; correlation ID middleware/propagation absent है।",
+    "fix": "Audit durability policy, failure transaction handling, DB permissions/tamper protection तथा complete action/correlation coverage तय करें।",
+    "acceptance": "Protected action का audit trace recoverable हो; audit write failure silent gap न छोड़े; allowed account audit rows update/delete न कर सके।",
+    "sources": [
+      [
+        "backend/src/modules/audit/application/services.py",
+        "except Exception as e:"
+      ],
+      [
+        "backend/src/core/app.py",
+        "app.add_middleware("
+      ],
+      [
+        "backend/src/modules/camera/api/routes.py",
+        "async def create_camera("
+      ]
+    ]
+  },
+  {
+    "id": "SCALE-01",
+    "priority": "P1",
+    "evidence": "Source topology confirmed",
+    "title": "Multiple backend instances में live event delivery सही नहीं होगी",
+    "impact": "WebSocket rooms process memory में हैं। सभी backends same RabbitMQ queue consume करते हैं; one event one consumer तक जाएगा, जबकि clients दूसरे instance से जुड़े हो सकते हैं। Redis pub/sub fanout implementation नहीं मिली।",
+    "fix": "Separate durable processing from cross-instance live fanout; shared pub/sub/event bus और reconnect/resync protocol जोड़ें।",
+    "acceptance": "दो API replicas पर जुड़े clients relevant events receive करें; exactly-once business processing और client dedup/resync verify हों।",
+    "sources": [
+      [
+        "backend/src/modules/realtime/manager.py",
+        "self._rooms:"
+      ],
+      [
+        "backend/src/shared/messaging/consumer.py",
+        "\"backend.ai_events\""
+      ]
+    ]
+  },
+  {
+    "id": "SCALE-02",
+    "priority": "P2",
+    "evidence": "Source confirmed; load tests unrun",
+    "title": "Blocking report/storage operations और unbounded list/export semantics",
+    "impact": "Async report endpoint में PDF/Excel build और synchronous MinIO upload हैं; event loop block हो सकता है। Report rows silently limit 5000 हैं। User listing प्रति row roles query करती है और कुछ other lists unpaginated हैं। Safety score no alerts को 100 देता है, even when detection availability unknown हो।",
+    "fix": "Background report jobs/offloaded IO, pagination, explicit truncation/export options और availability-aware analytics रखें; measure actual queries/latency।",
+    "acceptance": "Large reports API p95 latency न बिगाड़ें; >5000 rows silently lose न हों; growing tenant data bounded responses दें; offline detection healthy score न दिखाए।",
+    "sources": [
+      [
+        "backend/src/modules/reports/application/services.py",
+        "get_minio().put_object("
+      ],
+      [
+        "backend/src/modules/reports/application/services.py",
+        ".limit(5000)"
+      ],
+      [
+        "backend/src/modules/users/infrastructure/repositories.py",
+        "roles_result ="
+      ],
+      [
+        "backend/src/modules/analytics/application/services.py",
+        "async def safety_score("
+      ]
+    ]
+  },
+  {
+    "id": "DEPLOY-01",
+    "priority": "P1",
+    "evidence": "Rendered Compose configuration confirmed",
+    "title": "Production overlay public ports और dev mounts retain करती है",
+    "impact": "ports: [] inherited mappings reset नहीं करती। Rendered production config ने database/cache/broker/storage/backend तथा dev frontend port retain किए। Empty volumes similarly merge behavior deserve verification।",
+    "fix": "Supported !reset/!override semantics or independent production compose रखें; rendered config assert करें।",
+    "acceptance": "Production में only intended ingress ports और production mounts रहें; no backend reload/dev source mounts or infrastructure host exposure।",
+    "sources": [
+      [
+        "docker-compose.prod.yml",
+        "ports: []"
+      ],
+      [
+        "docker-compose.prod.yml",
+        "volumes: []"
+      ]
+    ]
+  },
+  {
+    "id": "DEPLOY-02",
+    "priority": "P1",
+    "evidence": "Source paths confirmed; image build unrun",
+    "title": "Production frontend Dockerfile wrong build context paths use करती है",
+    "impact": "Root context selected है, लेकिन COPY package.json root से है जबकि manifest frontend/ में है। npm ci/build working directory और nginx file copy needs एक consistent context layout।",
+    "fix": "Dockerfile COPY paths/build working directory ठीक करें और production image build CI में जोड़ें।",
+    "acceptance": "Fresh production image build सफल हो; built SPA assets तथा nginx config सही image में हों।",
+    "sources": [
+      [
+        "docker-compose.prod.yml",
+        "context: ."
+      ],
+      [
+        "frontend/Dockerfile.prod",
+        "COPY package.json"
+      ]
+    ]
+  },
+  {
+    "id": "DEPLOY-03",
+    "priority": "P1",
+    "evidence": "Source confirmed; fresh Docker boot unrun",
+    "title": "Repository Docker startup migrations नहीं चलाता",
+    "impact": "Backend Docker CMD uvicorn है; init_db केवल connection verify करता है, schema readiness नहीं। Fresh compose deployment tables/migrations के बिना live health दिखा सकता है और business requests fail कर सकती हैं। Cloud setup helper migrations चलाता है, लेकिन original Docker path अलग है।",
+    "fix": "Explicit serialized migration job/release step, readiness schema check और migration failure handling जोड़ें।",
+    "acceptance": "Empty database पर documented deploy schema head तक पहुँचे और business smoke pass करे; migration failures traffic block करें।",
+    "sources": [
+      [
+        "backend/Dockerfile",
+        "CMD"
+      ],
+      [
+        "backend/src/shared/database/session.py",
+        "async def init_db("
+      ]
+    ]
+  },
+  {
+    "id": "DEPLOY-04",
+    "priority": "P1",
+    "evidence": "Source confirmed; real-domain/ICE deployment unrun",
+    "title": "TLS/public URLs और remote WebRTC configuration अधूरी है",
+    "impact": "Nginx listens HTTP 80 while refresh cookie always Secure है। Storage client signing secure=False से HTTP URLs बनती हैं; default public endpoint localhost है। Optional blank WebRTC URL frontend में localhost fallback करती है; ICE additional hosts loopback हैं। Real RTSP source को viewer relay automatically नहीं करता।",
+    "fix": "TLS ingress और public HTTPS storage/viewer routes configure करें; scoped media auth, real ICE/TURN addresses और relay provisioning दें।",
+    "acceptance": "Remote HTTPS browser login/reload/refresh, snapshots/reports और actual live stream without mixed-content/localhost dependencies काम करें।",
+    "sources": [
+      [
+        "infra/nginx/frontend.conf",
+        "listen 80;"
+      ],
+      [
+        "backend/src/shared/storage/minio_client.py",
+        "secure=False"
+      ],
+      [
+        "frontend/src/api/client.ts",
+        "MEDIAMTX_WEBRTC_URL"
+      ],
+      [
+        "infra/mediamtx/mediamtx.yml",
+        "webrtcAdditionalHosts"
+      ]
+    ]
+  },
+  {
+    "id": "DEPLOY-05",
+    "priority": "P1",
+    "evidence": "Download/pull failure observed earlier; source build validated",
+    "title": "MinIO distribution/maintenance dependency अब unreliable है",
+    "impact": "Official download endpoint ने 410 और community archive/no security updates notice दिया। Original image pulls unavailable थे। Current development source build restores functionality, लेकिन production maintenance/support strategy नहीं बनाता।",
+    "fix": "Maintained S3-compatible service/storage decision लें; versioned verified artifacts, upgrade policy और restore compatibility test करें।",
+    "acceptance": "Fresh environments reliably install storage; supported patching और production durability/availability requirements documented और tested हों।",
+    "sources": [
+      [
+        "docker-compose.yml",
+        "image: minio/minio:latest"
+      ],
+      [
+        "backend/src/shared/storage/minio_client.py",
+        "async def init_minio("
+      ]
+    ]
+  },
+  {
+    "id": "DEPLOY-06",
+    "priority": "P2",
+    "evidence": "Source confirmed; production health-failure injection unrun",
+    "title": "Readiness केवल Redis जाँचती है; incident alerts configured नहीं हैं",
+    "impact": "Database/broker/storage outage after startup readiness में capture नहीं होगी। Prometheus/Grafana starter config है, लेकिन operational alert rules, detection-staleness alarm और recovery runbooks नहीं मिले।",
+    "fix": "Required dependencies, schema and processing freshness को readiness/status में include करें; actionable alerts और ownership/runbooks रखें।",
+    "acceptance": "Dependency failures/dead workers monitoring में visible हों; agreed detection/service SLA breach पर operators को alert मिले।",
+    "sources": [
+      [
+        "backend/src/modules/health/api/routes.py",
+        "async def readiness("
+      ],
+      [
+        "infra/prometheus/prometheus.yml",
+        "scrape_configs:"
+      ]
+    ]
+  },
+  {
+    "id": "DEPLOY-07",
+    "priority": "P2",
+    "evidence": "Source confirmed; backup/restore drills unrun",
+    "title": "Retention, backup verification और recovery guarantees absent हैं",
+    "impact": "Nightly retention/archival implementation/lifecycle policy नहीं मिली। Backup scripts DB और objects sequentially copy करती हैं; consistent cut, offsite checksums, restore verification और scheduled automation absent हैं। Durable in-flight broker events backup assumptions में excluded हैं। Current source-built MinIO के लिए original Docker mc backup path भी revalidation चाहता है।",
+    "fix": "Retention job, consistent/offsite backup, durable event recovery, explicit RPO/RTO और periodic isolated restore drills लागू करें।",
+    "acceptance": "Representative database+objects restore हों; manifests/hash checks pass हों; cleanup retention boundary preserve करे; outage data-loss window measured हो।",
+    "sources": [
+      [
+        "infra/backup/backup.sh",
+        "pg_dump"
+      ],
+      [
+        "infra/backup/restore.sh",
+        "pg_restore"
+      ],
+      [
+        "backend/src/shared/storage/minio_client.py",
+        "BUCKETS ="
+      ]
+    ]
+  },
+  {
+    "id": "SEC-01",
+    "priority": "P1",
+    "evidence": "Package audits executed; exploitability not proven",
+    "title": "Known dependency advisories को address करना जरूरी है",
+    "impact": "Resolved backend audit: 8 affected packages, 42 returned entries with 22 unique package/advisory pairs। Frontend npm audit: 10 affected package entries, 6 high + 4 moderate। Declared AI direct requirements audit: python-dotenv affected; heavy inference transitive stack not installed/audited here।",
+    "fix": "Fixable runtime advisories prioritize करें; compatibility-tested controlled upgrades/lock or constraints रखें; upstream no-fix advisories assess करें; automated audit CI जोड़ें।",
+    "acceptance": "Reviewed advisories resolved/justified हों और updated auth/API/inference/browser regression suites pass करें; auto force-fix न करें।",
+    "sources": [
+      [
+        "backend/requirements.txt",
+        "python-jose[cryptography]=="
+      ],
+      [
+        "frontend/package.json",
+        "\"axios\""
+      ],
+      [
+        "ai-worker/requirements.txt",
+        "ultralytics=="
+      ]
+    ]
+  },
+  {
+    "id": "UI-01",
+    "priority": "P2",
+    "evidence": "Source confirmed; browser E2E unrun",
+    "title": "Alerts/violations pagination और dashboard counts गलत scale होते हैं",
+    "impact": "Lists केवल first 100 rows fetch करती हैं। Open alert count returned array length है, total/aggregate नहीं; >100 alerts undercount होते हैं। Activity invalidation feedEvents.length पर निर्भर है; capped length पर new events trigger नहीं करते। Live occupancy latest single event है, enterprise/zone aggregate और stale state नहीं।",
+    "fix": "Server aggregate counters और real pagination; latest event identifier/version invalidation; per-zone freshness/aggregation रखें।",
+    "acceptance": "101+ alerts सही total दिखाएँ; old records accessible हों; full activity buffer पर new events UI update करें; disconnected/stale occupancy explicit हो।",
+    "sources": [
+      [
+        "frontend/src/pages/Dashboard.tsx",
+        "total: alerts.length"
+      ],
+      [
+        "frontend/src/pages/Dashboard.tsx",
+        "[feedEvents.length, queryClient]"
+      ],
+      [
+        "frontend/src/pages/Alerts.tsx",
+        "page_size: 100"
+      ],
+      [
+        "frontend/src/pages/Violations.tsx",
+        "page_size: 100"
+      ]
+    ]
+  },
+  {
+    "id": "UI-02",
+    "priority": "P2",
+    "evidence": "Source confirmed; browser behavior unrun",
+    "title": "WebSocket cleanup और session UI state असंगत है",
+    "impact": "Reconnect timers clear नहीं होते और connect entry पर cancelled check नहीं है; cleanup के बाद timer socket खोल सकता है। AppShell और Dashboard independent sockets रखते हैं। Token refresh existing persisted user/roles को reuse करती है। Several mutation controls roles/errors consistently handle नहीं करते।",
+    "fix": "Shared socket lifecycle, timer cancellation, latest /auth/me profile and role-aware controls/error/empty/loading states रखें।",
+    "acceptance": "Logout/unmount पर no orphan sockets; token expiry/reconnect tests pass हों; changed user roles UI में refresh हों; failures invisible empty-success न लगें।",
+    "sources": [
+      [
+        "frontend/src/hooks/useWebSocket.ts",
+        "setTimeout(connect, retryDelay)"
+      ],
+      [
+        "frontend/src/api/client.ts",
+        "user: user!"
+      ],
+      [
+        "frontend/src/pages/LiveGrid.tsx",
+        "toggleMutation"
+      ]
+    ]
+  },
+  {
+    "id": "PRODUCT-01",
+    "priority": "P2",
+    "evidence": "API/router/code inventory confirmed",
+    "title": "Advertised capability और delivered UI/logic में gaps हैं",
+    "impact": "Routes/sidebar में full reports, analytics, shifts, maintenance, notification settings, setup wizard और password-change screens नहीं मिले। Dynamic catalog recognition नहीं देता। Generic rule engine/unauthorized-zone-entry detection, model hot-swap, escalation, MFA तथा full recording/employee identity capability current path में implemented नहीं मिलीं। README ByteTrack/zero polling/no-code 200-camera scale claims current code से मेल नहीं खाते।",
+    "fix": "Implemented/planned/unsupported capability matrix publish करें; actual required workflows prioritize करें; unsupported options disable/label करें।",
+    "acceptance": "हर promised feature का real API/UI/model/smoke evidence हो; exact employee identification, real PPE detection और recording claims actual capability से match हों।",
+    "sources": [
+      [
+        "frontend/src/router.tsx",
+        "export const router"
+      ],
+      [
+        "ai-worker/src/pipeline/person_tracker.py",
+        "class PersonTracker:"
+      ],
+      [
+        "README.md",
+        "No code changes required"
+      ]
+    ]
+  },
+  {
+    "id": "QUALITY-01",
+    "priority": "P2",
+    "evidence": "Existing suites/build/lint executed earlier; targeted checks this review",
+    "title": "Passing unit tests production behavior cover नहीं करतीं",
+    "impact": "21 backend tests + 25 AI tests passed earlier; backend coverage 16% थी। Existing CI lint two unused imports पर fail करती है। No configured frontend browser suite; cross-tenant, concurrent, remote-outage, event replay, migration upgrades, TLS/streaming, restore and load tests absent/unrun हैं।",
+    "fix": "Risk-based integration/browser/concurrency/fault tests, production image/config checks और real-camera acceptance suite CI/pilot gate बनाएं।",
+    "acceptance": "Critical findings fixed with regressions; green CI, fresh deploy and realistic fault/load/model tests pass हों; 200 cameras बिना measured evidence claim न करें।",
+    "sources": [
+      [
+        ".github/workflows/ci.yml",
+        "name: Tests"
+      ],
+      [
+        "backend/tests/test_security.py",
+        "class "
+      ],
+      [
+        "frontend/package.json",
+        "\"scripts\""
+      ]
+    ]
+  }
+]

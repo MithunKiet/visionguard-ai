@@ -1,0 +1,37 @@
+[
+  {
+    "id": "AI-NONCONSECUTIVE-VOTING",
+    "reproduced": true,
+    "detail": "Positive/clean/positive/clean/positive emitted violation despite no three consecutive positive frames"
+  },
+  {
+    "id": "AI-EMPTY-PPE",
+    "reproduced": true,
+    "detail": "Explicitly empty PPE requirements still emit helmet violation"
+  },
+  {
+    "id": "AI-SHOES-THRESHOLD",
+    "reproduced": true,
+    "detail": "0.80 shoes violation emitted with configured shoes_threshold=0.99"
+  },
+  {
+    "id": "AI-TRACK-ID-DROPPED",
+    "reproduced": true,
+    "detail": "Confirmed violation output omits person track_id"
+  },
+  {
+    "id": "AI-CONFIG-VERSION",
+    "reproduced": true,
+    "detail": "Worker initial config_version=5 accepts stale hot-update version=2"
+  },
+  {
+    "id": "AI-CONFIG-CONTRACT",
+    "reproduced": true,
+    "detail": "Hot config replaces ppe_required with required_ppe_types; validator reads former key"
+  },
+  {
+    "id": "AI-MASK-UNSUPPORTED",
+    "reproduced": true,
+    "detail": "Mask violation is not mapped to any event in validator"
+  }
+]
