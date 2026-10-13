@@ -8,7 +8,9 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.shared.database.models import Alert, Enterprise, OccupancyLog, PPEViolation, Zone
-from src.shared.database.pid import to_pk
+from src.shared.database.pid import to_pk, to_pks
+from src.shared.security.scope import ScopeFilter, apply_zone_scope
+
 
 # Weight of each severity when computing the safety score penalty
 _SEVERITY_WEIGHTS = {"Critical": 10, "High": 5, "Medium": 2, "Low": 1}
@@ -31,6 +33,7 @@ class AnalyticsService:
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
         zone_id: str | None = None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         """Violation counts by day, by type, and by zone over the range."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
@@ -41,6 +44,28 @@ class AnalyticsService:
             PPEViolation.created_at <= to_dt,
             PPEViolation.is_false_positive.is_(False),
         )
+        scope = scope or ScopeFilter(unrestricted=True)
+        if not scope.unrestricted:
+            if scope.is_empty:
+                from sqlalchemy import false
+                base = base.where(false())
+            else:
+                conditions = []
+                if scope.zone_ids:
+                    zone_pks = await to_pks(self._db, Zone, list(scope.zone_ids))
+                    if zone_pks:
+                        conditions.append(PPEViolation.zone_id.in_(zone_pks))
+                if scope.factory_ids:
+                    from src.shared.database.models import Factory
+                    factory_pks = await to_pks(self._db, Factory, list(scope.factory_ids))
+                    if factory_pks:
+                        conditions.append(PPEViolation.zone_id.in_(select(Zone.id).where(Zone.factory_id.in_(factory_pks))))
+                if conditions:
+                    from sqlalchemy import or_
+                    base = base.where(or_(*conditions))
+                else:
+                    from sqlalchemy import false
+                    base = base.where(false())
         if zone_id:
             base = base.where(PPEViolation.zone_id == await to_pk(self._db, Zone, zone_id))
         sub = base.subquery()
@@ -77,6 +102,7 @@ class AnalyticsService:
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
         zone_id: str | None = None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         """Average and peak occupancy per zone over the range."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
@@ -95,6 +121,10 @@ class AnalyticsService:
                 OccupancyLog.timestamp <= to_dt,
             )
             .group_by(Zone.name, Zone.max_occupancy)
+        )
+        q = await apply_zone_scope(
+            self._db, q, scope or ScopeFilter(unrestricted=True),
+            Zone.factory_id, OccupancyLog.zone_id,
         )
         if zone_id:
             q = q.where(OccupancyLog.zone_id == await to_pk(self._db, Zone, zone_id))
@@ -118,6 +148,7 @@ class AnalyticsService:
         enterprise_id: str,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         """Alert-resolution compliance: how many alerts were resolved, and how
         many within their SLA window."""
@@ -141,7 +172,12 @@ class AnalyticsService:
                 Alert.created_at >= from_dt,
                 Alert.created_at <= to_dt,
             )
-        )).one()
+        )
+        q = await apply_zone_scope(
+            self._db, q, scope or ScopeFilter(unrestricted=True),
+            Alert.factory_id, Alert.zone_id,
+        )
+        row = (await self._db.execute(q)).one()
         total, resolved, within_sla = row[0], int(row[1] or 0), int(row[2] or 0)
         return {
             "from": from_dt.isoformat(),
@@ -158,13 +194,13 @@ class AnalyticsService:
         enterprise_id: str,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         """0–100 score: starts at 100 and subtracts severity-weighted alert
         counts normalized per day (min 0). A quiet factory scores 100."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        rows = (await self._db.execute(
-            select(Alert.severity, func.count())
+        q = select(Alert.severity, func.count())
             .where(
                 Alert.enterprise_id == ent_pk,
                 Alert.created_at >= from_dt,
@@ -172,7 +208,9 @@ class AnalyticsService:
                 Alert.status != "FalsePositive",
             )
             .group_by(Alert.severity)
-        )).all()
+        )
+        q = await apply_zone_scope(self._db, q, scope or ScopeFilter(unrestricted=True), Alert.factory_id, Alert.zone_id)
+        rows = (await self._db.execute(q)).all()
 
         days = max(1, (to_dt - from_dt).days)
         penalty = sum(_SEVERITY_WEIGHTS.get(sev, 1) * count for sev, count in rows) / days

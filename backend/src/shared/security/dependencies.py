@@ -1,18 +1,4 @@
-"""
-FastAPI dependencies for auth, RBAC, and tenant context.
-
-Usage:
-    from src.shared.security.dependencies import get_current_user, require_roles, AuthUser
-
-    @router.get("/...")
-    async def endpoint(user: AuthUser = Depends(get_current_user)):
-        ...
-
-    # Role-gated (a user need only hold ONE of the listed roles):
-    @router.get("/admin")
-    async def admin_endpoint(user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN"))):
-        ...
-"""
+"""FastAPI dependencies for auth, RBAC, and tenant context."""
 from uuid import UUID
 
 from fastapi import Depends, Header
@@ -20,19 +6,19 @@ from jose import JWTError
 
 from src.core.exceptions import ForbiddenException, UnauthorizedException
 from src.core.settings import settings
+from src.shared.cache.client import get_redis
 from src.shared.security.jwt import decode_token
 
 
 class AuthUser:
     def __init__(self, payload: dict):
-        self.user_id: str                = payload["sub"]
-        self.enterprise_id: str          = payload["enterprise_id"]
-        self.roles: list[str]            = payload.get("roles", [])
-        self.jti: str                    = payload["jti"]
-        self.email: str                  = payload.get("email", "")
-        # Data-visibility scope — see shared/security/scope.py.
-        self.factory_id: str | None      = payload.get("factory_id")
-        self.department_id: str | None   = payload.get("department_id")
+        self.user_id: str = payload["sub"]
+        self.enterprise_id: str = payload["enterprise_id"]
+        self.roles: list[str] = payload.get("roles", [])
+        self.jti: str = payload["jti"]
+        self.email: str = payload.get("email", "")
+        self.factory_id: str | None = payload.get("factory_id")
+        self.department_id: str | None = payload.get("department_id")
         self.assigned_zone_ids: list[str] = payload.get("assigned_zone_ids") or []
 
 
@@ -48,19 +34,26 @@ async def get_current_user(
     if payload.get("type") != "access":
         raise UnauthorizedException("Not an access token")
 
+    jti = payload.get("jti")
+    if not jti:
+        raise UnauthorizedException("Invalid access token")
+
+    if await get_redis().exists(f"blacklist:{jti}"):
+        raise UnauthorizedException("Access token has been revoked")
+
     return AuthUser(payload)
 
 
 def require_roles(*roles: str):
-    """Dependency factory — gates an endpoint to users holding at least one
-    of the listed roles (a user can hold several roles at once)."""
     allowed = set(roles)
+
     async def _check(user: AuthUser = Depends(get_current_user)) -> AuthUser:
         if not allowed & set(user.roles):
             raise ForbiddenException(
                 f"Role(s) {user.roles} not permitted. Required one of: {list(roles)}"
             )
         return user
+
     return _check
 
 
@@ -71,7 +64,7 @@ def _extract_bearer(authorization: str | None) -> str:
 
 
 class WorkerContext:
-    """Identity for an AI Worker calling backend service endpoints (no user JWT)."""
+    """Identity for an AI Worker calling backend service endpoints."""
     def __init__(self, enterprise_id: str):
         self.enterprise_id = enterprise_id
 

@@ -50,12 +50,12 @@ class WorkerService:
     async def list_workers(self, enterprise_id: str) -> list[WorkerEntity]:
         return await self._repo.list_all(enterprise_id)
 
-    async def get_worker_cameras_by_business_id(self, worker_id: str, db) -> list:
+    async def get_worker_cameras_by_business_id(self, worker_id: str, db, enterprise_id: str | None = None) -> list:
         """
         Resolve the AI Worker's business id (e.g. "worker-1") to its internal
         integer id, then return cameras + zone configs assigned to it.
         """
-        worker_db_id = await self._repo.get_internal_id_by_worker_id(worker_id)
+        worker_db_id = await self._repo.get_internal_id_by_worker_id(worker_id, enterprise_id)
         if not worker_db_id:
             return []
         return await self.get_worker_cameras(worker_db_id, db)
