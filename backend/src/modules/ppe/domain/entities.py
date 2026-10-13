@@ -18,6 +18,7 @@ class ViolationEntity:
     rule_id: str | None = None
     is_false_positive: bool = False
     fp_reason: str | None = None
+    bbox: list | None = None
     # Populated by the repository's joined list/get queries so the service
     # layer's enrich() needs zero extra DB round trips per row — see
     # infrastructure/repositories.py for why (N+1 query fix).

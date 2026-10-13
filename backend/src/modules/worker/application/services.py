@@ -50,11 +50,15 @@ class WorkerService:
     async def list_workers(self, enterprise_id: str) -> list[WorkerEntity]:
         return await self._repo.list_all(enterprise_id)
 
-    async def get_worker_cameras_by_business_id(self, worker_id: str, db) -> list:
+    async def get_worker_cameras_by_business_id(self, worker_id: str, db, enterprise_id: str) -> list:
         """
         Resolve the AI Worker's business id (e.g. "worker-1") to its internal
         integer id, then return cameras + zone configs assigned to it.
         """
+        worker = await self._repo.get_by_worker_id(worker_id)
+        if not worker or worker.enterprise_id != enterprise_id:
+            from src.core.exceptions import NotFoundException
+            raise NotFoundException("Worker", worker_id)
         worker_db_id = await self._repo.get_internal_id_by_worker_id(worker_id)
         if not worker_db_id:
             return []
@@ -94,6 +98,7 @@ class WorkerService:
                 "zone_id": str(cam.zone_id),
                 "status": cam.status,
                 "in_maintenance": cam.in_maintenance,
+                "ppe_overrides": cam.ppe_overrides or {},
                 "zone_config": {
                     "person_threshold": config.person_threshold if config else 0.70,
                     "helmet_threshold": config.helmet_threshold if config else 0.75,
@@ -103,10 +108,12 @@ class WorkerService:
                     "mask_threshold": config.mask_threshold if config else 0.75,
                     "frame_sample_fps": config.frame_sample_fps if config else 2,
                     "ppe_required": _resolve_ppe_required(cam, config),
+                    "required_ppe_types": config.required_ppe_types,
                     "cooldown_seconds": config.cooldown_seconds if config else 120,
                     "required_consecutive_frames": config.required_consecutive_frames if config else 3,
                     "low_confidence_floor": config.low_confidence_floor if config else 0.40,
                     "max_occupancy": config.max_occupancy if config else None,
+                    "version": config.version if config else 1,
                     "config_version": config.version if config else 1,
                 } if config else None,
             })

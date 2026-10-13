@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.shared.database.session import init_db
+from src.modules.realtime.manager import manager
 from src.shared.cache.client import init_redis, close_redis
 from src.shared.messaging.consumer import init_rabbitmq, close_rabbitmq
 from src.shared.messaging.publisher import init_config_publisher, close_config_publisher
@@ -21,6 +22,7 @@ async def lifespan(app: FastAPI):
     await init_redis()
     log.info("visionguard.startup", service="redis", status="connected")
 
+    await manager.start()
     await init_rabbitmq()
     await init_config_publisher()
     log.info("visionguard.startup", service="rabbitmq", status="connected")
@@ -33,6 +35,7 @@ async def lifespan(app: FastAPI):
     yield
 
     log.info("visionguard.shutdown", msg="Shutting down...")
+    await manager.stop()
     await close_redis()
     await close_config_publisher()
     await close_rabbitmq()

@@ -34,6 +34,15 @@ class PPEService:
 
     async def handle_violation_event(self, routing_key: str, body: dict) -> ViolationEntity:
         violation_type = ROUTING_KEY_TO_TYPE.get(routing_key, routing_key)
+        if routing_key == "events.low_confidence_violation":
+            violation_type = {"no_helmet": "helmet_missing", "no_vest": "vest_missing",
+                              "no_gloves": "gloves_missing", "no_safety_shoes": "shoes_missing",
+                              "no_mask": "mask_missing"}.get(body.get("violation_type"))
+            if not violation_type:
+                raise ValueError("Unsupported review violation type")
+        occurred_at = datetime.fromisoformat(body["timestamp"].replace("Z", "+00:00")) if body.get("timestamp") else datetime.now(timezone.utc)
+        if occurred_at.tzinfo is None:
+            raise ValueError("Event timestamp requires a timezone")
 
         entity = ViolationEntity(
             enterprise_id=body["enterprise_id"],
@@ -42,13 +51,14 @@ class PPEService:
             violation_type=violation_type,
             confidence=float(body.get("confidence", 0.0)),
             snapshot_key=body.get("snapshot_key"),
-            track_id=body.get("track_id"),
+            track_id=str(body["track_id"]) if body.get("track_id") is not None else None,
             shift_id=body.get("shift_id"),
             rule_id=body.get("rule_id"),
             is_false_positive=False,
             fp_reason=None,
-            needs_review=float(body.get("confidence", 0.0)) < 0.60,
-            created_at=datetime.now(timezone.utc),
+            needs_review=bool(body.get("review")) or routing_key == "events.low_confidence_violation" or float(body.get("confidence", 0.0)) < 0.60,
+            bbox=body.get("bbox"),
+            created_at=occurred_at,
         )
         saved = await self._repo.create(entity)
         log.info(
@@ -112,6 +122,7 @@ class PPEService:
             "confidence": v.confidence,
             "snapshot_url": snapshot_url,
             "track_id": v.track_id,
+            "bbox": v.bbox,
             "shift_id": v.shift_id,
             "is_false_positive": v.is_false_positive,
             "needs_review": v.needs_review,

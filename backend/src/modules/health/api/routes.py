@@ -1,6 +1,14 @@
+import asyncio
+
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+
+from src.core.settings import settings
 from src.shared.cache.client import get_redis
+from src.shared.database.session import engine
 from src.shared.responses import ApiResponse
+from src.shared.storage.minio_client import get_minio
 
 router = APIRouter(tags=["Health"])
 
@@ -12,21 +20,37 @@ async def liveness():
 
 @router.get("/health/ready")
 async def readiness():
-    checks = {}
-    try:
-        await get_redis().ping()
-        checks["redis"] = "ok"
-    except Exception:
-        checks["redis"] = "fail"
+    async def database():
+        async with engine.connect() as connection:
+            if await connection.scalar(text("SELECT version_num FROM alembic_version")) != "0017":
+                raise RuntimeError("Migrations required")
 
-    all_ok = all(v == "ok" for v in checks.values())
-    return ApiResponse.ok({"status": "ready" if all_ok else "degraded", "checks": checks})
+    async def broker():
+        from src.shared.messaging.consumer import _connection
+        if _connection is None or _connection.is_closed or not _connection.connected.is_set():
+            raise RuntimeError("Broker unavailable")
+
+    async def storage():
+        if not await asyncio.to_thread(get_minio().bucket_exists, settings.MINIO_BUCKET_SNAPSHOTS):
+            raise RuntimeError("Snapshot bucket unavailable")
+
+    async def cache():
+        await get_redis().ping()
+
+    async def check(name, operation):
+        try:
+            await asyncio.wait_for(operation(), timeout=3)
+            return name, "ok"
+        except Exception:
+            return name, "fail"
+
+    checks = dict(await asyncio.gather(*(check(name, operation) for name, operation in
+        [("postgres", database), ("redis", cache), ("rabbitmq", broker), ("storage", storage)])))
+    ready = all(value == "ok" for value in checks.values())
+    return JSONResponse(status_code=200 if ready else 503, content=ApiResponse.ok(
+        {"status": "ready" if ready else "degraded", "checks": checks}).model_dump(mode="json"))
 
 
 @router.get("/health/status")
 async def status():
-    return ApiResponse.ok({
-        "service": "VisionGuard AI Backend",
-        "version": "1.0.0",
-        "environment": "development",
-    })
+    return ApiResponse.ok({"service": "VisionGuard AI Backend", "version": "1.0.0", "environment": settings.ENVIRONMENT})

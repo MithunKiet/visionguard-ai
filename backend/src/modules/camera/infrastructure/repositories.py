@@ -104,7 +104,7 @@ class CameraRepository(ICameraRepository):
 
     async def set_status(self, camera_id: str, status: str) -> None:
         await self._db.execute(
-            update(Camera).where(Camera.public_id == camera_id).values(
+            update(Camera).where(Camera.public_id == camera_id, Camera.status != "Inactive", Camera.deleted_at.is_(None)).values(
                 status=status,
                 last_seen_at=datetime.now(timezone.utc),
             )

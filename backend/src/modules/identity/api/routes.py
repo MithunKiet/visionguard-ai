@@ -132,6 +132,9 @@ async def change_password(
 async def me(current_user: AuthUser = Depends(get_current_user)):
     return ApiResponse(data={
         "user_id": current_user.user_id,
+        "id": current_user.user_id,
+        "name": current_user.name,
+        "is_first_login": current_user.is_first_login,
         "enterprise_id": current_user.enterprise_id,
         "roles": current_user.roles,
         "email": current_user.email,

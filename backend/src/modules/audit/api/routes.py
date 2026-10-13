@@ -21,7 +21,7 @@ async def list_audit(
     to_dt: datetime | None = Query(None, alias="to"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "SAFETY_OFFICER")),
+    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN")),
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await AuditService(db).list(

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select, update
+from sqlalchemy import text, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.shared.database.session import commit_or_flush
 
 from src.modules.alerts.domain.entities import AlertEntity
 from src.shared.database.models import (
@@ -54,7 +55,7 @@ class AlertRepository:
             created_source=entity.created_by,
         )
         self._db.add(row)
-        await self._db.commit()
+        await commit_or_flush(self._db)
         await self._db.refresh(row)
         return await self._to_entity(row)
 
@@ -121,6 +122,7 @@ class AlertRepository:
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=cooldown_seconds)
         zone_pk = await to_pk(self._db, Zone, zone_id)
         camera_pk = await to_pk(self._db, Camera, camera_id)
+        await self._db.execute(select(Camera.id).where(Camera.id == camera_pk).with_for_update())
         result = await self._db.execute(
             select(func.count()).where(
                 Alert.zone_id == zone_pk,
@@ -142,6 +144,10 @@ class AlertRepository:
         scope: ScopeFilter | None = None,
     ) -> AlertEntity:
         alert = await self.get_by_id(alert_id, enterprise_id, scope)
+        from src.modules.alerts.application.services import _ALLOWED_TRANSITIONS
+        from src.core.exceptions import VisionGuardException
+        if not alert or to_status not in _ALLOWED_TRANSITIONS.get(alert.status, set()):
+            raise VisionGuardException(code="INVALID_TRANSITION", message="Alert state changed", status_code=409)
         now = datetime.now(timezone.utc)
         values: dict = {"status": to_status}
 
@@ -151,9 +157,16 @@ class AlertRepository:
             values["resolved_on"] = now
 
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        await self._db.execute(
-            update(Alert).where(Alert.public_id == alert_id, Alert.enterprise_id == ent_pk).values(**values)
+        result = await self._db.execute(
+            update(Alert).where(Alert.public_id == alert_id, Alert.enterprise_id == ent_pk,
+                                Alert.status == alert.status).values(**values)
         )
+        if result.rowcount != 1:
+            raise VisionGuardException(code="INVALID_TRANSITION", message="Alert state changed", status_code=409)
+        if to_status == "FalsePositive" and alert.violation_id:
+            await self._db.execute(update(PPEViolation).where(
+                PPEViolation.public_id == alert.violation_id, PPEViolation.enterprise_id == ent_pk,
+            ).values(is_false_positive=True, fp_reason=comment))
         alert_pk = await to_pk(self._db, Alert, alert_id)
         # Append history
         self._db.add(AlertHistory(
@@ -164,8 +177,9 @@ class AlertRepository:
             created_at=now,
             comment=comment,
         ))
-        await self._db.commit()
-        alert.status = to_status
+        await commit_or_flush(self._db)
+        for key, value in values.items():
+            setattr(alert, key, value)
         return alert
 
     async def assign(self, alert_id: str, enterprise_id: str, user_id: str) -> None:
@@ -180,14 +194,10 @@ class AlertRepository:
             .where(Alert.public_id == alert_id, Alert.enterprise_id == ent_pk)
             .values(assigned_to=user_pk)
         )
-        await self._db.commit()
+        await commit_or_flush(self._db)
 
     async def next_sequence(self, enterprise_id: str) -> int:
-        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        result = await self._db.execute(
-            select(func.count()).where(Alert.enterprise_id == ent_pk)
-        )
-        return result.scalar_one() + 1
+        return await self._db.scalar(text("SELECT nextval('alerts.alert_number_seq')"))
 
     async def _to_entity(self, row: Alert) -> AlertEntity:
         """Single-row path (create/get_by_id/transition) — not a hot list

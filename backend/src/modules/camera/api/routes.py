@@ -1,4 +1,6 @@
+from src.shared.security.resource_policy import enforce_resource_scope
 from fastapi import APIRouter, Depends
+from src.shared.security.camera_url import redact_rtsp_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.modules.camera.api.schemas import (
@@ -18,7 +20,7 @@ from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import AuthUser, get_current_user, require_roles
 from src.shared.security.scope import get_scope
 
-router = APIRouter(prefix="/cameras", tags=["Cameras"])
+router = APIRouter(dependencies=[Depends(enforce_resource_scope)], prefix="/cameras", tags=["Cameras"])
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> CameraService:
@@ -134,6 +136,9 @@ async def test_connection(
     user: AuthUser = Depends(get_current_user),
     svc: CameraService = Depends(_get_service),
 ):
+    if not set(user.roles) & {"SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER"}:
+        from src.core.exceptions import ForbiddenException
+        raise ForbiddenException("Camera management permission required")
     result = await svc.test_rtsp_connection(body.rtsp_url)
     return ApiResponse(data=result)
 
@@ -165,7 +170,7 @@ def _to_response_precomputed(c, enforces: list[str]) -> dict:
         "worker_id": c.worker_id,
         "name": c.name,
         "code": c.code,
-        "rtsp_url": c.rtsp_url,
+        "rtsp_url": redact_rtsp_url(c.rtsp_url),
         "camera_type": c.camera_type,
         "position_desc": c.position_desc,
         "status": c.status,

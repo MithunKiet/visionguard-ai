@@ -1,6 +1,6 @@
 import asyncio
 from logging.config import fileConfig
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
@@ -37,9 +37,16 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
-    with context.begin_transaction():
-        context.run_migrations()
+    # A session-level lock serializes concurrent container release migrations.
+    connection.execute(text("SELECT pg_advisory_lock(73001917)"))
+    connection.commit()
+    try:
+        context.configure(connection=connection, target_metadata=target_metadata, include_schemas=True)
+        with context.begin_transaction():
+            context.run_migrations()
+    finally:
+        connection.execute(text("SELECT pg_advisory_unlock(73001917)"))
+        connection.commit()
 
 
 async def run_async_migrations() -> None:

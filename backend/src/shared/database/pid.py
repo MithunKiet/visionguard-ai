@@ -16,7 +16,18 @@ async def to_pk(db: AsyncSession, model, public_id: str | None) -> int | None:
     """Resolve a public_id to the internal integer id. None in, None out."""
     if public_id is None:
         return None
-    return await db.scalar(select(model.id).where(model.public_id == public_id))
+    query = select(model.id).where(model.public_id == public_id)
+    tenant = db.info.get("enterprise_id")
+    if tenant and hasattr(model, "enterprise_id"):
+        from src.shared.database.models import Enterprise
+        query = query.where(model.enterprise_id == select(Enterprise.id).where(Enterprise.public_id == tenant).scalar_subquery())
+    if hasattr(model, "deleted_at"):
+        query = query.where(model.deleted_at.is_(None))
+    result = await db.scalar(query)
+    if result is None:
+        from src.core.exceptions import NotFoundException
+        raise NotFoundException(model.__name__, str(public_id))
+    return result
 
 
 async def to_public_id(db: AsyncSession, model, internal_id: int | None) -> str | None:

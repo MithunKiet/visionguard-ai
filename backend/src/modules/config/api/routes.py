@@ -1,3 +1,4 @@
+from src.shared.security.resource_policy import enforce_resource_scope
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,7 +8,7 @@ from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import AuthUser, get_current_user, require_roles
 
-router = APIRouter(prefix="/config", tags=["Config"])
+router = APIRouter(dependencies=[Depends(enforce_resource_scope)], prefix="/config", tags=["Config"])
 
 _ADMIN_ROLES = ("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER")
 
@@ -35,7 +36,7 @@ async def update_zone_config(
     return ApiResponse(data=await svc.update_zone_config(
         zone_id,
         user.enterprise_id,
-        body.model_dump(exclude={"change_reason"}),
+        body.model_dump(exclude={"change_reason"}, exclude_unset=True),
         user.user_id,
         body.change_reason,
     ))

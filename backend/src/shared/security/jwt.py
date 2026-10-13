@@ -1,8 +1,11 @@
+import hashlib
+import hmac
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError as JWTError
 
 from src.core.settings import settings
 
@@ -34,3 +37,8 @@ def decode_token(token: str) -> dict[str, Any]:
 
 
 __all__ = ["create_access_token", "create_refresh_token", "decode_token", "JWTError"]
+
+
+def session_fingerprint(password_hash: str) -> str:
+    """Invalidate previously issued sessions whenever the password changes."""
+    return hmac.new(_SECRET.encode(), password_hash.encode(), hashlib.sha256).hexdigest()

@@ -15,7 +15,7 @@ Internal `id` (integer PK) is never exposed via APIs.
 import uuid
 from datetime import datetime, timezone, timedelta
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, BigInteger, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # IST timezone (UTC+5:30) — all timestamps in IST per AGENTS.md
@@ -51,7 +51,7 @@ class BaseEntity(Base):
 
     # ── Internal PK (never exposed) ──────────────────────────────
     id: Mapped[int] = mapped_column(
-        Integer,
+        BigInteger,
         primary_key=True,
         autoincrement=True,
     )
@@ -86,7 +86,7 @@ class BaseEntity(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        nullable=False,
+        nullable=True,
         default=_now_ist,
     )
 
@@ -97,7 +97,7 @@ class BaseEntity(Base):
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        nullable=False,
+        nullable=True,
         default=_now_ist,
         onupdate=_now_ist,
     )

@@ -4,6 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.shared.database.session import commit_or_flush
 
 from src.modules.ppe.domain.entities import ViolationEntity
 from src.shared.database.models import Camera, Enterprise, PPEViolation, Shift, Zone, ZoneRule
@@ -38,9 +39,12 @@ class ViolationRepository:
             shift_id=await to_pk(self._db, Shift, entity.shift_id),
             rule_id=await to_pk(self._db, ZoneRule, entity.rule_id),
             is_false_positive=False,
+            needs_review=entity.needs_review,
+            bbox=entity.bbox,
+            created_at=entity.created_at,
         )
         self._db.add(row)
-        await self._db.commit()
+        await commit_or_flush(self._db)
         await self._db.refresh(row)
 
         # A single freshly-created row — one-off lookups here are fine
@@ -64,7 +68,8 @@ class ViolationRepository:
             rule_id=await to_public_id(self._db, ZoneRule, row.rule_id),
             is_false_positive=row.is_false_positive,
             fp_reason=row.fp_reason,
-            needs_review=row.confidence < 0.60,
+            needs_review=row.needs_review,
+            bbox=row.bbox,
             created_at=row.created_at,
             zone_name=zone_name,
             camera_name=camera_name,
@@ -117,6 +122,8 @@ class ViolationRepository:
             q = q.where(PPEViolation.zone_id == await to_pk(self._db, Zone, zone_id))
         if camera_id:
             q = q.where(PPEViolation.camera_id == await to_pk(self._db, Camera, camera_id))
+        if needs_review is not None:
+            q = q.where(PPEViolation.needs_review == needs_review)
         if violation_type:
             q = q.where(PPEViolation.violation_type == violation_type)
         if from_dt:
@@ -149,7 +156,7 @@ class ViolationRepository:
             )
             .values(is_false_positive=True, fp_reason=reason)
         )
-        await self._db.commit()
+        await commit_or_flush(self._db)
 
     @staticmethod
     def _to_entity_from_row(
@@ -171,7 +178,8 @@ class ViolationRepository:
             rule_id=rule_public_id,
             is_false_positive=v.is_false_positive,
             fp_reason=v.fp_reason,
-            needs_review=v.confidence < 0.60,
+            needs_review=v.needs_review,
+            bbox=v.bbox,
             created_at=v.created_at,
             zone_name=zone_name,
             camera_name=camera_name,

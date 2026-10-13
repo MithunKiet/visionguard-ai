@@ -1,3 +1,4 @@
+from src.shared.security.resource_policy import enforce_resource_scope
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
@@ -8,7 +9,7 @@ from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import AuthUser, get_current_user
 
-router = APIRouter(prefix="/analytics", tags=["Analytics"])
+router = APIRouter(dependencies=[Depends(enforce_resource_scope)], prefix="/analytics", tags=["Analytics"])
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> AnalyticsService:

@@ -23,7 +23,7 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> WorkerService:
 
 @router.get("", response_model=ApiResponse[list[WorkerResponse]], summary="List all workers")
 async def list_workers(
-    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER")),
+    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN")),
     svc: WorkerService = Depends(_get_service),
 ):
     workers = await svc.list_workers(user.enterprise_id)
@@ -40,6 +40,9 @@ async def heartbeat(
     ctx: WorkerContext = Depends(get_worker_context),
     svc: WorkerService = Depends(_get_service),
 ):
+    if ctx.worker_id and ctx.worker_id != body.worker_id:
+        from src.core.exceptions import ForbiddenException
+        raise ForbiddenException("Worker identity mismatch")
     worker = await svc.heartbeat(
         enterprise_id=ctx.enterprise_id,
         worker_id=body.worker_id,
@@ -61,7 +64,10 @@ async def get_worker_cameras(
     svc: WorkerService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
-    cameras = await svc.get_worker_cameras_by_business_id(worker_id, db)
+    if ctx.worker_id and ctx.worker_id != worker_id:
+        from src.core.exceptions import ForbiddenException
+        raise ForbiddenException("Worker identity mismatch")
+    cameras = await svc.get_worker_cameras_by_business_id(worker_id, db, ctx.enterprise_id)
     return ApiResponse(data=cameras)
 
 

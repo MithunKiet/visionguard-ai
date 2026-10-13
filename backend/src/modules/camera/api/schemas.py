@@ -1,6 +1,10 @@
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, AfterValidator
+from typing import Annotated
+from src.shared.security.camera_url import validate_rtsp_url
+
+RtspUrl = Annotated[str, AfterValidator(validate_rtsp_url)]
 
 
 class CreateCameraRequest(BaseModel):
@@ -10,7 +14,7 @@ class CreateCameraRequest(BaseModel):
     zone_id: str
     name: str
     code: str
-    rtsp_url: str
+    rtsp_url: RtspUrl
     camera_type: str = "Fixed"
     position_desc: str | None = None
     fps: float | None = None
@@ -21,7 +25,7 @@ class CreateCameraRequest(BaseModel):
 
 class UpdateCameraRequest(BaseModel):
     name: str | None = None
-    rtsp_url: str | None = None
+    rtsp_url: RtspUrl | None = None
     camera_type: str | None = None
     position_desc: str | None = None
     fps: float | None = None
@@ -32,7 +36,7 @@ class UpdateCameraRequest(BaseModel):
 
 
 class TestConnectionRequest(BaseModel):
-    rtsp_url: str
+    rtsp_url: RtspUrl
 
 
 class UpdateCameraStatusRequest(BaseModel):

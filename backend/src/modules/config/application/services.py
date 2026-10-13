@@ -40,10 +40,10 @@ class ConfigService:
         changed_by: str,
         change_reason: str | None = None,
     ) -> dict:
-        config = await self._get_row(zone_id, enterprise_id)
+        config = await self._get_row(zone_id, enterprise_id, lock=True)
         old = await self.to_dict(self._db, config)
 
-        applied = {k: v for k, v in changes.items() if k in _CONFIG_FIELDS and v is not None}
+        applied = {k: v for k, v in changes.items() if k in _CONFIG_FIELDS and (v is not None or k == "max_occupancy")}
         for field, value in applied.items():
             setattr(config, field, value)
 
@@ -133,15 +133,16 @@ class ConfigService:
             change_reason=f"Restored from history {history_id}",
         )
 
-    async def _get_row(self, zone_id: str, enterprise_id: str) -> ZoneConfig:
+    async def _get_row(self, zone_id: str, enterprise_id: str, lock: bool = False) -> ZoneConfig:
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         zone_pk = await to_pk(self._db, Zone, zone_id)
-        config = (await self._db.execute(
-            select(ZoneConfig).where(
-                ZoneConfig.zone_id == zone_pk,
-                ZoneConfig.enterprise_id == ent_pk,
-            )
-        )).scalar_one_or_none()
+        query = select(ZoneConfig).where(
+            ZoneConfig.zone_id == zone_pk,
+            ZoneConfig.enterprise_id == ent_pk,
+        )
+        if lock:
+            query = query.with_for_update()
+        config = (await self._db.execute(query)).scalar_one_or_none()
         if not config:
             raise NotFoundException("ZoneConfig", str(zone_id))
         return config

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.shared.database.models import Alert, Enterprise, OccupancyLog, PPEViolation, Zone
 from src.shared.database.pid import to_pk
+from src.shared.security.resource_policy import scoped_query
 
 # Weight of each severity when computing the safety score penalty
 _SEVERITY_WEIGHTS = {"Critical": 10, "High": 5, "Medium": 2, "Low": 1}
@@ -43,6 +44,7 @@ class AnalyticsService:
         )
         if zone_id:
             base = base.where(PPEViolation.zone_id == await to_pk(self._db, Zone, zone_id))
+        base = await scoped_query(self._db, base, PPEViolation)
         sub = base.subquery()
 
         by_day = (await self._db.execute(
@@ -98,6 +100,7 @@ class AnalyticsService:
         )
         if zone_id:
             q = q.where(OccupancyLog.zone_id == await to_pk(self._db, Zone, zone_id))
+        q = await scoped_query(self._db, q, OccupancyLog)
         rows = (await self._db.execute(q)).all()
         return {
             "from": from_dt.isoformat(),
@@ -123,8 +126,7 @@ class AnalyticsService:
         many within their SLA window."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        row = (await self._db.execute(
-            select(
+        query = await scoped_query(self._db, select(
                 func.count(),
                 func.sum(case((Alert.status.in_(["Resolved", "FalsePositive"]), 1), else_=0)),
                 func.sum(case(
@@ -140,8 +142,8 @@ class AnalyticsService:
                 Alert.enterprise_id == ent_pk,
                 Alert.created_at >= from_dt,
                 Alert.created_at <= to_dt,
-            )
-        )).one()
+            ), Alert)
+        row = (await self._db.execute(query)).one()
         total, resolved, within_sla = row[0], int(row[1] or 0), int(row[2] or 0)
         return {
             "from": from_dt.isoformat(),
@@ -163,16 +165,15 @@ class AnalyticsService:
         counts normalized per day (min 0). A quiet factory scores 100."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        rows = (await self._db.execute(
-            select(Alert.severity, func.count())
+        query = await scoped_query(self._db, select(Alert.severity, func.count())
             .where(
                 Alert.enterprise_id == ent_pk,
                 Alert.created_at >= from_dt,
                 Alert.created_at <= to_dt,
                 Alert.status != "FalsePositive",
             )
-            .group_by(Alert.severity)
-        )).all()
+            .group_by(Alert.severity), Alert)
+        rows = (await self._db.execute(query)).all()
 
         days = max(1, (to_dt - from_dt).days)
         penalty = sum(_SEVERITY_WEIGHTS.get(sev, 1) * count for sev, count in rows) / days

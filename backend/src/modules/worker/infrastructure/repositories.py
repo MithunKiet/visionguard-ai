@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +40,7 @@ class WorkerRepository:
             select(AIWorker).where(
                 AIWorker.enterprise_id == ent_pk,
                 AIWorker.status == "Online",
+                AIWorker.last_heartbeat > datetime.now(timezone.utc) - timedelta(seconds=90),
             )
         )
         return [self._to_entity_sync(r, enterprise_id) for r in result.scalars()]
@@ -67,6 +68,10 @@ class WorkerRepository:
         now = datetime.now(timezone.utc)
 
         if existing_row:
+            ent_pk = await self._resolve_enterprise_pk(enterprise_id)
+            if existing_row.enterprise_id != ent_pk:
+                from src.core.exceptions import ForbiddenException
+                raise ForbiddenException("Worker belongs to another enterprise")
             await self._db.execute(
                 update(AIWorker)
                 .where(AIWorker.worker_id == worker_id)

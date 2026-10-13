@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # to talk to MinIO directly (bucket ops, uploads). MINIO_PUBLIC_ENDPOINT
     # is what gets baked into presigned URLs, since those are followed by the
     # browser/frontend which can't resolve Docker-internal hostnames.
+    MINIO_SECURE: bool = False
+    MINIO_PUBLIC_SECURE: bool = False
+    CAMERA_ALLOWED_HOSTS: List[str] = []
+    WORKER_CREDENTIALS: dict[str, dict[str, str]] = {}
+
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_PUBLIC_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
@@ -80,6 +85,14 @@ class Settings(BaseSettings):
             return self
 
         insecure: List[str] = []
+        if not self.CAMERA_ALLOWED_HOSTS:
+            insecure.append("CAMERA_ALLOWED_HOSTS (explicit trusted camera hosts required)")
+        if not self.WORKER_CREDENTIALS:
+            insecure.append("WORKER_CREDENTIALS (tenant-bound worker credentials required)")
+        if not self.MINIO_PUBLIC_SECURE:
+            insecure.append("MINIO_PUBLIC_SECURE (HTTPS required)")
+        if self.MASTER_PASSWORD_HASH:
+            insecure.append("MASTER_PASSWORD_HASH (master login must be disabled in production)")
         if "change-me" in self.JWT_SECRET.lower() or len(self.JWT_SECRET) < 32:
             insecure.append("JWT_SECRET (set a real random secret, e.g. `openssl rand -hex 64`)")
         if self.WORKER_API_KEY == "dev-worker-key-change-me":

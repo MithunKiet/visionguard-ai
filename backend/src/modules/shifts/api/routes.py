@@ -1,3 +1,4 @@
+from src.shared.security.resource_policy import enforce_resource_scope
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
@@ -9,7 +10,7 @@ from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import AuthUser, get_current_user, require_roles
 
-router = APIRouter(prefix="/shifts", tags=["Shifts"])
+router = APIRouter(dependencies=[Depends(enforce_resource_scope)], prefix="/shifts", tags=["Shifts"])
 
 _ADMIN_ROLES = ("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER")
 

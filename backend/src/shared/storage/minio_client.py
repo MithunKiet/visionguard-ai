@@ -28,7 +28,7 @@ async def init_minio() -> None:
         settings.MINIO_ENDPOINT,
         access_key=settings.MINIO_ACCESS_KEY,
         secret_key=settings.MINIO_SECRET_KEY,
-        secure=False,
+        secure=settings.MINIO_SECURE,
         region=_REGION,
     )
     for bucket in BUCKETS:
@@ -40,14 +40,14 @@ async def init_minio() -> None:
     # to sign presigned URLs so the browser can actually resolve the host.
     # With region fixed above, signing needs no network call, so this client
     # never needs to actually connect to MINIO_PUBLIC_ENDPOINT itself.
-    if settings.MINIO_PUBLIC_ENDPOINT == settings.MINIO_ENDPOINT:
+    if settings.MINIO_PUBLIC_ENDPOINT == settings.MINIO_ENDPOINT and settings.MINIO_PUBLIC_SECURE == settings.MINIO_SECURE:
         _minio_public = _minio
     else:
         _minio_public = Minio(
             settings.MINIO_PUBLIC_ENDPOINT,
             access_key=settings.MINIO_ACCESS_KEY,
             secret_key=settings.MINIO_SECRET_KEY,
-            secure=False,
+            secure=settings.MINIO_PUBLIC_SECURE,
             region=_REGION,
         )
 

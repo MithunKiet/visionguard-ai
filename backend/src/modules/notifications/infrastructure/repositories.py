@@ -18,6 +18,8 @@ class NotificationRecipientRepository:
     async def list(self, enterprise_id: str, zone_id: str | None = None) -> list[NotificationRecipientEntity]:
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         q = select(NotificationRecipient).where(NotificationRecipient.enterprise_id == ent_pk)
+        from src.shared.security.resource_policy import scoped_query
+        q = await scoped_query(self._db, q, NotificationRecipient)
         if zone_id:
             q = q.where(NotificationRecipient.zone_id == await to_pk(self._db, Zone, zone_id))
         result = await self._db.execute(q.order_by(NotificationRecipient.level))

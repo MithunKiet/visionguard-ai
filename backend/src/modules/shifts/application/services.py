@@ -28,6 +28,8 @@ class ShiftService:
     async def list_shifts(self, enterprise_id: str, factory_id: str | None = None) -> list[dict]:
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         q = select(Shift).where(Shift.enterprise_id == ent_pk)
+        from src.shared.security.resource_policy import scoped_query
+        q = await scoped_query(self._db, q, Shift)
         if factory_id:
             q = q.where(Shift.factory_id == await to_pk(self._db, Factory, factory_id))
         rows = (await self._db.execute(q.order_by(Shift.start_time))).scalars()
@@ -79,6 +81,8 @@ class ShiftService:
             Shift.enterprise_id == ent_pk,
             Shift.status == "Active",
         )
+        from src.shared.security.resource_policy import scoped_query
+        q = await scoped_query(self._db, q, Shift)
         rows = (await self._db.execute(q)).scalars().all()
         return [await self.to_dict(self._db, s) for s in rows if self.is_active_at(s, at)]
 
@@ -92,6 +96,8 @@ class ShiftService:
             Shift.factory_id == factory_pk,
             Shift.status == "Active",
         )
+        from src.shared.security.resource_policy import scoped_query
+        q = await scoped_query(self._db, q, Shift)
         rows = (await self._db.execute(q)).scalars().all()
         for s in rows:
             if self.is_active_at(s, at):

@@ -28,6 +28,8 @@ class MaintenanceService:
     async def list(self, enterprise_id: str, camera_id: str | None = None, status: str | None = None) -> list[dict]:
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         q = select(CameraMaintenance).where(CameraMaintenance.enterprise_id == ent_pk)
+        from src.shared.security.resource_policy import scoped_query
+        q = await scoped_query(self._db, q, CameraMaintenance)
         if camera_id:
             q = q.where(CameraMaintenance.camera_id == await to_pk(self._db, Camera, camera_id))
         if status:

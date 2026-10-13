@@ -1,3 +1,4 @@
+from src.shared.security.resource_policy import enforce_resource_scope
 import math
 
 from fastapi import APIRouter, Depends, Query
@@ -16,7 +17,7 @@ from src.shared.responses import ApiResponse, MetaResponse
 from src.shared.security.dependencies import AuthUser, get_current_user, require_roles
 from src.shared.security.scope import get_scope
 
-router = APIRouter(prefix="/alerts", tags=["Alerts"])
+router = APIRouter(dependencies=[Depends(enforce_resource_scope)], prefix="/alerts", tags=["Alerts"])
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> AlertService:
@@ -73,7 +74,7 @@ async def get_alert(
 async def acknowledge_alert(
     alert_id: str,
     _body: AcknowledgeRequest = AcknowledgeRequest(),
-    user: AuthUser = Depends(require_roles("SAFETY_OFFICER", "FACTORY_MANAGER", "SYSTEM_ADMIN")),
+    user: AuthUser = Depends(require_roles("SAFETY_OFFICER", "FACTORY_MANAGER", "SYSTEM_ADMIN", "ENTERPRISE_ADMIN")),
     svc: AlertService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
@@ -86,7 +87,7 @@ async def acknowledge_alert(
 async def resolve_alert(
     alert_id: str,
     body: ResolveRequest,
-    user: AuthUser = Depends(require_roles("SAFETY_OFFICER", "FACTORY_MANAGER", "SYSTEM_ADMIN")),
+    user: AuthUser = Depends(require_roles("SAFETY_OFFICER", "FACTORY_MANAGER", "SYSTEM_ADMIN", "ENTERPRISE_ADMIN")),
     svc: AlertService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
@@ -99,7 +100,7 @@ async def resolve_alert(
 async def false_positive_alert(
     alert_id: str,
     body: FalsePositiveRequest,
-    user: AuthUser = Depends(require_roles("SAFETY_OFFICER", "FACTORY_MANAGER", "SYSTEM_ADMIN")),
+    user: AuthUser = Depends(require_roles("SAFETY_OFFICER", "FACTORY_MANAGER", "SYSTEM_ADMIN", "ENTERPRISE_ADMIN")),
     svc: AlertService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
@@ -114,7 +115,7 @@ async def false_positive_alert(
 async def assign_alert(
     alert_id: str,
     body: AssignRequest,
-    user: AuthUser = Depends(require_roles("FACTORY_MANAGER", "SYSTEM_ADMIN")),
+    user: AuthUser = Depends(require_roles("FACTORY_MANAGER", "SYSTEM_ADMIN", "ENTERPRISE_ADMIN")),
     svc: AlertService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):

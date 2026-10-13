@@ -61,6 +61,24 @@ async def _dispatch_event(message: IncomingMessage) -> None:
 
 
 async def _route_event(routing_key: str, body: dict) -> None:
+    # Validate camera-bearing events before any handler can change tenant data.
+    if body.get("camera_id"):
+        from sqlalchemy import select
+        from src.shared.database.models import Camera, Enterprise, Factory, Shift, Zone
+        from src.shared.database.session import AsyncSessionFactory
+        async with AsyncSessionFactory() as db:
+            row = (await db.execute(select(Camera, Enterprise.public_id, Factory.public_id, Zone.public_id)
+                .join(Enterprise, Enterprise.id == Camera.enterprise_id)
+                .join(Factory, Factory.id == Camera.factory_id)
+                .join(Zone, Zone.id == Camera.zone_id)
+                .where(Camera.public_id == body["camera_id"], Camera.deleted_at.is_(None),
+                       Factory.deleted_at.is_(None), Zone.deleted_at.is_(None)))).first()
+            if row is None or body.get("enterprise_id") != row[1] or (body.get("factory_id") and body["factory_id"] != row[2]) or (body.get("zone_id") and body["zone_id"] != row[3]):
+                raise ValueError("Event resource ownership mismatch")
+            if body.get("shift_id"):
+                shift = await db.scalar(select(Shift.id).where(Shift.public_id == body["shift_id"], Shift.factory_id == row[0].factory_id))
+                if shift is None:
+                    raise ValueError("Event shift ownership mismatch")
     # Routes added as modules are built
     ppe_keys = {
         "events.helmet_missing_detected",
@@ -68,6 +86,7 @@ async def _route_event(routing_key: str, body: dict) -> None:
         "events.gloves_missing_detected",
         "events.shoes_missing_detected",
         "events.mask_missing_detected",
+        "events.low_confidence_violation",
     }
     if routing_key in ppe_keys:
         await _handle_ppe_violation(routing_key, body)
@@ -96,51 +115,55 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
     from src.modules.alerts.infrastructure.repositories import AlertRepository
     from src.modules.realtime.manager import manager
 
+    from uuid import UUID
+    from datetime import datetime, timezone
+    from sqlalchemy import select
+    from sqlalchemy.dialects.postgresql import insert
+    from src.shared.database.models import Camera, Enterprise, EventReceipt, Zone
+    from src.modules.maintenance.application.services import MaintenanceService
+    from src.modules.shifts.application.services import ShiftService
+
+    event_id = str(UUID(body["event_id"]))
     async with AsyncSessionFactory() as db:
-        # Tag the violation with the factory's currently active shift so
-        # shift-wise analytics/reports work without the AI worker knowing
-        # anything about shift schedules.
-        if not body.get("shift_id") and body.get("factory_id") and body.get("enterprise_id"):
-            from datetime import datetime, timezone
-            from src.modules.shifts.application.services import ShiftService
-            shift = await ShiftService(db).find_active_for_factory(
-                body["enterprise_id"], body["factory_id"], datetime.now(timezone.utc)
-            )
-            if shift:
-                body["shift_id"] = shift.public_id
-
-        ppe_svc = PPEService(ViolationRepository(db), db)
-        violation = await ppe_svc.handle_violation_event(routing_key, body)
-
-        await manager.broadcast(str(violation.enterprise_id), {
-            "type": "violation.created",
-            "data": ppe_svc.enrich(violation),
-        })
-
-        # Maintenance mode: record the violation (above) but never alert/notify
-        from src.modules.maintenance.application.services import MaintenanceService
-        if await MaintenanceService.is_in_maintenance(db, violation.camera_id):
-            log.info("alert.suppressed_maintenance", camera_id=str(violation.camera_id))
-            return
-
-        # factory_id required for alert; AI worker must include it in the event payload
-        factory_id = body["factory_id"] if body.get("factory_id") else violation.zone_id
-        alert_svc = AlertService(AlertRepository(db))
-        alert = await alert_svc.create_from_violation(violation, factory_id)
-
+        db.info["defer_commit"] = True
+        async with db.begin():
+            receipt = await db.execute(insert(EventReceipt).values(event_id=event_id)
+                                       .on_conflict_do_nothing().returning(EventReceipt.event_id))
+            if receipt.scalar_one_or_none() is None:
+                return
+            camera = (await db.execute(select(Camera).join(Enterprise, Enterprise.id == Camera.enterprise_id)
+                .join(Zone, Zone.id == Camera.zone_id).where(
+                    Camera.public_id == body["camera_id"], Enterprise.public_id == body["enterprise_id"],
+                    Zone.public_id == body["zone_id"], Camera.deleted_at.is_(None), Zone.deleted_at.is_(None),
+                ).with_for_update(of=Camera))).scalar_one_or_none()
+            if camera is None:
+                raise ValueError("Event camera/zone/enterprise mismatch")
+            db.info["enterprise_id"] = body["enterprise_id"]
+            from src.shared.database.models import Factory
+            factory_id = await db.scalar(select(Factory.public_id).where(Factory.id == camera.factory_id))
+            if body.get("factory_id") and body["factory_id"] != factory_id:
+                raise ValueError("Event factory mismatch")
+            occurred_at = datetime.fromisoformat(body["timestamp"].replace("Z", "+00:00")) if body.get("timestamp") else datetime.now(timezone.utc)
+            shift = await ShiftService(db).find_active_for_factory(body["enterprise_id"], factory_id, occurred_at)
+            body = {**body, "shift_id": shift.public_id if shift else None}
+            ppe_svc = PPEService(ViolationRepository(db), db)
+            violation = await ppe_svc.handle_violation_event(routing_key, body)
+            alert_svc = AlertService(AlertRepository(db))
+            alert = None
+            if not violation.needs_review and not await MaintenanceService.is_in_maintenance(db, violation.camera_id):
+                alert = await alert_svc.create_from_violation(violation, factory_id)
+        db.info["defer_commit"] = False
+        await manager.broadcast(str(violation.enterprise_id), {"type": "violation.created", "data": ppe_svc.enrich(violation)})
         if alert:
             from src.modules.notifications.application.services import NotificationService
             from src.modules.notifications.infrastructure.repositories import NotificationRecipientRepository
-
             notif_svc = NotificationService(NotificationRecipientRepository(db), db)
             desktop_targets = await notif_svc.notify_zone_violation(
                 violation.enterprise_id, violation.zone_id, violation.camera_id,
                 alert.id, alert.alert_number, alert.alert_type, alert.severity,
             )
-
             await manager.broadcast(str(violation.enterprise_id), {
-                "type": "alert.created",
-                "data": {**alert_svc.to_dict(alert), "notify_user_ids": desktop_targets},
+                "type": "alert.created", "data": {**alert_svc.to_dict(alert), "notify_user_ids": desktop_targets},
             })
 
 

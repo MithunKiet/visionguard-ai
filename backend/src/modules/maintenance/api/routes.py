@@ -1,3 +1,4 @@
+from src.shared.security.resource_policy import enforce_resource_scope
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +13,7 @@ from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import AuthUser, get_current_user, require_roles
 
-router = APIRouter(prefix="/maintenance", tags=["Maintenance"])
+router = APIRouter(dependencies=[Depends(enforce_resource_scope)], prefix="/maintenance", tags=["Maintenance"])
 
 _ADMIN_ROLES = ("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER")
 

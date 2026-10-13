@@ -3,11 +3,12 @@ AuthService — all auth business logic lives here.
 Routes are thin; this is where decisions are made.
 """
 import hashlib
+import hmac
 import uuid as _uuid
 from datetime import datetime, timedelta, timezone
 
 import structlog
-from jose import jwt as _jwt
+import jwt as _jwt
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,7 @@ from src.modules.identity.domain.entities import UserEntity
 from src.modules.identity.infrastructure.repositories import UserRepository
 from src.shared.cache.client import get_redis
 from src.shared.database.models import RefreshToken
-from src.shared.security.jwt import JWTError, create_access_token, create_refresh_token, decode_token
+from src.shared.security.jwt import JWTError, create_access_token, create_refresh_token, decode_token, session_fingerprint
 from src.shared.security.password import hash_password, verify_password
 
 log = structlog.get_logger()
@@ -37,6 +38,14 @@ class AuthService:
     # ── Login ──────────────────────────────────────────────────────────────
 
     async def login(self, email: str, password: str) -> dict:
+        redis = await get_redis()
+        attempt_key = "login-attempts:" + _sha256(email.strip().lower())
+        attempts = await redis.eval(
+            "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],300) end; return n",
+            1, attempt_key,
+        )
+        if attempts > 10:
+            raise VisionGuardException(code="LOGIN_RATE_LIMIT", message="Too many login attempts; retry later", status_code=429)
         user = await self._users.get_by_email(email)
         if not user:
             raise UnauthorizedException("Invalid email or password")
@@ -51,6 +60,9 @@ class AuthService:
         if not user.is_active:
             raise ForbiddenException("Account is inactive or suspended")
 
+        if user.totp_enabled:
+            raise ForbiddenException("MFA verification is not supported by this deployment")
+        await redis.delete(attempt_key)
         access_token = self._make_access_token(user, is_master=is_master)
         refresh_token, _ = await self._create_refresh_token(user)
         await self._users.update_last_login(user.id)
@@ -99,18 +111,21 @@ class AuthService:
             select(RefreshToken).where(
                 RefreshToken.token_hash == token_hash,
                 RefreshToken.revoked.is_(False),
-            )
+                RefreshToken.expires_at > datetime.now(timezone.utc),
+            ).with_for_update()
         )
         stored = result.scalar_one_or_none()
         if not stored:
             raise UnauthorizedException("Refresh token revoked or not found")
 
         user = await self._users.get_by_id(payload["sub"])
-        if not user or not user.is_active:
+        if not user or not user.is_active or user.totp_enabled:
             raise UnauthorizedException("User not found or inactive")
 
-        # Rotate: revoke old, issue new
-        await self._revoke_refresh_token_by_hash(token_hash)
+        if not hmac.compare_digest(payload.get("session_version", ""), session_fingerprint(user.password_hash)):
+            raise UnauthorizedException("Session expired; sign in again")
+        # Hold the row lock until revocation and replacement commit together.
+        stored.revoked = True
         new_access = self._make_access_token(user)
         new_refresh, _ = await self._create_refresh_token(user)
 
@@ -125,7 +140,7 @@ class AuthService:
 
     async def logout(self, access_jti: str, refresh_token: str | None) -> None:
         redis = await get_redis()
-        ttl = settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        ttl = max(settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES, _MASTER_TTL_MINUTES) * 60
         await redis.setex(_BLACKLIST_KEY.format(jti=access_jti), ttl, "1")
 
         if refresh_token:
@@ -163,6 +178,7 @@ class AuthService:
             "enterprise_id": str(user.enterprise_id),
             "roles": user.roles,
             "email": user.email,
+            "session_version": session_fingerprint(user.password_hash),
             "factory_id": str(user.factory_id) if user.factory_id else None,
             "department_id": str(user.department_id) if user.department_id else None,
             "assigned_zone_ids": user.assigned_zone_ids,
@@ -183,6 +199,7 @@ class AuthService:
         token, jti = create_refresh_token({
             "sub": str(user.id),
             "enterprise_id": str(user.enterprise_id),
+            "session_version": session_fingerprint(user.password_hash),
         })
         expires_at = datetime.now(timezone.utc) + timedelta(
             days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS

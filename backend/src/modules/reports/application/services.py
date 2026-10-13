@@ -5,6 +5,7 @@ store them in the MinIO reports bucket, and serve pre-signed download URLs
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import uuid
 from datetime import datetime, timezone
@@ -58,15 +59,15 @@ class ReportService:
 
         period = f"{from_date.date().isoformat()} to {to_date.date().isoformat()}"
         if fmt == "pdf":
-            content = build_pdf(title, enterprise_name, period, headers, rows)
+            content = await asyncio.to_thread(build_pdf, title, enterprise_name, period, headers, rows)
         else:
-            content = build_xlsx(title, enterprise_name, period, headers, rows)
+            content = await asyncio.to_thread(build_xlsx, title, enterprise_name, period, headers, rows)
 
         report_id = uuid.uuid4()
         month = datetime.now(timezone.utc).strftime("%Y-%m")
         object_key = f"{enterprise_id}/{month}/{enterprise_code}_{report_type}_{report_id}.{fmt}"
 
-        get_minio().put_object(
+        await asyncio.to_thread(get_minio().put_object,
             settings.MINIO_BUCKET_REPORTS,
             object_key,
             data=io.BytesIO(content),
@@ -127,9 +128,12 @@ class ReportService:
                 PPEViolation.created_at <= to_date,
             )
             .order_by(PPEViolation.created_at.desc())
-            .limit(5000)
+            .limit(5001)
         )
         rows = (await self._db.execute(q)).all()
+        if len(rows) > 5000:
+            from src.core.exceptions import VisionGuardException
+            raise VisionGuardException(code="REPORT_TOO_LARGE", message="Report exceeds 5000 rows; choose a shorter date range", status_code=422)
         headers = ["Date/Time (UTC)", "Zone", "Camera", "Violation", "Confidence", "False Positive"]
         return headers, [
             [
@@ -155,9 +159,12 @@ class ReportService:
                 Alert.created_at <= to_date,
             )
             .order_by(Alert.created_at.desc())
-            .limit(5000)
+            .limit(5001)
         )
         rows = (await self._db.execute(q)).all()
+        if len(rows) > 5000:
+            from src.core.exceptions import VisionGuardException
+            raise VisionGuardException(code="REPORT_TOO_LARGE", message="Report exceeds 5000 rows; choose a shorter date range", status_code=422)
         headers = ["Alert #", "Date/Time (UTC)", "Zone", "Type", "Severity", "Status", "Resolved At"]
         return headers, [
             [

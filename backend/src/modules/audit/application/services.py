@@ -62,6 +62,7 @@ class AuditService:
             ))
             await self._db.commit()
         except Exception as e:
+            await self._db.rollback()
             log.error("audit.write_failed", action=action, error=str(e))
 
     async def list(

@@ -4,6 +4,7 @@ CameraService — CRUD, RTSP health check, worker assignment.
 import os
 import cv2
 import structlog
+from src.shared.security.camera_url import redact_rtsp_url, validate_rtsp_url
 
 from src.core.exceptions import NotFoundException
 from src.modules.camera.domain.entities import CameraEntity
@@ -75,6 +76,7 @@ class CameraService:
         from src.shared.database.pid import to_pk, to_public_id
 
         ent_pk = await to_pk(db, Enterprise, enterprise_id)
+        validate_rtsp_url(rtsp_url)
         zone = (await db.execute(
             select(Zone).where(Zone.public_id == zone_id, Zone.enterprise_id == ent_pk)
         )).scalar_one_or_none()
@@ -234,10 +236,12 @@ class CameraService:
         import asyncio
         import time
 
+        validate_rtsp_url(rtsp_url)
+
         def _probe():
             try:
                 start = time.monotonic()
-                cap = cv2.VideoCapture(rtsp_url)
+                cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG, [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000])
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 ok, _ = cap.read()
                 latency_ms = int((time.monotonic() - start) * 1000)
@@ -250,7 +254,7 @@ class CameraService:
         return {
             "reachable": ok,
             "latency_ms": latency_ms,
-            "rtsp_url": rtsp_url,
+            "rtsp_url": redact_rtsp_url(rtsp_url),
             "status": "Online" if ok else "Offline",
         }
 

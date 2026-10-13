@@ -1,3 +1,4 @@
+from src.shared.security.resource_policy import enforce_resource_scope
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,7 +9,7 @@ from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import AuthUser, get_current_user, require_roles
 
-router = APIRouter(prefix="/notifications/recipients", tags=["Notification Recipients"])
+router = APIRouter(dependencies=[Depends(enforce_resource_scope)], prefix="/notifications/recipients", tags=["Notification Recipients"])
 
 
 def _get_service(db: AsyncSession = Depends(get_db)) -> NotificationService:

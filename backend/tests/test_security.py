@@ -1,6 +1,6 @@
 """Unit tests — JWT issue/decode and password hashing."""
 import pytest
-from jose import JWTError
+from src.shared.security.jwt import JWTError
 
 from src.shared.security.jwt import create_access_token, decode_token
 from src.shared.security.password import hash_password, verify_password

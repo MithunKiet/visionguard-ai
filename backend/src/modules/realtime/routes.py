@@ -1,42 +1,44 @@
-import structlog
+import asyncio
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from jose import JWTError
 
 from src.modules.realtime.manager import manager
-from src.shared.security.jwt import decode_token
-
-log = structlog.get_logger()
+from src.shared.database.session import AsyncSessionFactory
+from src.shared.security.dependencies import authenticate_token
 
 router = APIRouter(tags=["Realtime"])
 
 
 @router.websocket("/ws/live")
 async def ws_live(websocket: WebSocket):
-    # Browsers can't attach custom headers (e.g. Authorization) to a
-    # WebSocket handshake, and a `?token=` query param leaks the JWT into
-    # server access logs and browser history. Sec-WebSocket-Protocol isn't
-    # part of the request URI, so the frontend sends the token as the
-    # (single) proposed subprotocol instead — we just echo it back on accept
-    # as required by the WebSocket handshake spec.
     token = websocket.headers.get("sec-websocket-protocol")
     if not token:
         await websocket.close(code=4401)
         return
+
+    async def validate():
+        async with AsyncSessionFactory() as db:
+            user = await authenticate_token(token, db)
+            if user.is_first_login:
+                raise ValueError("Password change required")
+            return user
+
     try:
-        payload = decode_token(token)
-        if payload.get("type") != "access":
-            raise JWTError("not an access token")
-    except JWTError:
+        user = await validate()
+    except Exception:
         await websocket.close(code=4401)
         return
-
-    enterprise_id = payload["enterprise_id"]
-    await manager.connect(enterprise_id, websocket, subprotocol=token)
+    await manager.connect(user.enterprise_id, websocket, subprotocol=token)
     try:
         while True:
-            # Client -> server messages aren't used yet; just keep the connection alive.
-            await websocket.receive_text()
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=15)
+            except asyncio.TimeoutError:
+                pass
+            await validate()
     except WebSocketDisconnect:
         pass
+    except Exception:
+        await websocket.close(code=4401)
     finally:
-        manager.disconnect(enterprise_id, websocket)
+        manager.disconnect(user.enterprise_id, websocket)
