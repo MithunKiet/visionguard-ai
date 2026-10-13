@@ -20,8 +20,9 @@ _MODELS = {
 }
 
 
-async def scoped_query(db, query, model, user=None):
-    scope = get_scope(user) if user else db.info.get("scope")
+async def scoped_query(db, query, model, user=None, *, scope=None):
+    if scope is None:
+        scope = get_scope(user) if user else db.info.get("scope")
     if scope is None or scope.unrestricted:
         return query
     if model is m.Factory:

@@ -59,7 +59,7 @@ class WorkerService:
         if not worker or worker.enterprise_id != enterprise_id:
             from src.core.exceptions import NotFoundException
             raise NotFoundException("Worker", worker_id)
-        worker_db_id = await self._repo.get_internal_id_by_worker_id(worker_id)
+        worker_db_id = await self._repo.get_internal_id_by_worker_id(worker_id, enterprise_id)
         if not worker_db_id:
             return []
         return await self.get_worker_cameras(worker_db_id, db)

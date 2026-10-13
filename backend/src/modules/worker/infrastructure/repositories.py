@@ -24,10 +24,15 @@ class WorkerRepository:
         row = result.scalar_one_or_none()
         return await self._to_entity(row) if row else None
 
-    async def get_internal_id_by_worker_id(self, worker_id: str) -> int | None:
+    async def get_internal_id_by_worker_id(self, worker_id: str, enterprise_id: str | None = None) -> int | None:
         """SQL-boundary helper — resolves a worker's business id (e.g.
         "worker-1") to the internal integer id other tables FK against."""
-        return await self._db.scalar(select(AIWorker.id).where(AIWorker.worker_id == worker_id))
+        query = select(AIWorker.id).where(AIWorker.worker_id == worker_id)
+        if enterprise_id:
+            query = query.join(Enterprise, Enterprise.id == AIWorker.enterprise_id).where(
+                Enterprise.public_id == enterprise_id
+            )
+        return await self._db.scalar(query)
 
     async def get_internal_id(self, public_id: str) -> int | None:
         """SQL-boundary helper — resolves a worker's public_id to the
@@ -62,6 +67,8 @@ class WorkerRepository:
         gpu_available: bool,
     ) -> WorkerEntity:
         existing = await self._db.execute(
+            # Business IDs are globally unique. Find collisions before the
+            # tenant check so a foreign heartbeat is rejected, not inserted.
             select(AIWorker).where(AIWorker.worker_id == worker_id)
         )
         existing_row = existing.scalar_one_or_none()
@@ -74,7 +81,7 @@ class WorkerRepository:
                 raise ForbiddenException("Worker belongs to another enterprise")
             await self._db.execute(
                 update(AIWorker)
-                .where(AIWorker.worker_id == worker_id)
+                .where(AIWorker.worker_id == worker_id, AIWorker.enterprise_id == existing_row.enterprise_id)
                 .values(
                     status="Online",
                     last_heartbeat=now,

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.database.models import Alert, Enterprise, OccupancyLog, PPEViolation, Zone
 from src.shared.database.pid import to_pk
 from src.shared.security.resource_policy import scoped_query
+from src.shared.security.scope import ScopeFilter
 
 # Weight of each severity when computing the safety score penalty
 _SEVERITY_WEIGHTS = {"Critical": 10, "High": 5, "Medium": 2, "Low": 1}
@@ -32,6 +33,7 @@ class AnalyticsService:
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
         zone_id: str | None = None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         """Violation counts by day, by type, and by zone over the range."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
@@ -44,7 +46,7 @@ class AnalyticsService:
         )
         if zone_id:
             base = base.where(PPEViolation.zone_id == await to_pk(self._db, Zone, zone_id))
-        base = await scoped_query(self._db, base, PPEViolation)
+        base = await scoped_query(self._db, base, PPEViolation, scope=scope)
         sub = base.subquery()
 
         by_day = (await self._db.execute(
@@ -79,6 +81,7 @@ class AnalyticsService:
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
         zone_id: str | None = None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         """Average and peak occupancy per zone over the range."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
@@ -100,7 +103,7 @@ class AnalyticsService:
         )
         if zone_id:
             q = q.where(OccupancyLog.zone_id == await to_pk(self._db, Zone, zone_id))
-        q = await scoped_query(self._db, q, OccupancyLog)
+        q = await scoped_query(self._db, q, OccupancyLog, scope=scope)
         rows = (await self._db.execute(q)).all()
         return {
             "from": from_dt.isoformat(),
@@ -121,6 +124,7 @@ class AnalyticsService:
         enterprise_id: str,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         """Alert-resolution compliance: how many alerts were resolved, and how
         many within their SLA window."""
@@ -142,7 +146,7 @@ class AnalyticsService:
                 Alert.enterprise_id == ent_pk,
                 Alert.created_at >= from_dt,
                 Alert.created_at <= to_dt,
-            ), Alert)
+            ), Alert, scope=scope)
         row = (await self._db.execute(query)).one()
         total, resolved, within_sla = row[0], int(row[1] or 0), int(row[2] or 0)
         return {
@@ -160,6 +164,7 @@ class AnalyticsService:
         enterprise_id: str,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
+        scope: ScopeFilter | None = None,
     ) -> dict:
         """0–100 score: starts at 100 and subtracts severity-weighted alert
         counts normalized per day (min 0). A quiet factory scores 100."""
@@ -172,7 +177,7 @@ class AnalyticsService:
                 Alert.created_at <= to_dt,
                 Alert.status != "FalsePositive",
             )
-            .group_by(Alert.severity), Alert)
+            .group_by(Alert.severity), Alert, scope=scope)
         rows = (await self._db.execute(query)).all()
 
         days = max(1, (to_dt - from_dt).days)

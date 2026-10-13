@@ -378,3 +378,60 @@ async def test_bound_worker_credential_rejects_different_worker_and_tenant(setup
     assert (await s.client.get("/api/v1/workers/another-worker/cameras", headers=h)).status_code == 403
     h["X-Enterprise-Id"] = s.other.public_id
     assert (await s.client.get(f"/api/v1/workers/{s.worker.worker_id}/cameras", headers=h)).status_code == 401
+
+
+async def test_merged_analytics_enforces_factory_zone_and_empty_scope(setup):
+    from src.modules.analytics.application.services import AnalyticsService
+    from src.shared.database.models import OccupancyLog
+    from src.shared.messaging.consumer import _route_event
+    from src.shared.security.scope import ScopeFilter
+
+    s = setup
+    now = datetime.now(timezone.utc)
+    with patch("src.modules.realtime.manager.manager.broadcast", new=AsyncMock()), patch(
+        "src.modules.notifications.application.services.NotificationService.notify_zone_violation", new=AsyncMock(return_value=[])):
+        for i in range(3):
+            await _route_event("events.helmet_missing_detected", {**event(s, i), "timestamp": now.isoformat()})
+    async with AsyncSessionFactory() as db:
+        for i, place in enumerate(s.places):
+            await db.execute(update(Zone).where(Zone.id == place.zone.id).values(name=f"Scope zone {i}"))
+            db.add(OccupancyLog(enterprise_id=place.camera.enterprise_id, zone_id=place.zone.id,
+                               camera_id=place.camera.id, current_count=i + 1, timestamp=now))
+        await db.commit()
+        # Explicit service scopes must work without HTTP dependency state.
+        service = AnalyticsService(db)
+        limited = ScopeFilter(unrestricted=False, zone_ids={s.places[0].zone.public_id})
+        assert (await service.violations(s.enterprise.public_id, scope=limited))["total"] == 1
+        assert (await service.violations(s.enterprise.public_id, scope=ScopeFilter(unrestricted=False)))["total"] == 0
+
+    async def check(name, count, zones):
+        results = {}
+        for endpoint in ["violations", "occupancy", "compliance", "safety-score"]:
+            response = await s.client.get(f"/api/v1/analytics/{endpoint}", headers=headers(s, name))
+            assert response.status_code == 200, response.text
+            results[endpoint] = response.json()["data"]
+        assert results["violations"]["total"] == count
+        assert results["compliance"]["total_alerts"] == count
+        assert sum(results["safety-score"]["alerts_by_severity"].values()) == count
+        assert {row["zone"] for row in results["occupancy"]["zones"]} == zones
+
+    await check("admin", 2, {"Scope zone 0", "Scope zone 1"})
+    await check("manager", 1, {"Scope zone 0"})
+    await check("viewer", 1, {"Scope zone 0"})
+    await check("foreign", 1, {"Scope zone 2"})
+    response = await s.client.get("/api/v1/analytics/violations", headers=headers(s, "manager"),
+                                  params={"zone_id": s.places[1].zone.public_id})
+    assert response.status_code == 404
+    async with AsyncSessionFactory() as db:
+        await db.execute(update(User).where(User.id == s.users["viewer"].id).values(factory_id=None, assigned_zone_ids=[]))
+        await db.commit()
+    await check("viewer", 0, set())
+
+
+async def test_merged_report_routes_require_enterprise_scope(setup):
+    s = setup
+    for name in ["manager", "viewer"]:
+        for path in ["/api/v1/reports", f"/api/v1/reports/{uuid4()}/download"]:
+            assert (await s.client.get(path, headers=headers(s, name))).status_code == 403
+        assert (await s.client.post("/api/v1/reports/generate", headers=headers(s, name), json={})).status_code == 403
+    assert (await s.client.get("/api/v1/reports", headers=headers(s))).status_code == 200
