@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, Request, Response
+from fastapi import APIRouter, Cookie, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.modules.identity.api.schemas import (
@@ -91,11 +91,14 @@ async def logout(
     response: Response,
     body: LogoutRequest | None = None,
     refresh_token_cookie: Annotated[str | None, Cookie(alias=_REFRESH_COOKIE)] = None,
-    current_user: AuthUser = Depends(get_current_user),
+    authorization: str | None = Header(default=None),
     svc: AuthService = Depends(_get_auth_service),
 ):
     refresh_token = (body.refresh_token if body else None) or refresh_token_cookie
-    await svc.logout(current_user.jti, refresh_token)
+    # Revocation needs possession of the credential, not an active session.
+    # This also allows logout after expiry, suspension or a password change.
+    access_token = authorization[7:] if authorization and authorization.startswith("Bearer ") else None
+    await svc.logout(access_token, refresh_token)
     response.delete_cookie(_REFRESH_COOKIE, path="/api/v1/auth")
     return ApiResponse(data=None)
 

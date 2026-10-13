@@ -102,14 +102,18 @@ class CameraRepository(ICameraRepository):
         await self._db.commit()
         return entity
 
-    async def set_status(self, camera_id: str, status: str) -> None:
-        await self._db.execute(
-            update(Camera).where(Camera.public_id == camera_id, Camera.status != "Inactive", Camera.deleted_at.is_(None)).values(
+    async def set_status(self, camera_id: str, status: str, *, preserve_inactive: bool = False) -> bool:
+        query = update(Camera).where(Camera.public_id == camera_id, Camera.deleted_at.is_(None))
+        if preserve_inactive:
+            query = query.where(Camera.status != "Inactive")
+        result = await self._db.execute(
+            query.values(
                 status=status,
                 last_seen_at=datetime.now(timezone.utc),
             )
         )
         await self._db.commit()
+        return result.rowcount > 0
 
     async def delete(self, camera_id: str, enterprise_id: str) -> None:
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)

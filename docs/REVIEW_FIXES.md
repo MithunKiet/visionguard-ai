@@ -2,6 +2,12 @@
 
 This change fixes reproducible security and reliability defects from the [12 October review](reviews/2026-10-12-deep-review.md). It preserves the FastAPI/React/worker architecture. It does **not** certify the system for unattended production use or validate a 200-camera capacity claim.
 
+## Follow-up regression corrections
+
+The follow-up review reproduced two defects in the initial remediation. Manual camera activation now updates an inactive camera, while automatic stream events preserve the inactive state and do not broadcast a discarded status. Logout now revokes the presented refresh credential and clears its cookie even when access has expired or the account is suspended. Only signature-verified access-token IDs can be blacklisted; expiry remains enforced on normal authenticated endpoints. Invalid or absent credentials can complete an idempotent logout without gaining access to any data. Storage/cache failures still fail the logout request rather than reporting unconfirmed revocation as successful.
+
+Regression coverage checks persisted camera state and worker polling after reactivation, ignored transport updates while inactive, logout after expiry/suspension, invalid-signature isolation, refresh-token revocation, cookie deletion, and browser retry after a failed logout. The next operational step is the [2–4 camera pilot plan](PILOT_PLAN.md).
+
 ## Deployment and compatibility
 
 - Run `alembic upgrade head` before starting the new backend. Migration `0017` adds event receipts, stored review/bounding-box fields, and a PostgreSQL sequence for globally unique alert numbers. Existing data is preserved. Container startup runs migrations under a PostgreSQL advisory lock; readiness rejects an older schema.
@@ -19,9 +25,9 @@ This change fixes reproducible security and reliability defects from the [12 Oct
 
 Executed in the cloud workspace:
 
-- 38 backend tests passed, including 17 PostgreSQL/Redis integration tests. These exercise tenant and factory restrictions, cross-tenant references, live permission changes, logout/suspension/password revocation, concurrent refresh rotation, worker isolation, RTSP restrictions, concurrent replay, transaction rollback, review persistence, config version concurrency, false-positive propagation and Redis fanout across two manager instances.
+- 43 backend tests passed, including 22 PostgreSQL/Redis integration tests. These exercise tenant and factory restrictions, cross-tenant references, live permission changes, logout/suspension/password revocation, concurrent refresh rotation, worker isolation, RTSP restrictions, concurrent replay, transaction rollback, review persistence, config version concurrency, false-positive propagation and Redis fanout across two manager instances. Follow-up cases cover logout with expired/missing/tampered credentials and suspended accounts, plus manual camera reactivation and transport-event handling.
 - 32 AI tests passed, including clean/uncertain-frame streak resets, duplicate boxes in one frame, empty PPE lists, shoes thresholds, review/mask event mapping, delivery acknowledgement cooldowns and provider-outage handling.
-- Three Chromium browser tests passed: mandatory first-password change, server logout with a second tenant login, and pagination beyond the first alert page. Browser API responses are mocked; these do not claim a real-camera or production-domain browser test.
+- Four Chromium browser tests passed: mandatory first-password change, server logout with a second tenant login, pagination beyond the first alert page, and retrying logout after a connection failure. Browser API responses are mocked; these do not claim a real-camera or production-domain browser test.
 - Backend and configured AI lint checks passed. TypeScript and the Vite production build passed. Vite still reports a large application bundle.
 - A fresh disposable PostgreSQL database migrated from empty through `0017`; the existing development database upgraded from `0016` through `0017` without dropping application data.
 - Live service smoke passed: dependency readiness, login, RabbitMQ → PostgreSQL → Redis fanout → WebSocket delivery, PDF/XLSX generation with signed downloads, and logout revocation. Temporary smoke data and report objects were removed.

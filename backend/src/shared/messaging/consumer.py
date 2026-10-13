@@ -304,9 +304,9 @@ async def _set_camera_status(body: dict, status: str) -> None:
         return
 
     async with AsyncSessionFactory() as db:
-        await CameraRepository(db).set_status(camera_id, status)
+        changed = await CameraRepository(db).set_status(camera_id, status, preserve_inactive=True)
 
-    if enterprise_id:
+    if changed and enterprise_id:
         await manager.broadcast(enterprise_id, {
             "type": "camera.status_changed",
             "data": {"camera_id": camera_id, "status": status},

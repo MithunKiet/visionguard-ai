@@ -1,7 +1,7 @@
 """Regression checks against migrated PostgreSQL and Redis; no external delivery."""
 import asyncio
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -111,6 +111,79 @@ async def test_logout_and_deactivation_revoke_access(setup):
         await db.execute(update(User).where(User.id == s.users["manager"].id).values(status="Inactive"))
         await db.commit()
     assert (await s.client.get("/api/v1/auth/me", headers=headers(s, "manager"))).status_code == 401
+
+
+@pytest.mark.parametrize("credential_state", ["expired", "missing", "tampered", "suspended"])
+async def test_logout_revokes_refresh_without_a_current_access_session(setup, credential_state):
+    import jwt
+    from src.core.settings import settings
+    from src.shared.security.jwt import decode_token
+
+    s = setup
+    login = await s.client.post("/api/v1/auth/login", json={
+        "email": s.users["admin"].email, "password": "Test-password-391",
+    })
+    assert login.status_code == 200
+    session = login.json()["data"]
+    assert "refresh_token" in s.client.cookies
+    if credential_state == "suspended":
+        async with AsyncSessionFactory() as db:
+            await db.execute(update(User).where(User.id == s.users["admin"].id).values(status="Inactive"))
+            await db.commit()
+    claims = decode_token(session["access_token"])
+    if credential_state == "expired":
+        claims["exp"] = datetime.now(timezone.utc) - timedelta(seconds=1)
+    signing_key = "invalid-signature-test-key-at-least-thirty-two-characters" if credential_state == "tampered" else settings.JWT_SECRET
+    access = jwt.encode(claims, signing_key, algorithm=settings.JWT_ALGORITHM)
+    auth = {} if credential_state == "missing" else {"Authorization": f"Bearer {access}"}
+    assert (await s.client.get("/api/v1/auth/me", headers=auth)).status_code == 401
+    response = await s.client.post("/api/v1/auth/logout", headers=auth)
+    assert response.status_code == 200
+    assert "refresh_token" not in s.client.cookies
+    # Reactivation cannot make the logged-out refresh token usable again.
+    async with AsyncSessionFactory() as db:
+        await db.execute(update(User).where(User.id == s.users["admin"].id).values(status="Active"))
+        await db.commit()
+    assert (await s.client.post("/api/v1/auth/refresh", json={"refresh_token": session["refresh_token"]})).status_code == 401
+    assert (await s.client.post("/api/v1/auth/logout", headers=auth)).status_code == 200
+    if credential_state in {"missing", "tampered"}:
+        # An unverified JWT must not blacklist a different valid credential.
+        assert (await s.client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {session['access_token']}"})).status_code == 200
+
+
+async def test_manual_camera_reactivation_survives_stream_updates_and_worker_poll(setup):
+    from src.core.settings import settings
+    from src.shared.messaging.consumer import _route_event
+
+    s = setup
+    camera = s.places[0].camera
+    async with AsyncSessionFactory() as db:
+        await db.execute(update(Camera).where(Camera.id == camera.id).values(worker_id=s.worker.id))
+        await db.commit()
+    path = f"/api/v1/cameras/{camera.public_id}/status"
+    worker_headers = {"X-Worker-Key": settings.WORKER_API_KEY, "X-Enterprise-Id": s.enterprise.public_id}
+    async def persisted_status():
+        async with AsyncSessionFactory() as db:
+            return await db.scalar(select(Camera.status).where(Camera.id == camera.id))
+
+    with patch("src.shared.messaging.publisher.publish_config_event", new=AsyncMock()), patch(
+        "src.modules.realtime.manager.manager.broadcast", new=AsyncMock()) as broadcast:
+        off = await s.client.patch(path, headers=headers(s), json={"status": "Inactive"})
+        assert off.status_code == 200
+        for route in ["events.camera_reconnected", "events.camera_offline_detected"]:
+            await _route_event(route, event(s))
+            assert await persisted_status() == "Inactive"
+        broadcast.assert_not_awaited()
+        on = await s.client.patch(path, headers=headers(s), json={"status": "Active"})
+        assert on.status_code == 200 and on.json()["data"]["status"] == "Active"
+        assert await persisted_status() == "Active"
+        poll = await s.client.get(f"/api/v1/workers/{s.worker.worker_id}/cameras", headers=worker_headers)
+        assert poll.status_code == 200 and poll.json()["data"][0]["status"] == "Active"
+        await _route_event("events.camera_offline_detected", event(s))
+        assert await persisted_status() == "Offline"
+        await _route_event("events.camera_reconnected", event(s))
+        assert await persisted_status() == "Active"
+        assert broadcast.await_count == 2
 
 
 async def test_current_permissions_override_stale_token(setup):

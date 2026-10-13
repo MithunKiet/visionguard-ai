@@ -79,3 +79,24 @@ test("alerts beyond the first page are accessible", async ({ page }) => {
   await page.getByRole("button", { name: "Go to next page" }).click();
   await expect(page.getByText("ALT-PAGE-2", { exact: true })).toBeVisible();
 });
+
+test("failed logout retains the session until the server confirms a retry", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/login");
+  await signIn(page);
+  await page.getByRole("link", { name: "Factories", exact: true }).click();
+  await expect(page.getByText("Factory A", { exact: true })).toBeVisible();
+  await page.route("**/api/v1/auth/logout", route => route.abort("connectionfailed"));
+  const dialog = page.waitForEvent("dialog");
+  await page.getByTitle("Logout", { exact: true }).click();
+  const alert = await dialog;
+  expect(alert.message()).toContain("Logout could not be confirmed");
+  await alert.accept();
+  await expect(page).toHaveURL(/\/factories$/);
+  expect(await page.evaluate(() => localStorage.getItem("vg_auth"))).not.toBeNull();
+  await page.unroute("**/api/v1/auth/logout");
+  await page.getByTitle("Logout", { exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  expect(await page.evaluate(() => localStorage.getItem("vg_auth"))).toBeNull();
+  expect(calls).not.toContain("/api/v1/auth/refresh");
+});

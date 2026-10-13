@@ -138,10 +138,23 @@ class AuthService:
 
     # ── Logout ─────────────────────────────────────────────────────────────
 
-    async def logout(self, access_jti: str, refresh_token: str | None) -> None:
-        redis = await get_redis()
-        ttl = max(settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES, _MASTER_TTL_MINUTES) * 60
-        await redis.setex(_BLACKLIST_KEY.format(jti=access_jti), ttl, "1")
+    async def logout(self, access_token: str | None, refresh_token: str | None) -> None:
+        access_jti = None
+        if access_token:
+            try:
+                # Expiry is ignored only for revocation. Signature, algorithm
+                # and required claims remain checked; this grants no access.
+                payload = _jwt.decode(access_token, settings.JWT_SECRET,
+                    algorithms=[settings.JWT_ALGORITHM],
+                    options={"verify_exp": False, "require": ["sub", "jti", "exp"]})
+                if payload.get("type") == "access":
+                    access_jti = payload["jti"]
+            except JWTError:
+                pass  # Invalid/already unusable credentials may still log out.
+        if access_jti:
+            redis = await get_redis()
+            ttl = max(settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES, _MASTER_TTL_MINUTES) * 60
+            await redis.setex(_BLACKLIST_KEY.format(jti=access_jti), ttl, "1")
 
         if refresh_token:
             await self._revoke_refresh_token_by_hash(_sha256(refresh_token))
