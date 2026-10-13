@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = False
     MINIO_PUBLIC_SECURE: bool = False
     CAMERA_ALLOWED_HOSTS: List[str] = []
+    # Private MediaMTX HLS origin; empty disables live playback. Map camera public
+    # UUIDs to unique, operator-provisioned MediaMTX paths, never RTSP basenames.
+    MEDIA_HLS_URL: str = ""
+    MEDIA_HLS_SECRET: str = Field(default="", repr=False)
+    MEDIA_CAMERA_PATHS: dict[str, str] = {}
     WORKER_CREDENTIALS: dict[str, dict[str, str]] = {}
 
     MINIO_ENDPOINT: str = "localhost:9000"
@@ -81,6 +86,26 @@ class Settings(BaseSettings):
     NOTIFY_RETRY_BASE_SECONDS: int = Field(default=30, ge=1, le=3600)
     NOTIFY_RETRY_MAX_SECONDS: int = Field(default=3600, ge=1, le=86400)
 
+    @model_validator(mode="after")
+    def _validate_media_config(self) -> "Settings":
+        import re
+        from urllib.parse import urlsplit
+        from uuid import UUID
+
+        if self.MEDIA_HLS_URL:
+            if not self.MEDIA_HLS_SECRET:
+                raise ValueError("MEDIA_HLS_SECRET is required when live streaming is enabled")
+            url = urlsplit(self.MEDIA_HLS_URL)
+            if (url.scheme not in {"http", "https"} or not url.hostname or url.username
+                    or url.password or url.path not in {"", "/"} or url.query or url.fragment):
+                raise ValueError("MEDIA_HLS_URL must be a private HTTP(S) origin without credentials or a path")
+        for camera_id, path in self.MEDIA_CAMERA_PATHS.items():
+            if str(UUID(camera_id)) != camera_id or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", path):
+                raise ValueError("Media mappings require canonical camera UUIDs and simple stream paths")
+        if len(set(self.MEDIA_CAMERA_PATHS.values())) != len(self.MEDIA_CAMERA_PATHS):
+            raise ValueError("Each camera must have a unique media stream path")
+        return self
+
     # Fail fast rather than silently serving traffic with credentials that are
     # publicly known from this repo's own .env.example — every value checked
     # here ships as a documented placeholder, not a real secret.
@@ -90,6 +115,8 @@ class Settings(BaseSettings):
             return self
 
         insecure: List[str] = []
+        if self.MEDIA_HLS_URL and (len(self.MEDIA_HLS_SECRET) < 32 or self.MEDIA_HLS_SECRET.startswith("dev-")):
+            insecure.append("MEDIA_HLS_SECRET (strong private gateway secret required)")
         if not self.CAMERA_ALLOWED_HOSTS:
             insecure.append("CAMERA_ALLOWED_HOSTS (explicit trusted camera hosts required)")
         if not self.WORKER_CREDENTIALS:

@@ -22,8 +22,11 @@ services:
     ports: !reset []
 
   mediamtx:
-    # Keep streaming private until a scoped media gateway is configured.
+    # Only the authenticated backend gateway may expose HLS to browsers.
     ports: !reset []
+    environment:
+      MTX_HLSCDNSECRET: ${MEDIA_HLS_SECRET:?Set a strong private media gateway secret}
+      MTX_PATHDEFAULTS_PUBLISHPASS: ${MEDIAMTX_PUBLISH_PASSWORD:?Set a strong private media publisher password}
 
   ai-worker:
     environment:
@@ -48,6 +51,7 @@ services:
     volumes: !reset []
     ports: !reset []
     environment:
+      MEDIA_HLS_SECRET: ${MEDIA_HLS_SECRET:?Set a strong private media gateway secret}
       ENVIRONMENT: production
       DEBUG: "false"
       MINIO_PUBLIC_SECURE: "true"
@@ -68,7 +72,6 @@ services:
         # doesn't accept relative ones) — set this to your real domain,
         # e.g. wss://factory.example.com. Required.
         VITE_WS_URL: ${VITE_WS_URL:?Set VITE_WS_URL to your production domain, e.g. wss://factory.example.com}
-        VITE_MEDIAMTX_WEBRTC_URL: ""
     volumes: !reset []
     ports: !override
       - "127.0.0.1:8080:80"

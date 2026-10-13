@@ -49,6 +49,7 @@ def _register_routers(app: FastAPI) -> None:
     from src.modules.users.api.routes import router as users_router
     from src.modules.roles.api.routes import router as roles_router
     from src.modules.camera.api.routes import router as camera_router
+    from src.modules.camera.api.live import router as live_router
     from src.modules.worker.api.routes import router as worker_router
     from src.modules.ppe.api.routes import router as ppe_router
     from src.modules.alerts.api.routes import router as alerts_router
@@ -64,6 +65,7 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(users_router, prefix="/api/v1")
     app.include_router(roles_router, prefix="/api/v1")
     app.include_router(camera_router, prefix="/api/v1")
+    app.include_router(live_router, prefix="/api/v1")
     app.include_router(worker_router, prefix="/api/v1")
     app.include_router(ppe_router, prefix="/api/v1")
     app.include_router(alerts_router, prefix="/api/v1")

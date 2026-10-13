@@ -1,4 +1,5 @@
 import { expect, test, Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 async function signIn(page: Page, email = "a@example.com") {
   await page.getByLabel(/^Email/).fill(email);
@@ -87,11 +88,12 @@ test("failed logout retains the session until the server confirms a retry", asyn
   await page.getByRole("link", { name: "Factories", exact: true }).click();
   await expect(page.getByText("Factory A", { exact: true })).toBeVisible();
   await page.route("**/api/v1/auth/logout", route => route.abort("connectionfailed"));
-  const dialog = page.waitForEvent("dialog");
+  const dialog = page.waitForEvent("dialog").then(async alert => {
+    expect(alert.message()).toContain("Logout could not be confirmed");
+    await alert.accept();
+  });
   await page.getByTitle("Logout", { exact: true }).click();
-  const alert = await dialog;
-  expect(alert.message()).toContain("Logout could not be confirmed");
-  await alert.accept();
+  await dialog;
   await expect(page).toHaveURL(/\/factories$/);
   expect(await page.evaluate(() => localStorage.getItem("vg_auth"))).not.toBeNull();
   await page.unroute("**/api/v1/auth/logout");
@@ -140,4 +142,64 @@ test("viewers cannot open delivery administration or request its data", async ({
   await page.evaluate(() => { window.history.pushState({}, "", "/notification-deliveries"); window.dispatchEvent(new PopStateEvent("popstate")); });
   await expect(page.getByText("Enterprise administrator access is required.")).toBeVisible();
   expect(calls.filter(path => path.startsWith("/api/v1/notifications/deliveries"))).toHaveLength(0);
+});
+
+test("live video authenticates every asset, refreshes expiry, decodes video and stops on logout", async ({ page }) => {
+  await mockApi(page);
+  let refreshed = false;
+  let requestedSegments = 0;
+  await page.route("**/api/v1/auth/refresh", route => {
+    refreshed = true;
+    return route.fulfill({ json: { success: true, data: { access_token: "refreshed-token" } } });
+  });
+  await page.route("**/api/v1/auth/me", route => route.fulfill({ json: { success: true, data:
+    { id: "A", enterprise_id: "A", name: "A", roles: ["ENTERPRISE_ADMIN"], is_first_login: false } } }));
+  await page.route("**/api/v1/cameras", route => route.fulfill({ json: { success: true, data:
+    [{ id: "camera-a", name: "Secure camera", status: "Active", rtsp_url: "rtsp://private-camera/secret" }] } }));
+  await page.route("**/api/v1/cameras/camera-a/live/*", async route => {
+    const request = route.request();
+    expect(new URL(request.url()).search).toBe("");
+    if (!refreshed) {
+      expect(request.headers().authorization).toBe("Bearer test-token-A");
+      await route.fulfill({ status: 401, json: { detail: "Expired" } });
+      return;
+    }
+    expect(request.headers().authorization).toBe("Bearer refreshed-token");
+    const file = new URL(request.url()).pathname.split("/").pop()!;
+    expect(file).toMatch(/^(index\.m3u8|init\.mp4|seg[0-3]\.mp4)$/);
+    if (file.startsWith("seg")) requestedSegments++;
+    await route.fulfill({ body: await readFile(new URL(`./fixtures/live/${file}`, import.meta.url)),
+      contentType: file.endsWith("m3u8") ? "application/vnd.apple.mpegurl" : "video/mp4" });
+  });
+  await page.goto("/login");
+  await signIn(page);
+  await page.getByRole("link", { name: "Live Grid", exact: true }).click();
+  await page.getByRole("button", { name: "Play live video", exact: true }).click();
+  await expect.poll(() => page.locator("video").evaluate((video: HTMLVideoElement) => video.currentTime)).toBeGreaterThan(0);
+  expect(refreshed).toBe(true);
+  expect(requestedSegments).toBeGreaterThan(0);
+  await expect(page.locator("iframe")).toHaveCount(0);
+  await page.getByTitle("Logout", { exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.locator("video")).toHaveCount(0);
+});
+
+test("live video clears playback when camera access is denied", async ({ page }) => {
+  await mockApi(page);
+  await page.route("**/api/v1/cameras", route => route.fulfill({ json: { success: true, data:
+    [{ id: "camera-a", name: "Secure camera", status: "Active" }] } }));
+  await page.route("**/api/v1/cameras/camera-a/live/*", async route => {
+    const file = new URL(route.request().url()).pathname.split("/").pop()!;
+    if (file === "index.m3u8") {
+      await route.fulfill({ body: await readFile(new URL("./fixtures/live/index.m3u8", import.meta.url)), contentType: "application/vnd.apple.mpegurl" });
+    } else {
+      await route.fulfill({ status: 404, json: { detail: "Camera not found" } });
+    }
+  });
+  await page.goto("/login");
+  await signIn(page);
+  await page.getByRole("link", { name: "Live Grid", exact: true }).click();
+  await page.getByRole("button", { name: "Play live video", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Live streaming is not configured or access is unavailable.");
+  await expect(page.locator("video")).toHaveCount(0);
 });

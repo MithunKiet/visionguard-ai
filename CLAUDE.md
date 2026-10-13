@@ -66,4 +66,4 @@ Email, Slack, Webhook, Desktop.
 
 ## Current status (verified)
 
-Automated unit/integration/browser checks and a synthetic event/report smoke validate the implemented paths. Alert delivery now uses a transactional PostgreSQL outbox with bounded retries and administrator replay; see `docs/ALERT_DELIVERY.md`. Real-camera model accuracy, GPU capacity, media authorization, provider/load validation, production TLS and backup/restore validation remain required. See `docs/REVIEW_FIXES.md` for evidence and per-finding status.
+Automated unit/integration/browser checks and a synthetic event/report smoke validate the implemented paths. Alert delivery now uses a transactional PostgreSQL outbox with bounded retries and administrator replay; see `docs/ALERT_DELIVERY.md`. Live video uses a per-asset authenticated HLS gateway; see `docs/SECURE_LIVE_VIDEO.md` for required private relays and camera mappings. Real-camera model accuracy, GPU capacity, real-camera media/TLS validation, provider/load validation, production TLS and backup/restore validation remain required. See `docs/REVIEW_FIXES.md` for evidence and per-finding status.

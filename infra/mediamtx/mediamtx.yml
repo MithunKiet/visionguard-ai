@@ -6,13 +6,20 @@ logDestinations: [stdout]
 
 rtsp: yes
 rtspAddress: :8554
+rtspTransports: [tcp]
 
-# Lets the browser view live camera feeds directly (Live Grid page) without
-# any extra backend/transcoding — mediamtx serves a built-in WebRTC player
-# per path at http://<host>:8889/<path>/.
-webrtc: yes
-webrtcAddress: :8889
-webrtcAdditionalHosts: [localhost, 127.0.0.1]
+# Browser traffic goes through the application's authenticated HLS gateway.
+# Never expose this origin publicly. Non-low-latency fMP4 uses sibling assets.
+webrtc: no
+rtmp: no
+srt: no
+moq: no
+hls: yes
+hlsAddress: :8888
+hlsVariant: fmp4
+hlsSegmentDuration: 1s
+hlsSegmentMaxSize: 16M
+hlsAllowOrigins: []
 
 # To push a stream use (publish credentials below, via MTX_PATHDEFAULTS_*
 # env vars set on the mediamtx container — see docker-compose.yml):
@@ -25,8 +32,7 @@ webrtcAdditionalHosts: [localhost, 127.0.0.1]
 # publishPass come from MTX_PATHDEFAULTS_PUBLISHUSER/MTX_PATHDEFAULTS_PUBLISHPASS
 # (mediamtx's own env-var config override, not docker-compose interpolation —
 # never hardcode the actual credential here). Reads stay unauthenticated:
-# the AI-worker and Live Grid's WebRTC viewer both need read access without
-# passing credentials through today's connection paths.
+# only trusted internal workers and the authenticated gateway may reach reads.
 pathDefaults:
   source: publisher
 
@@ -39,6 +45,6 @@ paths:
     source: publisher
   # Real cameras with an external RTSP source (phone/IP camera) get relayed
   # here by a one-off ffmpeg pull-then-push process — see docs/E2E_PILOT_RUNBOOK.md.
-  # Lets Live Grid's mediamtx-WebRTC viewer show them like the demo cameras.
+  # Map its camera public UUID to this path in MEDIA_CAMERA_PATHS.
   phone-cam-1:
     source: publisher

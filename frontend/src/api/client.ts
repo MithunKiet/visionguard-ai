@@ -3,14 +3,6 @@ import { useAuthStore } from "../store/authStore";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 export const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://localhost:8000";
-// mediamtx's own host:port for its built-in per-path WebRTC viewer page —
-// used by the Live Grid to embed each camera's feed directly, no backend
-// video proxying needed. `||`, not `??`: unlike API_URL, an empty string
-// here is never intentional (there's no relative/proxied path for this —
-// the browser embeds it directly), so treat it the same as unset rather
-// than baking a bare "/path/" iframe src that silently renders the SPA shell.
-export const MEDIAMTX_WEBRTC_URL = import.meta.env.VITE_MEDIAMTX_WEBRTC_URL || (import.meta.env.DEV ? "http://localhost:8889" : "");
-
 export const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
   withCredentials: true, // send the HttpOnly refresh cookie
