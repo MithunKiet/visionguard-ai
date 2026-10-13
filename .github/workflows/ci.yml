@@ -89,10 +89,21 @@ jobs:
       redis:
         image: redis:7-alpine
         ports: ["6379:6379"]
+      rabbitmq:
+        image: rabbitmq:3.13-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: vgtest
+          RABBITMQ_DEFAULT_PASS: test-only
+          RABBITMQ_DEFAULT_VHOST: visionguard_test
+        ports: ["5672:5672"]
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s --health-timeout 5s --health-retries 12
     env:
       TEST_DATABASE_URL: postgresql+asyncpg://vgtest:test-only@localhost:5432/visionguard_test
       DATABASE_URL: postgresql+asyncpg://vgtest:test-only@localhost:5432/visionguard_test
       REDIS_URL: redis://localhost:6379/0
+      TEST_RABBITMQ_URL: amqp://vgtest:test-only@localhost:5672/visionguard_test
       JWT_SECRET: test-only-secret-with-at-least-thirty-two-characters
       DEBUG: "false"
     defaults:
@@ -107,7 +118,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: alembic upgrade head
-      - run: pytest tests/test_review_integration.py
+      - run: pytest tests/test_review_integration.py tests/test_notification_outbox.py
       - name: Production configuration
         run: python ../infra/check_production_config.py
 

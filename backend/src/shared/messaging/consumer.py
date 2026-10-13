@@ -46,8 +46,10 @@ async def close_rabbitmq() -> None:
 
 
 async def _dispatch_event(message: IncomingMessage) -> None:
+    import asyncio
     import json
-    async with message.process(requeue=False):
+    from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError, TimeoutError as PoolTimeoutError
+    async with message.process(requeue=False, ignore_processed=True):
         try:
             body = json.loads(message.body.decode())
             routing_key = message.routing_key
@@ -55,8 +57,24 @@ async def _dispatch_event(message: IncomingMessage) -> None:
 
             await _route_event(routing_key, body)
 
+        except asyncio.CancelledError:
+            await message.nack(requeue=True)
+            raise
         except Exception as e:
-            log.error("rabbitmq.event_processing_failed", error=str(e))
+            sqlstate = getattr(getattr(e, "orig", None), "sqlstate", "") or ""
+            transient = isinstance(e, (OSError, TimeoutError, PoolTimeoutError, InterfaceError, OperationalError)) or (
+                isinstance(e, DBAPIError) and (e.connection_invalidated or sqlstate.startswith("08") or sqlstate in {"40001", "40P01", "57P01", "57P02", "57P03", "53300"}))
+            log.error("rabbitmq.event_processing_failed", error_type=type(e).__name__, transient=transient)
+            if transient:
+                # Retain the original message/ID on the durable queue. Avoid
+                # a tight redelivery loop while PostgreSQL is unavailable.
+                try:
+                    await asyncio.sleep(2)
+                except asyncio.CancelledError:
+                    await message.nack(requeue=True)
+                    raise
+                await message.nack(requeue=True)
+                return
             raise
 
 
@@ -149,22 +167,15 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
             ppe_svc = PPEService(ViolationRepository(db), db)
             violation = await ppe_svc.handle_violation_event(routing_key, body)
             alert_svc = AlertService(AlertRepository(db))
-            alert = None
             if not violation.needs_review and not await MaintenanceService.is_in_maintenance(db, violation.camera_id):
-                alert = await alert_svc.create_from_violation(violation, factory_id)
+                await alert_svc.create_from_violation(violation, factory_id)
         db.info["defer_commit"] = False
-        await manager.broadcast(str(violation.enterprise_id), {"type": "violation.created", "data": ppe_svc.enrich(violation)})
-        if alert:
-            from src.modules.notifications.application.services import NotificationService
-            from src.modules.notifications.infrastructure.repositories import NotificationRecipientRepository
-            notif_svc = NotificationService(NotificationRecipientRepository(db), db)
-            desktop_targets = await notif_svc.notify_zone_violation(
-                violation.enterprise_id, violation.zone_id, violation.camera_id,
-                alert.id, alert.alert_number, alert.alert_type, alert.severity,
-            )
-            await manager.broadcast(str(violation.enterprise_id), {
-                "type": "alert.created", "data": {**alert_svc.to_dict(alert), "notify_user_ids": desktop_targets},
-            })
+        # Alert delivery is already durable. Live violation refresh is best
+        # effort; a Redis outage must not reject a committed receipt/alert.
+        try:
+            await manager.broadcast(str(violation.enterprise_id), {"type": "violation.created", "data": ppe_svc.enrich(violation)})
+        except Exception as error:
+            log.warning("violation.live_refresh_failed", error_type=type(error).__name__)
 
 
 async def _handle_occupancy_updated(body: dict) -> None:
@@ -187,100 +198,56 @@ async def _handle_occupancy_updated(body: dict) -> None:
     })
 
 
+async def _claim_alert_event(db, body):
+    from uuid import UUID
+    from sqlalchemy.dialects.postgresql import insert
+    from src.shared.database.models import EventReceipt
+
+    event_id = str(UUID(body["event_id"]))
+    receipt = await db.execute(insert(EventReceipt).values(event_id=event_id)
+        .on_conflict_do_nothing().returning(EventReceipt.event_id))
+    return receipt.scalar_one_or_none() is not None
+
+
 async def _handle_overcrowding(body: dict) -> None:
-    from src.shared.database.session import AsyncSessionFactory
-    from src.modules.alerts.application.services import AlertService
-    from src.modules.alerts.infrastructure.repositories import AlertRepository
-    from src.modules.realtime.manager import manager
-
-    required = ("enterprise_id", "factory_id", "zone_id", "camera_id")
-    if not all(body.get(k) for k in required):
-        log.warning("event.overcrowding.missing_fields", body=body)
-        return
-
-    async with AsyncSessionFactory() as db:
-        from src.modules.maintenance.application.services import MaintenanceService
-        if await MaintenanceService.is_in_maintenance(db, body["camera_id"]):
-            log.info("alert.suppressed_maintenance", camera_id=body["camera_id"])
-            return
-
-        alert_svc = AlertService(AlertRepository(db))
-        alert = await alert_svc.create_event_alert(
-            enterprise_id=body["enterprise_id"],
-            factory_id=body["factory_id"],
-            zone_id=body["zone_id"],
-            camera_id=body["camera_id"],
-            alert_type="OVERCROWDING",
-            severity="High",
-        )
-
-        if alert:
-            from src.modules.notifications.application.services import NotificationService
-            from src.modules.notifications.infrastructure.repositories import NotificationRecipientRepository
-
-            notif_svc = NotificationService(NotificationRecipientRepository(db), db)
-            desktop_targets = await notif_svc.notify_zone_violation(
-                alert.enterprise_id, alert.zone_id, alert.camera_id,
-                alert.id, alert.alert_number, alert.alert_type, alert.severity,
-            )
-            await manager.broadcast(str(alert.enterprise_id), {
-                "type": "alert.created",
-                "data": {**alert_svc.to_dict(alert), "notify_user_ids": desktop_targets},
-            })
+    await _handle_infrastructure_alert(body, "OVERCROWDING", "High", 120)
 
 
 async def _handle_camera_spec_mismatch(body: dict) -> None:
-    """Feed quality degraded below the mandatory install spec (Section 18:
-    min 1080p @ 15 FPS) while still "connected" — e.g. throttled network,
-    bad NVR transcode. This is a camera-infrastructure signal, not a safety
-    violation, so it's Low severity and skips email/Slack notification —
-    it still shows up on the dashboard and in the audit trail with the
-    actual vs. expected numbers for whoever manages the cameras."""
+    await _handle_infrastructure_alert(body, "CAMERA_SPEC_MISMATCH", "Low", 600)
+
+
+async def _handle_infrastructure_alert(body, alert_type, severity, cooldown):
     from src.shared.database.session import AsyncSessionFactory
     from src.modules.alerts.application.services import AlertService
     from src.modules.alerts.infrastructure.repositories import AlertRepository
+    from src.modules.maintenance.application.services import MaintenanceService
     from src.modules.audit.application.services import AuditService
-    from src.modules.realtime.manager import manager
 
-    required = ("enterprise_id", "factory_id", "zone_id", "camera_id")
-    if not all(body.get(k) for k in required):
-        log.warning("event.camera_spec_mismatch.missing_fields", body=body)
-        return
-
+    required = ("event_id", "enterprise_id", "factory_id", "zone_id", "camera_id")
+    if not all(body.get(key) for key in required):
+        raise ValueError("Alert event is missing required fields")
     async with AsyncSessionFactory() as db:
-        alert_svc = AlertService(AlertRepository(db))
-        alert = await alert_svc.create_event_alert(
-            enterprise_id=body["enterprise_id"],
-            factory_id=body["factory_id"],
-            zone_id=body["zone_id"],
-            camera_id=body["camera_id"],
-            alert_type="CAMERA_SPEC_MISMATCH",
-            severity="Low",
-            cooldown_seconds=600,
-        )
-
-        await AuditService(db).record(
-            enterprise_id=body["enterprise_id"],
-            user_id=None,
-            action="CAMERA_SPEC_MISMATCH",
-            entity_type="camera",
-            entity_id=body["camera_id"],
-            new_value={
-                "actual_fps": body.get("actual_fps"),
-                "actual_resolution": f"{body.get('actual_width')}x{body.get('actual_height')}",
-                "expected_fps": body.get("expected_fps"),
-                "expected_resolution": f"{body.get('expected_width')}x{body.get('expected_height')}",
-            },
-        )
-
-        if alert:
-            await manager.broadcast(str(alert.enterprise_id), {
-                "type": "alert.created",
-                "data": alert_svc.to_dict(alert),
-            })
-
-    log.warning("event.camera_spec_mismatch", camera_id=body.get("camera_id"),
-                actual_fps=body.get("actual_fps"))
+        db.info["defer_commit"] = True
+        async with db.begin():
+            if not await _claim_alert_event(db, body):
+                return
+            db.info["enterprise_id"] = body["enterprise_id"]
+            if alert_type == "OVERCROWDING" and await MaintenanceService.is_in_maintenance(db, body["camera_id"]):
+                return
+            await AlertService(AlertRepository(db)).create_event_alert(
+                enterprise_id=body["enterprise_id"], factory_id=body["factory_id"],
+                zone_id=body["zone_id"], camera_id=body["camera_id"],
+                alert_type=alert_type, severity=severity, cooldown_seconds=cooldown,
+            )
+        db.info["defer_commit"] = False
+        if alert_type == "CAMERA_SPEC_MISMATCH":
+            await AuditService(db).record(
+                enterprise_id=body["enterprise_id"], user_id=None, action=alert_type,
+                entity_type="camera", entity_id=body["camera_id"],
+                new_value={key: body.get(key) for key in
+                    ("actual_fps", "actual_width", "actual_height", "expected_fps", "expected_width", "expected_height")},
+            )
 
 
 async def _handle_camera_offline(body: dict) -> None:

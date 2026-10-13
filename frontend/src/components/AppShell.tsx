@@ -49,6 +49,7 @@ const NAV = [
   { to: "/live", label: "Live Grid", icon: <GridViewIcon /> },
   { to: "/violations", label: "Violations", icon: <WarningIcon /> },
   { to: "/alerts", label: "Alerts", icon: <NotificationsActiveIcon /> },
+  { to: "/notification-deliveries", label: "Notification delivery", icon: <NotificationsActiveIcon />, roles: ["SYSTEM_ADMIN", "ENTERPRISE_ADMIN"] },
   {
     to: "/users",
     label: "Users",

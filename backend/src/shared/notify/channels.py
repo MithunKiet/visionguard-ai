@@ -4,11 +4,9 @@ generic JSON webhook. Both are enterprise-infrastructure level (configured
 via env, not per-user) and degrade to logging when unconfigured — same
 pattern as the SMTP sender.
 
-Every send retries up to NOTIFY_RETRY_ATTEMPTS with a short backoff before
-reporting failure, so a transient network blip doesn't drop an alert.
+Each call performs one bounded attempt. Durable retry scheduling is owned by
+the PostgreSQL notification outbox.
 """
-import asyncio
-
 import httpx
 import structlog
 
@@ -16,25 +14,20 @@ from src.core.settings import settings
 
 log = structlog.get_logger()
 
-_RETRY_BACKOFF_SECONDS = 2.0
-
-
-async def _post_with_retry(url: str, payload: dict, channel: str) -> tuple[bool, str | None]:
-    """Returns (sent, failure_reason)."""
-    last_error: str | None = None
-    for attempt in range(1, settings.NOTIFY_RETRY_ATTEMPTS + 1):
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(url, json=payload)
-                resp.raise_for_status()
-            log.info(f"{channel}.sent", attempt=attempt)
-            return True, None
-        except Exception as e:
-            last_error = str(e)
-            log.warning(f"{channel}.send_failed", attempt=attempt, error=last_error)
-            if attempt < settings.NOTIFY_RETRY_ATTEMPTS:
-                await asyncio.sleep(_RETRY_BACKOFF_SECONDS * attempt)
-    return False, last_error
+async def _post_once(url: str, payload: dict, channel: str, delivery_id: str | None = None) -> tuple[bool, str | None]:
+    """Do not persist/log URLs: webhook URLs frequently contain credentials."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, json=payload,
+                headers={"Idempotency-Key": delivery_id} if delivery_id else {})
+            response.raise_for_status()
+        return True, None
+    except httpx.HTTPStatusError as error:
+        reason = f"http_{error.response.status_code}"
+    except Exception as error:
+        reason = type(error).__name__
+    log.warning(f"{channel}.send_failed", error_type=reason)
+    return False, reason
 
 
 async def send_slack_alert(
@@ -63,14 +56,14 @@ async def send_slack_alert(
             }
         ],
     }
-    return await _post_with_retry(settings.SLACK_WEBHOOK_URL, payload, "slack")
+    return await _post_once(settings.SLACK_WEBHOOK_URL, payload, "slack")
 
 
-async def send_webhook_alert(alert_payload: dict) -> tuple[bool, str | None]:
+async def send_webhook_alert(alert_payload: dict, *, delivery_id: str | None = None) -> tuple[bool, str | None]:
     if not settings.ALERT_WEBHOOK_URL:
         return False, "not_configured"
-    return await _post_with_retry(
+    return await _post_once(
         settings.ALERT_WEBHOOK_URL,
-        {"event": "alert.created", "alert": alert_payload},
-        "webhook",
+        {"event": "alert.created", "delivery_id": delivery_id, "alert": alert_payload},
+        "webhook", delivery_id,
     )

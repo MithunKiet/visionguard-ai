@@ -12,7 +12,7 @@ from src.core.settings import settings
 log = structlog.get_logger()
 
 
-async def send_email(to: str, subject: str, body_html: str) -> bool:
+async def send_email(to: str, subject: str, body_html: str, *, message_id: str | None = None) -> bool:
     if not settings.SMTP_HOST:
         log.info("email.would_send", to=to, subject=subject, note="SMTP_HOST not configured — logging only")
         return False
@@ -21,6 +21,8 @@ async def send_email(to: str, subject: str, body_html: str) -> bool:
     message["From"] = settings.SMTP_FROM
     message["To"] = to
     message["Subject"] = subject
+    if message_id:
+        message["Message-ID"] = message_id
 
     try:
         await aiosmtplib.send(
@@ -30,9 +32,10 @@ async def send_email(to: str, subject: str, body_html: str) -> bool:
             username=settings.SMTP_USER or None,
             password=settings.SMTP_PASSWORD or None,
             start_tls=settings.SMTP_USE_TLS,
+            timeout=10,
         )
         log.info("email.sent", to=to, subject=subject)
         return True
     except Exception as e:
-        log.error("email.send_failed", to=to, subject=subject, error=str(e))
+        log.error("email.send_failed", error_type=type(e).__name__)
         return False

@@ -42,7 +42,7 @@ Every table follows the BaseEntity pattern:
 - All foreign keys use internal integer ids for performance; only repository code at the literal SQL boundary translates a `public_id` to/from the internal integer (helpers in `backend/src/shared/database/pid.py`: `to_pk`, `to_public_id`, `to_pks`).
 - Exception: `identity.user_roles` is a pure link table, not a BaseEntity — composite PK of `user_public_id`/`role_public_id` directly (no surrogate id, no audit columns).
 
-Current migration head: **0017**.
+Current migration head: **0018**.
 
 ## Multi-tenancy
 
@@ -66,4 +66,4 @@ Email, Slack, Webhook, Desktop.
 
 ## Current status (verified)
 
-Automated unit/integration/browser checks and a synthetic event/report smoke validate the implemented paths. Real-camera model accuracy, GPU capacity, media authorization, durable notification recovery, production TLS and backup/restore validation remain required. See `docs/REVIEW_FIXES.md` for evidence and per-finding status.
+Automated unit/integration/browser checks and a synthetic event/report smoke validate the implemented paths. Alert delivery now uses a transactional PostgreSQL outbox with bounded retries and administrator replay; see `docs/ALERT_DELIVERY.md`. Real-camera model accuracy, GPU capacity, media authorization, provider/load validation, production TLS and backup/restore validation remain required. See `docs/REVIEW_FIXES.md` for evidence and per-finding status.

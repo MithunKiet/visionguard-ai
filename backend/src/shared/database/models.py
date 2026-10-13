@@ -410,6 +410,29 @@ class NotificationRecipient(BaseEntity):
     notify_desktop  = Column(Boolean, default=True, nullable=False)
 
 
+class NotificationDelivery(BaseEntity):
+    """Durable outbox; creation commits in the same transaction as the alert."""
+    __tablename__ = "deliveries"
+    __table_args__ = (
+        Index("ix_deliveries_due", "status", "next_attempt_at"),
+        Index("ix_deliveries_enterprise_created", "enterprise_id", "created_at"),
+        {"schema": "notifications"},
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    enterprise_id = Column(BigInteger, ForeignKey("enterprises.id"), nullable=False)
+    alert_id = Column(BigInteger, ForeignKey("alerts.alerts.id"), nullable=False)
+    recipient_id = Column(BigInteger, ForeignKey("identity.users.id"), nullable=True)
+    delivery_key = Column(String(160), unique=True, nullable=False)
+    channel = Column(String(30), nullable=False)
+    payload = Column(JSONB, nullable=False)
+    status = Column(String(20), nullable=False, default="Pending")
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False)
+    next_attempt_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    last_error = Column(String(200), nullable=True)
+
+
 # ─── Audit ────────────────────────────────────────────────────────────────────
 
 class AuditLog(BaseEntity):

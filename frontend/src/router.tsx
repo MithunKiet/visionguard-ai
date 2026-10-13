@@ -6,6 +6,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Cameras } from "./pages/Cameras";
 import { LiveGrid } from "./pages/LiveGrid";
 import { Alerts } from "./pages/Alerts";
+import { NotificationDeliveries } from "./pages/NotificationDeliveries";
 import { Violations } from "./pages/Violations";
 import { Enterprises } from "./pages/Enterprises";
 import { Factories } from "./pages/Factories";
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
       { path: "live", element: <LiveGrid /> },
       { path: "violations", element: <Violations /> },
       { path: "alerts", element: <Alerts /> },
+      { path: "notification-deliveries", element: <NotificationDeliveries /> },
     ],
   },
 ]);

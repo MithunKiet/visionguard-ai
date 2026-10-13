@@ -55,9 +55,13 @@ class AlertRepository:
             created_source=entity.created_by,
         )
         self._db.add(row)
-        await commit_or_flush(self._db)
+        await self._db.flush()
         await self._db.refresh(row)
-        return await self._to_entity(row)
+        created = await self._to_entity(row)
+        from src.modules.notifications.application.outbox import enqueue_alert
+        await enqueue_alert(self._db, row, created)
+        await commit_or_flush(self._db)
+        return created
 
     async def get_by_id(
         self, alert_id: str, enterprise_id: str, scope: ScopeFilter | None = None,

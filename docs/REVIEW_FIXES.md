@@ -10,6 +10,8 @@ Regression coverage checks persisted camera state and worker polling after react
 
 ## Deployment and compatibility
 
+- The subsequent [durable alert delivery change](ALERT_DELIVERY.md) requires migration `0018`. It adds transactional delivery jobs, independent retries and administrator status/replay controls. The validation numbers below describe the earlier review remediation; current delivery-specific validation is recorded in that guide.
+
 - Run `alembic upgrade head` before starting the new backend. Migration `0017` adds event receipts, stored review/bounding-box fields, and a PostgreSQL sequence for globally unique alert numbers. Existing data is preserved. Container startup runs migrations under a PostgreSQL advisory lock; readiness rejects an older schema.
 - All previously issued access and refresh tokens must be replaced by signing in again. New tokens carry a password-derived, keyed session fingerprint. Password changes invalidate both token types. HTTP authorization reads current roles, scope and account status. WebSocket delivery checks the same policy; idle sockets revalidate every 15 seconds.
 - Temporary-password users must change their password before using application endpoints. A password-change screen is included. MFA-enabled accounts fail closed because a complete MFA challenge flow is not implemented. Master-password login is prohibited in production.
@@ -66,13 +68,13 @@ CI now includes the PostgreSQL/Redis integration suite, browser regressions, pro
 | AI-11 | Remaining | Supply representative labeled data and establish held-out site/person metrics and model promotion gates. Code changes cannot establish detection accuracy. |
 | AI-12 | Partial | CPU fallback added; production documentation uses actual settings. GPU image reproducibility and capacity/freshness benchmarks remain. |
 | DATA-01 | Addressed | PostgreSQL allocates alert numbers atomically across tenants; camera-level locks serialize cooldown decisions. |
-| DATA-02 | Partial | PPE event receipts, violations and alerts commit atomically; replay and rollback tested. Other event types and external notification delivery need a durable inbox/outbox design. |
+| DATA-02 | Partial | PPE, overcrowding and camera-quality alert events now commit receipts, alerts and delivery jobs atomically; replay and rollback tested. Non-alert event idempotency and durable config publication remain. |
 | DATA-03 | Partial | Config updates lock the row and produce distinct versions; workers reconcile missed pushes. A transactional config outbox remains. |
 | DATA-04 | Addressed | Conditional state transitions prevent stale updates; false-positive state propagates to the violation; responses include transition timestamps. |
 | DATA-05 | Partial | PPE records and shift lookup use the supplied event timestamp. Factory timezone configuration remains. |
 | DATA-06 | Partial | Integer/FK widths and known nullability differences aligned; Alembic includes all schemas. Existing identity/default/index naming differences still make `alembic check` non-clean; do not apply generated changes blindly. |
 | DATA-07 | Partial | Deleted/cross-parent references rejected on guarded paths; explicit config capacity clearing supported. Full lifecycle cascade and setup-wizard replay semantics remain. |
-| DATA-08 | Partial | Worker cooldown starts after successful snapshot/event publication. Notifications remain inline and need durable retry/outbox/replay support. |
+| DATA-08 | Addressed | Worker cooldown starts after successful snapshot/event publication. Notifications now use persistent per-channel jobs, bounded retries, status monitoring and administrator replay. Validate the actual providers and burst capacity before production; delivery is at least once. |
 | DATA-09 | Partial | Audit failure rolls back its failed transaction; enterprise-wide reads restricted. Durable complete coverage and append-only database permissions remain. |
 | SCALE-01 | Partial | Redis distributes live events to every API replica and scope is checked per socket. Pub/sub is ephemeral; durable replay and recovery/resync testing remain. |
 | SCALE-02 | Partial | Report generation/upload runs off the event loop; exports exceeding 5000 rows return an explicit error. Background jobs, user-list pagination/N+1 removal and availability-aware scores remain. |
@@ -91,6 +93,6 @@ CI now includes the PostgreSQL/Redis integration suite, browser regressions, pro
 
 ## Before a production pilot
 
-Provision maintained object storage and TLS ingress, bind worker credentials to tenants, configure trusted camera networks, supply validated model weights, and complete the remaining media authorization and durable notification work. Then test the actual camera placement, lighting, occlusion, PPE types and operating shifts. Measure false-positive/false-negative rates, event latency, missed frames, recovery behavior and GPU memory before choosing a camera-per-worker limit.
+Provision maintained object storage and TLS ingress, bind worker credentials to tenants, configure trusted camera networks, supply validated model weights, complete media authorization, and validate durable notification delivery with the intended providers and workload. Then test the actual camera placement, lighting, occlusion, PPE types and operating shifts. Measure false-positive/false-negative rates, event latency, missed frames, recovery behavior and GPU memory before choosing a camera-per-worker limit.
 
 Audio recording, continuous video archival, assault detection and identifying a named employee are not implemented by these fixes. Do not infer any of those capabilities from PPE alerts or camera-local track IDs.

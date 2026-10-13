@@ -100,3 +100,44 @@ test("failed logout retains the session until the server confirms a retry", asyn
   expect(await page.evaluate(() => localStorage.getItem("vg_auth"))).toBeNull();
   expect(calls).not.toContain("/api/v1/auth/refresh");
 });
+
+test("administrators can inspect a failed notification and queue a retry", async ({ page }) => {
+  await mockApi(page);
+  let queued = false;
+  await page.route("**/api/v1/notifications/deliveries**", async route => {
+    const path = new URL(route.request().url()).pathname;
+    let data: any;
+    if (path.endsWith("/retry")) {
+      expect(route.request().method()).toBe("POST");
+      queued = true;
+      data = { id: "delivery", status: "Pending" };
+    } else if (path.endsWith("/summary")) {
+      data = { counts: { Failed: queued ? 0 : 1, Pending: queued ? 1 : 0 }, oldest_pending_at: null };
+    } else {
+      data = queued ? [] : [{ id: "delivery", alert_number: "ALT-RETRY-1", channel: "email", status: "Failed", attempts: 3, next_attempt_at: "2026-10-13T00:00:00Z", last_error: "smtp_send_failed" }];
+    }
+    await route.fulfill({ json: { success: true, data, meta: { total: queued ? 0 : 1 } } });
+  });
+  await page.goto("/login");
+  await signIn(page);
+  await page.getByRole("link", { name: "Notification delivery", exact: true }).click();
+  await expect(page.getByText("ALT-RETRY-1")).toBeVisible();
+  await page.getByRole("button", { name: "Retry delivery", exact: true }).click();
+  await expect(page.getByText("No deliveries for this filter.")).toBeVisible();
+  expect(queued).toBe(true);
+});
+
+test("viewers cannot open delivery administration or request its data", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.route("**/api/v1/auth/login", route => route.fulfill({ json: {
+    success: true, data: { access_token: "viewer-token", is_master_session: false,
+      user: { id: "viewer", enterprise_id: "A", name: "Viewer", email: "viewer@example.com", roles: ["VIEWER"], is_first_login: false } },
+  } }));
+  await page.goto("/login");
+  await signIn(page);
+  await expect(page.getByRole("link", { name: "Notification delivery", exact: true })).toHaveCount(0);
+  // Client-side navigation preserves the mocked in-memory session.
+  await page.evaluate(() => { window.history.pushState({}, "", "/notification-deliveries"); window.dispatchEvent(new PopStateEvent("popstate")); });
+  await expect(page.getByText("Enterprise administrator access is required.")).toBeVisible();
+  expect(calls.filter(path => path.startsWith("/api/v1/notifications/deliveries"))).toHaveLength(0);
+});

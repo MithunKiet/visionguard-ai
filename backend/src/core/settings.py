@@ -1,4 +1,4 @@
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 
@@ -73,8 +73,13 @@ class Settings(BaseSettings):
     # for external integrations (SIEM, ticketing, custom automation). Empty = disabled.
     ALERT_WEBHOOK_URL: str = ""
 
-    # Delivery retry attempts for outbound notification channels (email/slack/webhook)
-    NOTIFY_RETRY_ATTEMPTS: int = 3
+    # Durable delivery attempts per job; additional attempts require admin replay.
+    NOTIFY_RETRY_ATTEMPTS: int = Field(default=3, ge=1, le=100)
+    NOTIFY_WORKERS: int = Field(default=2, ge=1, le=8)
+    NOTIFY_POLL_SECONDS: float = Field(default=2, ge=0.1, le=60)
+    NOTIFY_TIMEOUT_SECONDS: float = Field(default=20, ge=1, le=60)
+    NOTIFY_RETRY_BASE_SECONDS: int = Field(default=30, ge=1, le=3600)
+    NOTIFY_RETRY_MAX_SECONDS: int = Field(default=3600, ge=1, le=86400)
 
     # Fail fast rather than silently serving traffic with credentials that are
     # publicly known from this repo's own .env.example — every value checked

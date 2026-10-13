@@ -2,6 +2,7 @@
   <h1 align="center">🏭 VisionGuard AI</h1>
 
 > Production status: review fixes and remaining deployment requirements are tracked in [docs/REVIEW_FIXES.md](docs/REVIEW_FIXES.md). Camera capacity and detection accuracy require a measured site pilot.
+> Alert delivery: [durable retries, delivery status and administrator replay](docs/ALERT_DELIVERY.md) require database migration `0018`.
   <p align="center">Enterprise Factory Safety Monitoring & Compliance Platform</p>
   <p align="center">
     <img src="https://img.shields.io/badge/Python-3.11+-blue?style=flat-square&logo=python" />

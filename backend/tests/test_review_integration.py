@@ -256,8 +256,7 @@ async def test_event_replay_is_atomic_and_preserves_detection_time(setup):
     s = setup
     from src.shared.messaging.consumer import _route_event
     payload = event(s)
-    with patch("src.modules.realtime.manager.manager.broadcast", new=AsyncMock()), patch(
-        "src.modules.notifications.application.services.NotificationService.notify_zone_violation", new=AsyncMock(return_value=[])):
+    with patch("src.modules.realtime.manager.manager.broadcast", new=AsyncMock()):
         await asyncio.gather(*(_route_event("events.helmet_missing_detected", dict(payload)) for _ in range(3)))
     async with AsyncSessionFactory() as db:
         rows = (await db.execute(select(PPEViolation).where(PPEViolation.camera_id == s.places[0].camera.id))).scalars().all()
@@ -294,8 +293,7 @@ async def test_config_updates_have_distinct_versions(setup):
 async def test_alert_numbers_unique_across_tenants_and_false_positive_propagates(setup):
     s = setup
     from src.shared.messaging.consumer import _route_event
-    with patch("src.modules.realtime.manager.manager.broadcast", new=AsyncMock()), patch(
-        "src.modules.notifications.application.services.NotificationService.notify_zone_violation", new=AsyncMock(return_value=[])):
+    with patch("src.modules.realtime.manager.manager.broadcast", new=AsyncMock()):
         await asyncio.gather(_route_event("events.helmet_missing_detected", event(s)),
                              _route_event("events.helmet_missing_detected", event(s, 2)))
     async with AsyncSessionFactory() as db:
@@ -388,8 +386,7 @@ async def test_merged_analytics_enforces_factory_zone_and_empty_scope(setup):
 
     s = setup
     now = datetime.now(timezone.utc)
-    with patch("src.modules.realtime.manager.manager.broadcast", new=AsyncMock()), patch(
-        "src.modules.notifications.application.services.NotificationService.notify_zone_violation", new=AsyncMock(return_value=[])):
+    with patch("src.modules.realtime.manager.manager.broadcast", new=AsyncMock()):
         for i in range(3):
             await _route_event("events.helmet_missing_detected", {**event(s, i), "timestamp": now.isoformat()})
     async with AsyncSessionFactory() as db:

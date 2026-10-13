@@ -61,7 +61,7 @@ class ConnectionManager:
     async def broadcast(self, enterprise_id: str, message: dict):
         redis = await get_redis()
         await redis.publish(_CHANNEL, json.dumps({"enterprise_id": enterprise_id,
-            "message": {**message, "event_id": str(uuid.uuid4())}}, default=str))
+            "message": {"event_id": str(uuid.uuid4()), **message}}, default=str))
 
     async def _deliver(self, enterprise_id: str, message: dict):
         from src.shared.database.session import AsyncSessionFactory

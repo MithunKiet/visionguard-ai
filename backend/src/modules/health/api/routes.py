@@ -22,7 +22,7 @@ async def liveness():
 async def readiness():
     async def database():
         async with engine.connect() as connection:
-            if await connection.scalar(text("SELECT version_num FROM alembic_version")) != "0017":
+            if await connection.scalar(text("SELECT version_num FROM alembic_version")) != "0018":
                 raise RuntimeError("Migrations required")
 
     async def broker():
@@ -37,6 +37,11 @@ async def readiness():
     async def cache():
         await get_redis().ping()
 
+    async def notifications():
+        from src.modules.notifications.application.outbox import delivery_worker
+        if not delivery_worker.tasks or any(task.done() for task in delivery_worker.tasks):
+            raise RuntimeError("Notification delivery worker unavailable")
+
     async def check(name, operation):
         try:
             await asyncio.wait_for(operation(), timeout=3)
@@ -45,7 +50,7 @@ async def readiness():
             return name, "fail"
 
     checks = dict(await asyncio.gather(*(check(name, operation) for name, operation in
-        [("postgres", database), ("redis", cache), ("rabbitmq", broker), ("storage", storage)])))
+        [("postgres", database), ("redis", cache), ("rabbitmq", broker), ("storage", storage), ("notifications", notifications)])))
     ready = all(value == "ok" for value in checks.values())
     return JSONResponse(status_code=200 if ready else 503, content=ApiResponse.ok(
         {"status": "ready" if ready else "degraded", "checks": checks}).model_dump(mode="json"))

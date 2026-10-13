@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.modules.notifications.domain.entities import NotificationRecipientEntity
-from src.shared.database.models import Alert, Enterprise, NotificationLog, NotificationRecipient, User, Zone
+from src.shared.database.models import Enterprise, NotificationRecipient, User, Zone
 from src.shared.database.pid import to_pk, to_public_id
 
 
@@ -63,26 +61,6 @@ class NotificationRecipientRepository:
                 NotificationRecipient.enterprise_id == ent_pk,
             )
         )
-        await self._db.commit()
-
-    async def log_delivery(
-        self,
-        enterprise_id: str,
-        alert_id: str,
-        recipient_id: str | None,
-        channel: str,
-        status: str,
-        failure_reason: str | None = None,
-    ) -> None:
-        self._db.add(NotificationLog(
-            enterprise_id=await to_pk(self._db, Enterprise, enterprise_id),
-            alert_id=await to_pk(self._db, Alert, alert_id),
-            channel=channel,
-            recipient_id=await to_pk(self._db, User, recipient_id),
-            sent_at=datetime.now(timezone.utc),
-            status=status,
-            failure_reason=failure_reason,
-        ))
         await self._db.commit()
 
     async def _to_entity(self, row: NotificationRecipient) -> NotificationRecipientEntity:
