@@ -28,7 +28,9 @@ _READ_TIMEOUT_MSEC = 10_000
 
 class FrameReader:
 
-    def __init__(self, camera_id: str, rtsp_url: str, sample_fps: int = 2):
+    def __init__(self, camera_id: str, rtsp_url: str, sample_fps: int = 2, on_status=None):
+        self.on_status = on_status
+        self._offline = False
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
         self.sample_fps = sample_fps
@@ -73,25 +75,31 @@ class FrameReader:
             frame_idx = 0
             self._failure_count = 0
 
-            log.info("frame_reader.connected", camera_id=self.camera_id, rtsp=self.rtsp_url)
+            log.info("frame_reader.connected", camera_id=self.camera_id)
             camera_connected.labels(camera_id=self.camera_id).set(1)
+            if self.on_status and self._offline:
+                await self.on_status(False)
+            self._offline = False
 
-            while True:
-                ret, frame = await asyncio.to_thread(cap.read)
-                if not ret:
-                    log.warning("frame_reader.read_failed", camera_id=self.camera_id)
-                    await asyncio.to_thread(cap.release)
-                    await self._handle_failure()
-                    break
+            try:
+                while True:
+                    ret, frame = await asyncio.to_thread(cap.read)
+                    if not ret:
+                        log.warning("frame_reader.read_failed", camera_id=self.camera_id)
+                        await self._handle_failure()
+                        break
 
-                frame_idx += 1
-                # Recomputed per frame so a hot-swapped sample_fps takes
-                # effect immediately without reconnecting the stream.
-                skip_frames = max(1, int(stream_fps / self.sample_fps))
-                if frame_idx % skip_frames == 0:
-                    yield frame
+                    self.stream_height, self.stream_width = frame.shape[:2]
+                    frame_idx += 1
+                    # Recomputed per frame so a hot-swapped sample_fps takes
+                    # effect immediately without reconnecting the stream.
+                    skip_frames = max(1, int(stream_fps / self.sample_fps))
+                    if frame_idx % skip_frames == 0:
+                        yield frame
 
-                await asyncio.sleep(0)   # yield control to event loop
+                    await asyncio.sleep(0)   # yield control to event loop
+            finally:
+                await asyncio.to_thread(cap.release)
 
     def _open_capture(self) -> cv2.VideoCapture:
         # CAP_ANY, not CAP_FFMPEG — explicitly forcing the FFmpeg backend
@@ -107,6 +115,9 @@ class FrameReader:
 
     async def _handle_failure(self) -> None:
         camera_connected.labels(camera_id=self.camera_id).set(0)
+        if self.on_status and not self._offline:
+            await self.on_status(True)
+        self._offline = True
         frame_reader_reconnects_total.labels(camera_id=self.camera_id).inc()
         delay = RECONNECT_DELAYS[min(self._failure_count, len(RECONNECT_DELAYS) - 1)]
         self._failure_count += 1

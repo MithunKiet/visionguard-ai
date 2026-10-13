@@ -18,7 +18,7 @@ redis[hiredis]==5.2.1
 
 # Config & Logging
 pydantic-settings==2.6.1
-python-dotenv==1.0.1
+python-dotenv==1.2.4
 structlog==24.4.0
 
 # Observability

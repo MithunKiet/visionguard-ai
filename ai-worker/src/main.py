@@ -73,60 +73,61 @@ async def send_heartbeat() -> None:
             log.warning("ai_worker.heartbeat_publish_failed", error=str(e))
 
 
+async def reconcile_cameras(workers: list, tasks: dict, detector, cameras: list) -> None:
+    """Reconcile authoritative assignments, including missed config events."""
+    assigned = {camera["camera_id"]: camera for camera in cameras}
+    for worker in list(workers):
+        camera = assigned.get(worker.camera_id)
+        task = tasks[worker.camera_id]
+        if camera is None or camera["rtsp_url"] != worker.rtsp_url or task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            tasks.pop(worker.camera_id)
+            workers.remove(worker)
+    existing = {worker.camera_id: worker for worker in workers}
+    for camera_id, camera in assigned.items():
+        config = camera.get("zone_config") or {}
+        overrides = camera.get("ppe_overrides") or {}
+        if camera_id in existing:
+            worker = existing[camera_id]
+            normalized = worker._normalize_config(config)
+            if normalized != worker.zone_config or overrides != worker.ppe_overrides:
+                worker.ppe_overrides = overrides
+                worker.apply_zone_config(config)
+            worker.set_active(camera.get("status") != "Inactive")
+        else:
+            worker = CameraWorker(camera_id=camera_id, rtsp_url=camera["rtsp_url"],
+                zone_config=config, ppe_overrides=overrides, enterprise_id=camera["enterprise_id"],
+                factory_id=camera["factory_id"], zone_id=camera["zone_id"], detector=detector,
+                active=camera.get("status") != "Inactive")
+            workers.append(worker)
+            tasks[camera_id] = asyncio.create_task(worker.run())
+
+
 async def main() -> None:
     log.info("ai_worker.starting", worker_id=settings.WORKER_ID)
-
     start_metrics_server(settings.METRICS_PORT)
     await init_publisher()
     await register_worker()
-
-    cameras = await fetch_assigned_cameras()
-    log.info("ai_worker.cameras_loaded", count=len(cameras))
-
-    # One model loaded once per process, shared by every camera below —
-    # each camera submits frames to it and inference runs in GPU-friendly
-    # batches instead of one single-image call per camera.
     detector = BatchDetector()
     detector.start()
-
-    tasks = []
-    workers: list[CameraWorker] = []
-
-    # Start heartbeat
-    tasks.append(asyncio.create_task(send_heartbeat()))
-
-    # Start one CameraWorker per assigned camera
-    for cam in cameras:
-        worker = CameraWorker(
-            camera_id=cam["camera_id"],
-            rtsp_url=cam["rtsp_url"],
-            zone_config=cam.get("zone_config", {}),
-            enterprise_id=cam["enterprise_id"],
-            factory_id=cam["factory_id"],
-            zone_id=cam["zone_id"],
-            detector=detector,
-            active=cam.get("status") != "Inactive",
-        )
-        workers.append(worker)
-        tasks.append(asyncio.create_task(worker.run()))
-
-    if not cameras:
-        log.warning("ai_worker.no_cameras_assigned", worker_id=settings.WORKER_ID)
-
-    # Zone config hot-reload — applies backend config pushes without restart
+    tasks = {}
+    workers = []
     config_sync = ZoneConfigSync(workers)
+    heartbeat = asyncio.create_task(send_heartbeat())
     await config_sync.start()
-
     try:
-        # return_exceptions=True: one task's unhandled exception (heartbeat,
-        # a CameraWorker that somehow escapes its own circuit breaker, etc.)
-        # must not tear down every other camera on this worker — log it and
-        # keep the rest of the process running instead of crashing whole-sale.
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for task, result in zip(tasks, results):
-            if isinstance(result, Exception):
-                log.error("ai_worker.task_failed", task=task.get_name(), error=str(result))
+        while True:
+            try:
+                await reconcile_cameras(workers, tasks, detector, await fetch_assigned_cameras())
+            except Exception as error:
+                log.error("ai_worker.reconciliation_failed", error_type=type(error).__name__)
+            await asyncio.sleep(30)
     finally:
+        heartbeat.cancel()
+        for task in tasks.values():
+            task.cancel()
+        await asyncio.gather(heartbeat, *tasks.values(), return_exceptions=True)
         await config_sync.stop()
         await close_publisher()
         log.info("ai_worker.stopped")

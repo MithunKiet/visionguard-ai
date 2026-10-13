@@ -70,7 +70,7 @@ class ZoneConfigSync:
         new_version = int(new_config.get("version", 0))
 
         for worker in self._workers:
-            if worker.zone_id != zone_id:
+            if worker.zone_id != zone_id or body.get("enterprise_id") != worker.enterprise_id:
                 continue
             local_version = int(worker.zone_config.get("version", 1))
             if new_version <= local_version:
@@ -86,7 +86,7 @@ class ZoneConfigSync:
         status = body.get("status")
 
         for worker in self._workers:
-            if worker.camera_id != camera_id:
+            if worker.camera_id != camera_id or body.get("enterprise_id") != worker.enterprise_id:
                 continue
             worker.set_active(status == "Active")
             log.info("zone_sync.camera_status_applied", camera_id=camera_id, status=status)

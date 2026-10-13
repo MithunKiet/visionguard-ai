@@ -1,5 +1,6 @@
 import asyncio
 import time
+import uuid
 import structlog
 import numpy as np
 import cv2
@@ -43,10 +44,11 @@ class CameraWorker:
 
     def __init__(self, camera_id: str, rtsp_url: str, zone_config: dict,
                  enterprise_id: str, factory_id: str, zone_id: str, detector: BatchDetector,
-                 active: bool = True):
+                 active: bool = True, ppe_overrides: dict | None = None):
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
-        self.zone_config = zone_config
+        self.ppe_overrides = ppe_overrides or {}
+        self.zone_config = self._normalize_config(zone_config or {})
         self.enterprise_id = enterprise_id
         self.factory_id = factory_id
         self.zone_id = zone_id
@@ -55,7 +57,7 @@ class CameraWorker:
         # off, so turning back on is instant — no reconnect needed.
         self._active = active
 
-        self._reader = FrameReader(camera_id, rtsp_url, zone_config.get("frame_sample_fps", 2))
+        self._reader = FrameReader(camera_id, rtsp_url, self.zone_config.get("frame_sample_fps", 2), on_status=self._on_stream_status)
         # Shared BatchDetector, one per process — every camera on this
         # worker submits frames to it so inference can run in batches
         # instead of each camera loading its own model copy and calling
@@ -70,14 +72,30 @@ class CameraWorker:
         self._last_spec_check = 0.0
         self._spec_mismatch_active = False
 
+    async def _on_stream_status(self, offline: bool) -> None:
+        event = "camera_offline_detected" if offline else "camera_reconnected"
+        await publish(f"events.{event}", {"event": event, "camera_id": self.camera_id,
+            "enterprise_id": self.enterprise_id, "factory_id": self.factory_id, "zone_id": self.zone_id})
+
     def set_active(self, active: bool) -> None:
+        if self._active == active:
+            return
         self._active = active
         log.info("camera_worker.active_changed", camera_id=self.camera_id, active=active)
+
+    def _normalize_config(self, config: dict) -> dict:
+        result = dict(config)
+        required = set(config.get("required_ppe_types", config.get("ppe_required", ["helmet", "vest"])))
+        result["ppe_required"] = sorted((required - {k for k, v in self.ppe_overrides.items() if v is False}) |
+                                       {k for k, v in self.ppe_overrides.items() if v is True})
+        result["version"] = config.get("version", config.get("config_version", 1))
+        return result
 
     def apply_zone_config(self, new_config: dict) -> None:
         """Hot-swap zone config (rule #8) — takes effect on the next frame.
         Frame sampling rate is pushed down into the reader immediately."""
-        self.zone_config = new_config
+        self.zone_config = self._normalize_config(new_config)
+        self._validator = PPEValidator()
         fps = new_config.get("frame_sample_fps")
         if fps:
             self._reader.set_sample_fps(fps)
@@ -115,7 +133,9 @@ class CameraWorker:
                         "reason": "circuit_breaker_triggered",
                     })
                     log.error("camera_worker.circuit_breaker_open", camera_id=self.camera_id)
-                    return
+                    await asyncio.sleep(60)
+                    self._isolated = False
+                    self._failure_count = 0
 
                 await asyncio.sleep(5)
 
@@ -136,7 +156,7 @@ class CameraWorker:
 
         detections = await self._detector.detect(frame, camera_id=self.camera_id)
         frames_processed_total.labels(camera_id=self.camera_id).inc()
-        violations = self._validator.evaluate(detections, self.zone_config)
+        violations = self._validator.evaluate(detections, self.zone_config, auto_mark=False)
 
         await self._publish_occupancy(detections)
 
@@ -149,7 +169,7 @@ class CameraWorker:
                     "enterprise_id": self.enterprise_id,
                     "factory_id": self.factory_id,
                     "zone_id": self.zone_id,
-                    **v,
+                    **{k: value for k, value in v.items() if k != "tracker_key"},
                 })
             else:
                 snapshot_key = await self._capture_snapshot(frame, v["event"])
@@ -160,9 +180,13 @@ class CameraWorker:
                     "factory_id": self.factory_id,
                     "zone_id": self.zone_id,
                     "confidence": v["confidence"],
+                    "track_id": v.get("track_id"),
+                    "bbox": v["bbox"],
                     "snapshot_key": snapshot_key,
                     "config_version": self.zone_config.get("version", 1),
                 })
+
+            self._validator.acknowledge(v)
 
     async def _publish_occupancy(self, detections: list) -> None:
         """Person count per frame → occupancy_updated on change or heartbeat,
@@ -256,7 +280,7 @@ class CameraWorker:
 
     async def _capture_snapshot(self, frame: np.ndarray, event_name: str) -> str:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
-        key = f"{self.enterprise_id}/{self.factory_id}/{self.zone_id}/{self.camera_id}/{ts}_{event_name}.jpg"
+        key = f"{self.enterprise_id}/{self.factory_id}/{self.zone_id}/{self.camera_id}/{ts}_{event_name}_{uuid.uuid4().hex}.jpg"
         # JPEG encode + the MinIO PUT are both blocking I/O — same reasoning
         # as detect() above, offload so this camera's upload doesn't stall
         # every other camera on this worker.

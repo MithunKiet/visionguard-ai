@@ -12,6 +12,7 @@ VIOLATION_TO_EVENT = {
     "no_vest":         "vest_missing_detected",
     "no_gloves":       "gloves_missing_detected",
     "no_safety_shoes": "shoes_missing_detected",
+    "no_mask": "mask_missing_detected",
 }
 
 # Maps each violation class to the item name used in zone_configs.ppe_required
@@ -22,6 +23,7 @@ VIOLATION_TO_ITEM = {
     "no_vest":         "vest",
     "no_gloves":       "gloves",
     "no_safety_shoes": "shoes",
+    "no_mask": "mask",
 }
 
 DEFAULT_PPE_REQUIRED = ["helmet", "vest"]
@@ -105,7 +107,7 @@ class PPEValidator:
                 best_id, best_score = track_id, score
         return best_id if best_score >= PERSON_MATCH_MIN_CONTAINMENT else None
 
-    def evaluate(self, detections: list[Detection], zone_config: dict) -> list[dict]:
+    def evaluate(self, detections: list[Detection], zone_config: dict, *, auto_mark: bool = True) -> list[dict]:
         """
         Returns list of confirmed violations.
         Rule 16: Routes low-confidence detections to review queue instead of alert.
@@ -114,15 +116,17 @@ class PPEValidator:
         cooldown_seconds = zone_config.get("cooldown_seconds", DEFAULT_COOLDOWN_SECONDS)
         required_frames = zone_config.get("required_consecutive_frames", settings.REQUIRED_CONSECUTIVE_FRAMES)
         low_confidence_floor = zone_config.get("low_confidence_floor", settings.LOW_CONFIDENCE_FLOOR)
-        ppe_required = zone_config.get("ppe_required") or DEFAULT_PPE_REQUIRED
+        ppe_required = zone_config.get("ppe_required", zone_config.get("required_ppe_types", DEFAULT_PPE_REQUIRED))
 
-        person_boxes = [det.bbox for det in detections if det.class_name == "person"]
+        person_boxes = [det.bbox for det in detections if det.class_name == "person" and det.confidence >= zone_config.get("person_threshold", 0.7)]
         track_ids, expired_ids = self._people.update(person_boxes)
         people = list(zip(person_boxes, track_ids))
         for expired_id in expired_ids:
             self._tracker.forget_track(expired_id)
 
-        for det in detections:
+        positive_keys = set()
+        seen_keys = set()
+        for det in sorted(detections, key=lambda d: d.confidence, reverse=True):
             if not det.is_violation:
                 continue
 
@@ -135,7 +139,7 @@ class PPEValidator:
                 # This zone doesn't require this PPE item — not a violation here.
                 continue
 
-            threshold = zone_config.get(f"{det.class_name.replace('no_', '')}_threshold",
+            threshold = zone_config.get(f"{item}_threshold",
                                         settings.SNAPSHOT_CONFIDENCE_THRESHOLD)
 
             # "unmatched" (rather than skipping) so a violation whose person
@@ -144,28 +148,44 @@ class PPEValidator:
             track_id = self._match_person(det.bbox, people)
             track_key = track_id if track_id is not None else "unmatched"
 
+            key = f"{det.class_name}:{track_key}"
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
             if det.confidence >= threshold:
-                key = f"{det.class_name}:{track_key}"
+                positive_keys.add(key)
                 if self._tracker.record(key, True, required_frames) and self._tracker.should_fire(key, cooldown_seconds):
-                    self._tracker.mark_fired(key)
+                    if auto_mark:
+                        self._tracker.mark_fired(key)
                     confirmed.append({
                         "event": event_name,
                         "confidence": det.confidence,
                         "bbox": det.bbox,
+                        "track_id": track_id,
+                        "tracker_key": key,
                         "review": False,
                     })
             elif det.confidence >= low_confidence_floor:
                 key = f"review:{det.class_name}:{track_key}"
                 if self._tracker.should_fire(key, cooldown_seconds):
-                    self._tracker.mark_fired(key)
+                    if auto_mark:
+                        self._tracker.mark_fired(key)
                     confirmed.append({
                         "event": "low_confidence_violation",
                         "violation_type": det.class_name,
                         "confidence": det.confidence,
                         "bbox": det.bbox,
+                        "track_id": track_id,
+                        "tracker_key": key,
                         "review": True,
                     })
             else:
                 self._tracker.record(f"{det.class_name}:{track_key}", False, required_frames)
 
+        # A clean, missing or uncertain frame breaks a consecutive streak.
+        for key in set(self._tracker._counts) - positive_keys:
+            self._tracker.reset(key)
         return confirmed
+
+    def acknowledge(self, violation: dict) -> None:
+        self._tracker.mark_fired(violation["tracker_key"])

@@ -80,7 +80,7 @@ PPE_CLASSES = {
     8: "person",
 }
 
-VIOLATION_CLASSES = {"no_helmet", "no_vest", "no_gloves", "no_safety_shoes"}
+VIOLATION_CLASSES = {"no_helmet", "no_vest", "no_gloves", "no_safety_shoes", "no_mask"}
 
 # Fallback for the pilot when no fine-tuned PPE weights are present at
 # YOLO_MODEL_PATH: use a generic pretrained COCO model so the pipeline still
@@ -114,7 +114,10 @@ REMOTE_MATCH_HORIZONTAL_SLACK = 0.2
 class PPEDetector:
 
     def __init__(self):
-        device = "cuda" if settings.USE_GPU else "cpu"
+        import torch
+        device = "cuda" if settings.USE_GPU and torch.cuda.is_available() else "cpu"
+        if settings.DEMO_MODE and settings.ENVIRONMENT == "production":
+            raise RuntimeError("Synthetic detection is disabled in production")
 
         self._ppe_mode = os.path.isfile(settings.YOLO_MODEL_PATH)
         self._remote_mode = not self._ppe_mode and bool(settings.ROBOFLOW_API_KEY)
@@ -131,6 +134,8 @@ class PPEDetector:
             )
             self._remote_client = RoboflowPPEClient()
         elif not self._ppe_mode:
+            if not settings.DEMO_MODE:
+                raise RuntimeError("PPE weights or a remote provider are required; DEMO_MODE must be explicitly enabled for synthetic development data")
             log.warning(
                 "detector.ppe_model_missing",
                 expected=settings.YOLO_MODEL_PATH,
@@ -147,6 +152,10 @@ class PPEDetector:
 
         log.info("detector.loading", model=model_path, device=device)
         self._model = YOLO(model_path)
+        if self._ppe_mode:
+            names = self._model.names
+            if any(names.get(index) != name for index, name in PPE_CLASSES.items()):
+                raise RuntimeError("PPE model class mapping does not match the configured detector")
         self._model.to(device)
         log.info("detector.ready", device=device, ppe_mode=self._ppe_mode, remote_mode=self._remote_mode)
 
@@ -247,7 +256,7 @@ class PPEDetector:
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
 
             if self._ppe_mode:
-                class_name = PPE_CLASSES.get(cls_id, "unknown")
+                class_name = self._model.names.get(cls_id, "unknown")
                 is_violation = class_name in VIOLATION_CLASSES
             elif self._remote_mode:
                 class_name = self._model.names.get(cls_id, "unknown")

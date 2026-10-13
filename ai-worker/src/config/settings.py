@@ -15,6 +15,8 @@ class WorkerSettings(BaseSettings):
 
     WORKER_ID: str = "worker-1"
     USE_GPU: bool = True
+    DEMO_MODE: bool = False
+    ENVIRONMENT: str = "development"
     YOLO_MODEL_PATH: str = "models/yolov8s-ppe.pt"
     METRICS_PORT: int = 8001
 
