@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
@@ -12,7 +12,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { api, MEDIAMTX_WEBRTC_URL } from "../api/client";
+import { api } from "../api/client";
 
 async function fetchCameras() {
   const resp = await api.get("/cameras");
@@ -23,10 +23,7 @@ async function setCameraStatus(id: string, status: "Active" | "Inactive") {
   await api.patch(`/cameras/${id}/status`, { status });
 }
 
-/** Pulls the mediamtx path out of an rtsp_url like rtsp://mediamtx:8554/factory-cam-01 */
-function mediamtxPath(rtspUrl: string): string {
-  return rtspUrl.split("/").pop() ?? "";
-}
+const LiveVideo = lazy(() => import("../components/LiveVideo"));
 
 const STATUS_COLOR: Record<string, "success" | "error" | "warning" | "default"> = {
   Active: "success",
@@ -155,16 +152,10 @@ export function LiveGrid() {
                       <PauseCircleOutlineIcon fontSize="large" />
                       <Typography variant="body2">Camera turned off</Typography>
                     </Stack>
-                  ) : !MEDIAMTX_WEBRTC_URL ? (
-                    <Typography sx={{ color: "white", p: 2 }}>Live streaming is not configured.</Typography>
                   ) : (
-                    <iframe
-                      key={cam.id}
-                      title={cam.name}
-                      src={`${MEDIAMTX_WEBRTC_URL}/${mediamtxPath(cam.rtsp_url)}/`}
-                      style={{ width: "100%", height: "100%", border: 0, pointerEvents: "none" }}
-                      allow="autoplay"
-                    />
+                    <Suspense fallback={<Typography sx={{ color: "white", p: 2 }}>Loading player…</Typography>}>
+                      <LiveVideo cameraId={cam.id} name={cam.name} />
+                    </Suspense>
                   )}
                   <Tooltip title={isFullscreen ? "Exit full screen" : "Full screen"}>
                     <Box

@@ -118,7 +118,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: alembic upgrade head
-      - run: pytest tests/test_review_integration.py tests/test_notification_outbox.py
+      - run: pytest tests/test_review_integration.py tests/test_notification_outbox.py tests/test_live_video.py
       - name: Production configuration
         run: python ../infra/check_production_config.py
 

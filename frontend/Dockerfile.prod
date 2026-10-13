@@ -15,10 +15,8 @@ COPY frontend/ .
 # container-start time — must be passed as build args, not just env vars.
 ARG VITE_API_URL
 ARG VITE_WS_URL
-ARG VITE_MEDIAMTX_WEBRTC_URL
 ENV VITE_API_URL=$VITE_API_URL \
-    VITE_WS_URL=$VITE_WS_URL \
-    VITE_MEDIAMTX_WEBRTC_URL=$VITE_MEDIAMTX_WEBRTC_URL
+    VITE_WS_URL=$VITE_WS_URL
 RUN npm run build
 
 FROM nginx:1.27-alpine

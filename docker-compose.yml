@@ -76,7 +76,7 @@ services:
   # ─── RTSP Simulator (for development — no real camera needed) ─────────────
 
   mediamtx:
-    image: bluenviron/mediamtx:latest
+    image: bluenviron/mediamtx:1.21.2@sha256:c7540465f868a02652118bea5a0daab12a29ac0f6cb8485abd535939ecddf886
     container_name: vg_mediamtx
     environment:
       # Publish credentials (mediamtx's own MTX_ env-var config override —
@@ -84,12 +84,12 @@ services:
       # from mediamtx.yml's pathDefaults without hardcoding a secret there).
       # Without this, anyone who can reach port 8554 could publish/replace
       # any camera's video feed.
+      MTX_HLSCDNSECRET: ${MEDIA_HLS_SECRET:-dev-only-media-gateway-change-in-production}
       MTX_PATHDEFAULTS_PUBLISHUSER: ${MEDIAMTX_PUBLISH_USER:-publisher}
       MTX_PATHDEFAULTS_PUBLISHPASS: ${MEDIAMTX_PUBLISH_PASSWORD:-dev-only-change-in-production}
     ports:
-      - "8554:8554"       # RTSP — only camera-feeder/relay processes publish here
-      - "8889:8889"       # WebRTC — Live Grid page in the frontend embeds this
-      - "8189:8189/udp"   # WebRTC ICE (must be published for the browser to actually connect)
+      - "127.0.0.1:8554:8554"  # Local development relay publishing only
+      - "127.0.0.1:8888:8888"  # Local backend HLS gateway only
     volumes:
       - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml
     restart: unless-stopped
@@ -131,6 +131,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production-very-long-secret}
       WORKER_API_KEY: ${WORKER_API_KEY:-dev-worker-key-change-me}
       ENVIRONMENT: development
+      MEDIA_HLS_URL: http://mediamtx:8888
+      MEDIA_HLS_SECRET: ${MEDIA_HLS_SECRET:-dev-only-media-gateway-change-in-production}
+      MEDIA_CAMERA_PATHS: ${MEDIA_CAMERA_PATHS:-{}}
     volumes:
       - ./backend:/app
       - ./logs/backend:/app/logs
@@ -229,7 +232,6 @@ services:
     environment:
       VITE_API_URL: http://localhost:${BACKEND_PUBLIC_PORT:-8000}
       VITE_WS_URL: ws://localhost:${BACKEND_PUBLIC_PORT:-8000}
-      VITE_MEDIAMTX_WEBRTC_URL: http://localhost:8889
     volumes:
       - ./frontend:/app
       - /app/node_modules

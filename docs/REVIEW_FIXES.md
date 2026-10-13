@@ -19,7 +19,7 @@ Regression coverage checks persisted camera state and worker polling after react
 - Production requires `CAMERA_ALLOWED_HOSTS` as a JSON array of trusted camera hostnames/IP addresses and `WORKER_CREDENTIALS` as a JSON object keyed by worker business ID. Each value contains `enterprise_id` and `key`. Set `WORKER_1_API_KEY` and `WORKER_2_API_KEY` to the corresponding keys. Keep values in the deployment secret store. Shared worker credentials remain a development compatibility option.
 - Camera URLs returned to users omit credentials and query parameters. Connection tests for existing cameras use the camera ID; the backend retains the actual URL. Only camera managers may probe a newly submitted RTSP URL. Local file paths and non-RTSP protocols are rejected. Restrict worker/backend network egress to trusted camera networks as well; hostname validation alone cannot prevent DNS rebinding.
 - Production Compose requires version 2.24.4 or later for `!reset`/`!override`. It publishes only `127.0.0.1:8080` for the frontend. Put an HTTPS reverse proxy in front of this listener. Configure the public storage endpoint and `MINIO_PUBLIC_SECURE=true`; use `MINIO_SECURE` when the internal S3 endpoint also uses TLS.
-- MediaMTX host ports are removed in production and the production Live Grid displays an unconfigured state. A tenant-authorized media gateway, actual camera relay provisioning and real-domain ICE/TURN testing are still required before exposing live video. Development MediaMTX remains a simulator, not a secured public streaming service.
+- MediaMTX host ports remain private in production. Live Grid now uses a per-asset authenticated HLS gateway with tenant/factory/zone authorization and explicit camera-to-stream mappings. Provision private camera relays, both media secrets and HTTPS before enabling playback; see `docs/SECURE_LIVE_VIDEO.md`. Development listeners bind only to loopback.
 - Synthetic PPE detection now requires explicit `DEMO_MODE=true` and is rejected when `ENVIRONMENT=production`. Supply validated PPE weights or a configured remote provider. Remote-provider errors stop inference for that frame instead of becoming false missing-PPE evidence. Local GPU requests fall back to CPU if CUDA is unavailable; performance must still be measured.
 - Use Node.js 24 for the frontend toolchain. FastAPI/Starlette and related Python packages have been upgraded; JWT handling now uses PyJWT. Run the complete requirements installation rather than updating individual packages in an existing environment.
 
@@ -52,7 +52,7 @@ CI now includes the PostgreSQL/Redis integration suite, browser regressions, pro
 | AUTH-05 | Addressed | Refresh token consumption and replacement share one locked transaction; concurrent test has exactly one success. |
 | AUTH-06 | Addressed | Logout revokes the server session; query caches are cancelled/cleared on session changes; refresh fetches the current profile. |
 | AUTH-07 | Partial | Login throttling and mandatory password-change workflow implemented. MFA-enabled accounts are blocked until a real second-factor flow is implemented. |
-| AUTH-08 | Partial | Production media ports are private and public live playback is disabled. Implement scoped media authorization before enabling it. |
+| AUTH-08 | Addressed | Every HLS asset requires a current authorized session and camera scope; browser media credentials/URLs stay private. Real-camera, TLS and capacity rollout checks remain; see `docs/SECURE_LIVE_VIDEO.md`.
 | AUTH-09 | Partial | Camera API/probe responses redact credentials; reader/provider logs omit raw URLs/errors; SQL parameters hidden. Managed camera-secret storage and auditing native library logs remain. |
 | AUTH-10 | Partial | RTSP schemes/hosts validated and probing requires a manager role; timeouts added. Deployment egress controls remain necessary. |
 | AI-01 | Addressed | Synthetic detections require explicit development opt-in and cannot start in production. |
@@ -81,7 +81,7 @@ CI now includes the PostgreSQL/Redis integration suite, browser regressions, pro
 | DEPLOY-01 | Addressed | Compose inheritance uses explicit reset/override and is checked in CI. |
 | DEPLOY-02 | Addressed | Frontend Dockerfile uses the correct repository-root paths; production build is included in CI. |
 | DEPLOY-03 | Addressed | Container startup runs serialized migrations; schema readiness gates traffic. |
-| DEPLOY-04 | Partial | Public storage TLS is configurable and production requires HTTPS; ingress is private by default. Certificates, real public URLs, media gateway and ICE/TURN remain deployment work. |
+| DEPLOY-04 | Partial | Public storage TLS is configurable and production requires HTTPS; ingress is private by default. Certificates, real public URLs, private camera relays and real-domain playback validation remain deployment work. HLS avoids ICE/TURN. |
 | DEPLOY-05 | Remaining | Choose and provision a maintained S3-compatible storage service and verify backup compatibility. The development MinIO source build is not a support policy. |
 | DEPLOY-06 | Partial | Readiness checks PostgreSQL/schema, Redis, RabbitMQ and storage and returns HTTP 503 when degraded. Worker freshness alerting/runbooks remain. |
 | DEPLOY-07 | Remaining | Define retention/RPO/RTO; implement scheduled offsite backups and run isolated database/object restore drills. |
@@ -93,6 +93,6 @@ CI now includes the PostgreSQL/Redis integration suite, browser regressions, pro
 
 ## Before a production pilot
 
-Provision maintained object storage and TLS ingress, bind worker credentials to tenants, configure trusted camera networks, supply validated model weights, complete media authorization, and validate durable notification delivery with the intended providers and workload. Then test the actual camera placement, lighting, occlusion, PPE types and operating shifts. Measure false-positive/false-negative rates, event latency, missed frames, recovery behavior and GPU memory before choosing a camera-per-worker limit.
+Provision maintained object storage and TLS ingress, bind worker credentials to tenants, configure trusted camera networks, supply validated model weights, provision and validate authorized media relays, and validate durable notification delivery with the intended providers and workload. Then test the actual camera placement, lighting, occlusion, PPE types and operating shifts. Measure false-positive/false-negative rates, event latency, missed frames, recovery behavior and GPU memory before choosing a camera-per-worker limit.
 
 Audio recording, continuous video archival, assault detection and identifying a named employee are not implemented by these fixes. Do not infer any of those capabilities from PPE alerts or camera-local track IDs.
