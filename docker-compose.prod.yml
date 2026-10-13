@@ -1,58 +1,43 @@
-# Production overlay — merge on top of docker-compose.yml, never run alone:
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-#
-# What this changes vs. the dev compose file:
-#   - Postgres/Redis/RabbitMQ/MinIO/Grafana/Prometheus stop publishing to the
-#     host — only reachable from other containers on the internal Docker
-#     network. (RabbitMQ's management UI and Grafana are still worth reaching
-#     for an operator — do that via an SSH tunnel, not a public port.)
-#   - Backend runs the built image as-is (no bind-mounted source, no
-#     `--reload`) and is no longer exposed on its own port — only the
-#     frontend's nginx reverse-proxies to it now (see infra/nginx/frontend.conf).
-#   - Frontend is a real production build served by nginx, not the Vite dev
-#     server (frontend/Dockerfile.prod), published on port 80.
-#   - ENVIRONMENT=production, which makes backend/src/core/settings.py
-#     refuse to start unless every credential below has been changed from
-#     its dev-only default — see .env.production.example.
-#   - mediamtx no longer publishes raw RTSP (8554) to the host — only
-#     internal publishers (camera-feeder, a real-camera relay) ever need
-#     it, and it's publish-password-protected regardless (see
-#     infra/mediamtx/mediamtx.yml). WebRTC (8889) and its ICE port
-#     (8189/udp) stay published since the browser connects to those directly
-#     for Live Grid — there's no way to reverse-proxy ICE through nginx.
-#   - ai-worker/ai-worker-2's metrics ports stop publishing to the host —
-#     Prometheus already scrapes them over the internal Docker network
-#     (infra/prometheus/prometheus.yml), the host ports were only ever a
-#     manual-debugging convenience.
+# Production overlay (Docker Compose >= 2.24.4).
+# Run behind a TLS reverse proxy forwarding to 127.0.0.1:8080.
+# Infrastructure and media ports remain private; see docs/REVIEW_FIXES.md.
+# docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 services:
   postgres:
-    ports: []
+    ports: !reset []
 
   redis:
-    ports: []
+    ports: !reset []
 
   rabbitmq:
-    ports: []
+    ports: !reset []
 
   minio:
-    ports: []
+    ports: !reset []
 
   prometheus:
-    ports: []
+    ports: !reset []
 
   grafana:
-    ports: []
+    ports: !reset []
 
   mediamtx:
-    ports:
-      - "8889:8889"
-      - "8189:8189/udp"
+    # Keep streaming private until a scoped media gateway is configured.
+    ports: !reset []
 
   ai-worker:
-    ports: []
+    environment:
+      WORKER_API_KEY: ${WORKER_1_API_KEY:?Set the credential for worker-1}
+      ENVIRONMENT: production
+      DEMO_MODE: "false"
+    ports: !reset []
 
   ai-worker-2:
-    ports: []
+    environment:
+      WORKER_API_KEY: ${WORKER_2_API_KEY:?Set the credential for worker-2}
+      ENVIRONMENT: production
+      DEMO_MODE: "false"
+    ports: !reset []
 
   camera-feeder:
     # The synthetic/demo test-pattern feeder has no place in production —
@@ -60,12 +45,15 @@ services:
     profiles: ["disabled"]
 
   backend:
-    volumes: []
-    ports: []
+    volumes: !reset []
+    ports: !reset []
     environment:
       ENVIRONMENT: production
       DEBUG: "false"
-    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+      MINIO_PUBLIC_SECURE: "true"
+      CAMERA_ALLOWED_HOSTS: ${CAMERA_ALLOWED_HOSTS:?Set trusted camera hosts as a JSON array}
+      WORKER_CREDENTIALS: ${WORKER_CREDENTIALS:?Set tenant-bound worker credentials as JSON}
+    command: ["sh", "scripts/start.sh"]
 
   frontend:
     build:
@@ -80,7 +68,7 @@ services:
         # doesn't accept relative ones) — set this to your real domain,
         # e.g. wss://factory.example.com. Required.
         VITE_WS_URL: ${VITE_WS_URL:?Set VITE_WS_URL to your production domain, e.g. wss://factory.example.com}
-        VITE_MEDIAMTX_WEBRTC_URL: ${VITE_MEDIAMTX_WEBRTC_URL:-}
-    volumes: []
-    ports:
-      - "80:80"
+        VITE_MEDIAMTX_WEBRTC_URL: ""
+    volumes: !reset []
+    ports: !override
+      - "127.0.0.1:8080:80"

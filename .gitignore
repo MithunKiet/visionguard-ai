@@ -56,3 +56,7 @@ media/*
 
 # Local backups (see infra/backup) — contain real data, never commit
 /backups/
+
+# Browser regression artifacts
+frontend/test-results/
+frontend/playwright-report/

@@ -1,3 +1,4 @@
+import TablePagination from "@mui/material/TablePagination";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dropdown } from "semantic-ui-react";
@@ -15,21 +16,23 @@ import { SeverityChip, StatusChip } from "../components/SeverityChip";
 
 const STATUS_OPTIONS = ["", "Open", "Acknowledged", "Resolved", "FalsePositive"];
 
-async function fetchAlerts(status: string) {
-  const resp = await api.get("/alerts", { params: status ? { status, page_size: 100 } : { page_size: 100 } });
-  return resp.data.data as any[];
+async function fetchAlerts(status: string, page: number) {
+  const resp = await api.get("/alerts", { params: { status: status || undefined, page: page + 1, page_size: 50 } });
+  return { items: resp.data.data as any[], total: resp.data.meta.total as number };
 }
 
 export function Alerts() {
   const queryClient = useQueryClient();
+  const [page, setPage] = useState(0);
   const [statusFilter, setStatusFilter] = useState("Open");
 
-  const { data: alerts, isLoading } = useQuery({
-    queryKey: ["alerts", statusFilter],
-    queryFn: () => fetchAlerts(statusFilter),
+  const { data: result, isLoading } = useQuery({
+    queryKey: ["alerts", statusFilter, page],
+    queryFn: () => fetchAlerts(statusFilter, page),
     refetchInterval: 15000,
   });
 
+  const alerts = result?.items;
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["alerts"] });
 
   const ack = useMutation({
@@ -60,7 +63,7 @@ export function Alerts() {
             selection
             options={STATUS_OPTIONS.map((s) => ({ key: s || "all", text: s || "All", value: s }))}
             value={statusFilter}
-            onChange={(_, data) => setStatusFilter((data.value as string) ?? "")}
+            onChange={(_, data) => { setStatusFilter((data.value as string) ?? ""); setPage(0); }}
           />
         </div>
       </Stack>
@@ -121,6 +124,8 @@ export function Alerts() {
             )}
           </TableBody>
         </Table>
+        <TablePagination component="div" count={result?.total ?? 0} page={page}
+          onPageChange={(_, next) => setPage(next)} rowsPerPage={50} rowsPerPageOptions={[50]} />
       </Paper>
     </Stack>
   );

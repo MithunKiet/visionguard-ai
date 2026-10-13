@@ -19,12 +19,16 @@ export function useLiveFeed(maxEvents = 50) {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    setEvents([]);
+    setConnected(false);
     if (!accessToken) return;
 
     let cancelled = false;
     let retryDelay = 2000;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
     const connect = () => {
+      if (cancelled) return;
       // Token travels as the WebSocket subprotocol, not a `?token=` query
       // param — keeps it out of server access logs and browser history (see
       // backend/src/modules/realtime/routes.py).
@@ -37,6 +41,7 @@ export function useLiveFeed(maxEvents = 50) {
         retryDelay = 2000;
       };
       ws.onmessage = (msg) => {
+        if (cancelled) return;
         try {
           const parsed: LiveEvent = JSON.parse(msg.data);
           setEvents((prev) => [parsed, ...prev].slice(0, maxEvents));
@@ -47,7 +52,7 @@ export function useLiveFeed(maxEvents = 50) {
       ws.onclose = () => {
         if (cancelled) return;
         setConnected(false);
-        setTimeout(connect, retryDelay);
+        retryTimer = setTimeout(connect, retryDelay);
         retryDelay = Math.min(retryDelay * 1.5, 15000);
       };
       ws.onerror = () => ws.close();
@@ -56,6 +61,7 @@ export function useLiveFeed(maxEvents = 50) {
     connect();
     return () => {
       cancelled = true;
+      clearTimeout(retryTimer);
       wsRef.current?.close();
     };
   }, [accessToken, maxEvents]);

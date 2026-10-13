@@ -1,5 +1,6 @@
-import { Navigate, createBrowserRouter } from "react-router-dom";
+import { Navigate, createBrowserRouter, useLocation } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
+import { ChangePassword } from "./pages/ChangePassword";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { Cameras } from "./pages/Cameras";
@@ -15,12 +16,16 @@ import { useAuthStore } from "./store/authStore";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
+  const location = useLocation();
   if (!accessToken) return <Navigate to="/login" replace />;
+  if (user?.is_first_login && location.pathname !== "/change-password") return <Navigate to="/change-password" replace />;
   return <>{children}</>;
 }
 
 export const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
+  { path: "/change-password", element: <ProtectedRoute><ChangePassword /></ProtectedRoute> },
   {
     path: "/",
     element: (

@@ -1,3 +1,4 @@
+import TablePagination from "@mui/material/TablePagination";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import BlockIcon from "@mui/icons-material/Block";
@@ -21,9 +22,9 @@ import Typography from "@mui/material/Typography";
 import { api } from "../api/client";
 import { StatCard } from "../components/StatCard";
 
-async function fetchViolations() {
-  const resp = await api.get("/violations", { params: { page_size: 100 } });
-  return resp.data.data as any[];
+async function fetchViolations(page: number) {
+  const resp = await api.get("/violations", { params: { page: page + 1, page_size: 50 } });
+  return { items: resp.data.data as any[], total: resp.data.meta.total as number };
 }
 
 const TYPE_COLOR: Record<string, "error" | "warning" | "info" | "default"> = {
@@ -41,22 +42,24 @@ function confidenceColor(confidence: number): "success" | "warning" | "error" {
 }
 
 export function Violations() {
+  const [page, setPage] = useState(0);
   const [preview, setPreview] = useState<any | null>(null);
 
-  const { data: violations, isLoading } = useQuery({
-    queryKey: ["violations"],
-    queryFn: fetchViolations,
+  const { data: result, isLoading } = useQuery({
+    queryKey: ["violations", page],
+    queryFn: () => fetchViolations(page),
     refetchInterval: 20000,
   });
 
+  const violations = result?.items;
   const stats = useMemo(() => {
     const items = violations ?? [];
     return {
-      total: items.length,
+      total: result?.total ?? 0,
       needsReview: items.filter((v) => v.needs_review).length,
       falsePositive: items.filter((v) => v.is_false_positive).length,
     };
-  }, [violations]);
+  }, [violations, result?.total]);
 
   return (
     <Stack spacing={3}>
@@ -66,8 +69,8 @@ export function Violations() {
 
       <Stack direction="row" spacing={2} flexWrap="wrap">
         <StatCard label="Total Violations" value={stats.total} accent="#0F5C4A" icon={<WarningAmberIcon />} />
-        <StatCard label="Needs Review" value={stats.needsReview} accent="#F59E0B" icon={<RateReviewIcon />} />
-        <StatCard label="False Positives" value={stats.falsePositive} accent="#6B7280" icon={<BlockIcon />} />
+        <StatCard label="Needs Review (This Page)" value={stats.needsReview} accent="#F59E0B" icon={<RateReviewIcon />} />
+        <StatCard label="False Positives (This Page)" value={stats.falsePositive} accent="#6B7280" icon={<BlockIcon />} />
       </Stack>
 
       <Paper variant="outlined" sx={{ overflow: "hidden" }}>
@@ -178,6 +181,8 @@ export function Violations() {
             )}
           </TableBody>
         </Table>
+        <TablePagination component="div" count={result?.total ?? 0} page={page}
+          onPageChange={(_, next) => setPage(next)} rowsPerPage={50} rowsPerPageOptions={[50]} />
       </Paper>
 
       <Dialog open={!!preview} onClose={() => setPreview(null)} maxWidth="md">

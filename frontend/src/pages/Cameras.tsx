@@ -23,8 +23,8 @@ async function fetchCameras() {
   return resp.data.data as any[];
 }
 
-async function testConnection(rtsp_url: string) {
-  const resp = await api.post("/cameras/test-connection", { rtsp_url });
+async function testConnection(camera_id: string) {
+  const resp = await api.get(`/cameras/${camera_id}/health`);
   return resp.data.data;
 }
 
@@ -90,7 +90,7 @@ export function Cameras() {
                 <TableCell align="right">
                   <Button
                     size="small"
-                    onClick={() => testMutation.mutate(cam.rtsp_url)}
+                    onClick={() => testMutation.mutate(cam.id)}
                     disabled={testMutation.isPending}
                   >
                     Test Connection

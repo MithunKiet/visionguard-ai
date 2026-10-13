@@ -9,7 +9,7 @@ export const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://localhost:8000";
 // here is never intentional (there's no relative/proxied path for this —
 // the browser embeds it directly), so treat it the same as unset rather
 // than baking a bare "/path/" iframe src that silently renders the SPA shell.
-export const MEDIAMTX_WEBRTC_URL = import.meta.env.VITE_MEDIAMTX_WEBRTC_URL || "http://localhost:8889";
+export const MEDIAMTX_WEBRTC_URL = import.meta.env.VITE_MEDIAMTX_WEBRTC_URL || (import.meta.env.DEV ? "http://localhost:8889" : "");
 
 export const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
@@ -25,7 +25,7 @@ api.interceptors.request.use((config) => {
 });
 
 async function doRefresh(): Promise<string> {
-  const { user } = useAuthStore.getState();
+  const sessionUser = useAuthStore.getState().user;
   // No body at all — the backend's RefreshRequest schema requires
   // refresh_token if a body is sent, so `{}` would 422. Sending nothing lets
   // FastAPI fall through to the httpOnly cookie the backend set on
@@ -36,9 +36,13 @@ async function doRefresh(): Promise<string> {
     { withCredentials: true }
   );
   const data = resp.data.data;
+  const profile = await axios.get(`${API_URL}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${data.access_token}` },
+  });
+  if (useAuthStore.getState().user !== sessionUser) throw new Error("Session changed during refresh");
   useAuthStore.getState().setSession({
     access_token: data.access_token,
-    user: user!,
+    user: profile.data.data,
     is_master_session: useAuthStore.getState().isMasterSession,
   });
   return data.access_token;
@@ -65,7 +69,7 @@ api.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const original = error.config as (typeof error.config & { _retry?: boolean });
-    if (error.response?.status === 401 && original && !original._retry) {
+    if (error.response?.status === 401 && original && !original._retry && !original.url?.startsWith("/auth/")) {
       original._retry = true;
       try {
         const token = await refreshAccessToken();
@@ -80,3 +84,10 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export async function logoutSession(): Promise<void> {
+  // Let an in-flight rotation finish so logout revokes the replacement cookie.
+  if (refreshPromise) await refreshPromise.catch(() => undefined);
+  await api.post("/auth/logout");
+  useAuthStore.getState().clearSession();
+}

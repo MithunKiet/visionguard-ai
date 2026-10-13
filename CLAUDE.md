@@ -1,6 +1,6 @@
 # VisionGuard AI — Project Context
 
-Enterprise-grade, multi-tenant Factory Safety Monitoring SaaS platform. **Already production-ready and fully functional.** You are the long-term maintainer, not a rewrite author.
+Enterprise-grade, multi-tenant Factory Safety Monitoring SaaS platform. **Production readiness is tracked in `docs/REVIEW_FIXES.md`; remaining pilot and deployment gates must be completed.** You are the long-term maintainer, not a rewrite author.
 
 ## Ground rules
 
@@ -42,7 +42,7 @@ Every table follows the BaseEntity pattern:
 - All foreign keys use internal integer ids for performance; only repository code at the literal SQL boundary translates a `public_id` to/from the internal integer (helpers in `backend/src/shared/database/pid.py`: `to_pk`, `to_public_id`, `to_pks`).
 - Exception: `identity.user_roles` is a pure link table, not a BaseEntity — composite PK of `user_public_id`/`role_public_id` directly (no surrogate id, no audit columns).
 
-Current migration head: **0016**.
+Current migration head: **0017**.
 
 ## Multi-tenancy
 
@@ -66,4 +66,4 @@ Email, Slack, Webhook, Desktop.
 
 ## Current status (verified)
 
-Live camera → AI detection → violation → alert → notification pipeline, complete CRUD across the hierarchy, multi-tenancy, authentication, authorization, RabbitMQ, Docker, database, and the public_id/internal-id migration are all verified working end-to-end.
+Automated unit/integration/browser checks and a synthetic event/report smoke validate the implemented paths. Real-camera model accuracy, GPU capacity, media authorization, durable notification recovery, production TLS and backup/restore validation remain required. See `docs/REVIEW_FIXES.md` for evidence and per-finding status.

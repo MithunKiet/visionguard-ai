@@ -1,3 +1,4 @@
+import { logoutSession } from "../api/client";
 import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
@@ -58,7 +59,7 @@ const NAV = [
 
 export function AppShell() {
   const navigate = useNavigate();
-  const { user, isMasterSession, clearSession } = useAuthStore();
+  const { user, isMasterSession } = useAuthStore();
   const { connected, events } = useLiveFeed(10);
   const lastNotifiedRef = useRef<string | null>(null);
 
@@ -108,8 +109,13 @@ export function AppShell() {
       .toUpperCase();
   }, [user]);
 
-  const handleLogout = () => {
-    clearSession();
+  const handleLogout = async () => {
+    try {
+      await logoutSession();
+    } catch {
+      window.alert("Logout could not be confirmed. Please retry when the connection is available.");
+      return;
+    }
     navigate("/login");
   };
 

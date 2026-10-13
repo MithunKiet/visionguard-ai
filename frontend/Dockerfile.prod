@@ -3,11 +3,14 @@
 # code-splitting optimization, and it carries its own HMR WebSocket. This
 # builds static assets and serves them with nginx instead.
 
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci
-COPY . .
+COPY frontend/package.json frontend/package-lock.json ./
+# Optional corporate CA remains a build secret and is never copied into the image.
+RUN --mount=type=secret,id=build_ca \
+    if [ -f /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; \
+    npm ci --no-audit --no-fund --fetch-retries=1 --fetch-timeout=30000
+COPY frontend/ .
 # VITE_* vars are baked into the JS bundle at build time, not read at
 # container-start time — must be passed as build args, not just env vars.
 ARG VITE_API_URL

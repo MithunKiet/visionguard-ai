@@ -155,6 +155,8 @@ export function LiveGrid() {
                       <PauseCircleOutlineIcon fontSize="large" />
                       <Typography variant="body2">Camera turned off</Typography>
                     </Stack>
+                  ) : !MEDIAMTX_WEBRTC_URL ? (
+                    <Typography sx={{ color: "white", p: 2 }}>Live streaming is not configured.</Typography>
                   ) : (
                     <iframe
                       key={cam.id}

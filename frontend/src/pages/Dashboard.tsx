@@ -21,13 +21,9 @@ import { SeverityChip } from "../components/SeverityChip";
 import { useLiveFeed } from "../hooks/useWebSocket";
 
 async function fetchOpenAlertCounts() {
-  const resp = await api.get("/alerts", { params: { status: "Open", page_size: 100 } });
-  const alerts: any[] = resp.data.data;
-  return {
-    total: alerts.length,
-    critical: alerts.filter((a) => a.severity === "Critical").length,
-    high: alerts.filter((a) => a.severity === "High").length,
-  };
+  const responses = await Promise.all([undefined, "Critical", "High"].map(severity =>
+    api.get("/alerts", { params: { status: "Open", severity, page_size: 1 } })));
+  return { total: responses[0].data.meta.total, critical: responses[1].data.meta.total, high: responses[2].data.meta.total };
 }
 
 async function fetchRecentViolations() {
@@ -68,7 +64,7 @@ export function Dashboard() {
     if (feedEvents.length === 0) return;
     queryClient.invalidateQueries({ queryKey: ["open-alert-counts"] });
     queryClient.invalidateQueries({ queryKey: ["recent-violations"] });
-  }, [feedEvents.length, queryClient]);
+  }, [feedEvents[0], queryClient]);
 
   return (
     <Stack spacing={3}>
@@ -81,8 +77,8 @@ export function Dashboard() {
         <StatCard label="Critical" value={counts?.critical ?? "-"} accent="#DC2626" icon={<ErrorOutlineIcon />} />
         <StatCard label="High" value={counts?.high ?? "-"} accent="#F59E0B" icon={<WarningAmberIcon />} />
         <StatCard
-          label="Live Occupancy"
-          value={latestOccupancy?.data?.current_count ?? "-"}
+          label="Latest Camera Count"
+          value={connected ? latestOccupancy?.data?.current_count ?? "-" : "Offline"}
           accent="#2563EB"
           icon={<PeopleAltIcon />}
         />

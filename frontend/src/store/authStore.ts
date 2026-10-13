@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { queryClient } from "../queryClient";
 
 export interface AuthUser {
   id: string;
@@ -55,10 +56,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   accessToken: null,
   ...loadInitial(),
   setSession: ({ access_token, user, is_master_session }) => {
+    if (useAuthStore.getState().user?.id !== user.id || useAuthStore.getState().user?.enterprise_id !== user.enterprise_id) {
+      void queryClient.cancelQueries();
+      queryClient.clear();
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ user, isMasterSession: is_master_session }));
     set({ accessToken: access_token, user, isMasterSession: is_master_session, hasPersistedSession: true });
   },
   clearSession: () => {
+    void queryClient.cancelQueries();
+    queryClient.clear();
     localStorage.removeItem(STORAGE_KEY);
     set({ accessToken: null, user: null, isMasterSession: false, hasPersistedSession: false });
   },
