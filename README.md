@@ -945,3 +945,5 @@ Step 4 → Connect Camera     (RTSP URL + test connection)
 - Auto AI worker assignment on completion
 
 Live-video access and deployment: [Secure live video](docs/SECURE_LIVE_VIDEO.md).
+
+Incident review: [Evidence, reviewer decisions and status history](docs/INCIDENT_REVIEW.md).

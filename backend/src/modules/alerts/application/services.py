@@ -152,7 +152,7 @@ class AlertService:
         alert = await self._repo.get_by_id(alert_id, enterprise_id, scope)
         if not alert:
             raise NotFoundException("Alert", str(alert_id))
-        return self.to_dict(alert)
+        return {**self.to_dict(alert), **await self._repo.get_review_details(alert_id, enterprise_id, scope)}
 
     async def acknowledge(
         self, alert_id: str, enterprise_id: str, user_id: str, scope: ScopeFilter | None = None,

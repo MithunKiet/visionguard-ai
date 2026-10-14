@@ -432,3 +432,107 @@ async def test_merged_report_routes_require_enterprise_scope(setup):
             assert (await s.client.get(path, headers=headers(s, name))).status_code == 403
         assert (await s.client.post("/api/v1/reports/generate", headers=headers(s, name), json={})).status_code == 403
     assert (await s.client.get("/api/v1/reports", headers=headers(s))).status_code == 200
+
+
+async def make_review_incident(s, place_index=0):
+    place = s.places[place_index]
+    async with AsyncSessionFactory() as db:
+        violation = PPEViolation(enterprise_id=place.factory.enterprise_id, zone_id=place.zone.id,
+                                 camera_id=place.camera.id, violation_type="helmet_missing",
+                                 confidence=0.82, needs_review=True)
+        db.add(violation)
+        await db.flush()
+        alert = Alert(enterprise_id=place.factory.enterprise_id, factory_id=place.factory.id,
+                      zone_id=place.zone.id, camera_id=place.camera.id, violation_id=violation.id,
+                      alert_number=f"REVIEW-{uuid4().hex[:20]}", alert_type="PPE_VIOLATION_HELMET",
+                      severity="Critical", status="Open")
+        db.add(alert)
+        await db.commit()
+        return alert, violation
+
+
+@pytest.mark.parametrize("outcome,body", [("resolve", {"note": "  Checked camera and corrected helmet use.  "}),
+                                         ("false-positive", {"reason": "  Helmet was obscured by the camera angle.  "})])
+async def test_incident_review_records_history_and_clears_pending_review(setup, outcome, body):
+    s = setup
+    alert, violation = await make_review_incident(s)
+    url = f"/api/v1/alerts/{alert.public_id}"
+    before = await s.client.get(url, headers=headers(s))
+    assert before.status_code == 200
+    detail = before.json()["data"]
+    assert detail["review_history"] == []
+    assert [detail[k] for k in ["factory_name", "zone_name", "camera_name"]] == ["Factory", "Zone", "Camera"]
+    assert (await s.client.patch(url + "/acknowledge", headers=headers(s, "manager"), json={})).status_code == 200
+    async with AsyncSessionFactory() as db:
+        assert (await db.get(PPEViolation, violation.id)).needs_review  # acknowledging is not a final review
+    response = await s.client.patch(url + "/" + outcome, headers=headers(s), json=body)
+    assert response.status_code == 200, response.text
+    detail = (await s.client.get(url, headers=headers(s))).json()["data"]
+    history = detail["review_history"]
+    assert [entry["to_status"] for entry in history] == ["Acknowledged", "Resolved" if outcome == "resolve" else "FalsePositive"]
+    assert [entry["reviewer_name"] for entry in history] == ["manager", "admin"]
+    assert history[1]["comment"] == next(iter(body.values())).strip()
+    assert all(isinstance(entry["id"], str) and entry["created_on"] for entry in history)
+    assert "alert_id" not in history[0] and "created_by" not in history[0]
+    async with AsyncSessionFactory() as db:
+        saved = await db.get(PPEViolation, violation.id)
+        assert saved.needs_review is False
+        assert saved.is_false_positive is (outcome == "false-positive")
+        if outcome == "false-positive":
+            assert saved.fp_reason == body["reason"].strip()
+    # Terminal decisions cannot be overwritten or append a second final outcome.
+    assert (await s.client.patch(url + "/resolve", headers=headers(s), json={"note": "Second decision"})).status_code == 422
+    assert len((await s.client.get(url, headers=headers(s))).json()["data"]["review_history"]) == 2
+
+
+async def test_incident_review_history_respects_tenant_factory_and_role_permissions(setup):
+    from src.modules.alerts.infrastructure.repositories import AlertRepository
+    from src.shared.security.scope import ScopeFilter
+    s = setup
+    own, _ = await make_review_incident(s)
+    blocked, _ = await make_review_incident(s, 1)
+    foreign, _ = await make_review_incident(s, 2)
+    own_url = f"/api/v1/alerts/{own.public_id}"
+    assert (await s.client.get(own_url, headers=headers(s, "viewer"))).status_code == 200
+    for action, body in [("acknowledge", {}), ("resolve", {"note": "Cannot save"}), ("false-positive", {"reason": "Cannot save"})]:
+        assert (await s.client.patch(own_url + "/" + action, headers=headers(s, "viewer"), json=body)).status_code == 403
+    for row, user in [(blocked, "manager"), (blocked, "viewer"), (foreign, "admin"), (own, "foreign")]:
+        assert (await s.client.get(f"/api/v1/alerts/{row.public_id}", headers=headers(s, user))).status_code == 404
+    await s.client.patch(f"/api/v1/alerts/{blocked.public_id}/resolve", headers=headers(s), json={"note": "Private review"})
+    async with AsyncSessionFactory() as db:
+        # The repository also scopes the added fields if called outside HTTP.
+        data = await AlertRepository(db).get_review_details(blocked.public_id, s.enterprise.public_id,
+            ScopeFilter(unrestricted=False, factory_ids={s.places[0].factory.public_id}))
+        assert data["review_history"] == [] and data["camera_name"] is None
+
+
+@pytest.mark.parametrize("action,body", [("false-positive", {"reason": " \n "}),
+    ("false-positive", {"reason": "x" * 201}), ("resolve", {"note": " "}), ("resolve", {"note": "x" * 2001})])
+async def test_invalid_review_notes_do_not_change_the_incident(setup, action, body):
+    s = setup
+    alert, violation = await make_review_incident(s)
+    url = f"/api/v1/alerts/{alert.public_id}"
+    assert (await s.client.patch(url + "/" + action, headers=headers(s), json=body)).status_code == 422
+    detail = (await s.client.get(url, headers=headers(s))).json()["data"]
+    assert detail["status"] == "Open" and detail["review_history"] == []
+    async with AsyncSessionFactory() as db:
+        assert (await db.get(PPEViolation, violation.id)).needs_review
+
+
+async def test_concurrent_incident_reviews_keep_one_final_decision(setup):
+    s = setup
+    alert, violation = await make_review_incident(s)
+    url = f"/api/v1/alerts/{alert.public_id}"
+    responses = await asyncio.gather(
+        s.client.patch(url + "/resolve", headers=headers(s), json={"note": "Corrected on site"}),
+        s.client.patch(url + "/false-positive", headers=headers(s, "manager"), json={"reason": "False detection"}),
+    )
+    assert sum(response.status_code == 200 for response in responses) == 1
+    assert all(response.status_code in {200, 409, 422} for response in responses)
+    detail = (await s.client.get(url, headers=headers(s))).json()["data"]
+    assert len(detail["review_history"]) == 1
+    assert detail["review_history"][0]["to_status"] == detail["status"]
+    async with AsyncSessionFactory() as db:
+        saved = await db.get(PPEViolation, violation.id)
+        assert saved.needs_review is False
+        assert saved.is_false_positive is (detail["status"] == "FalsePositive")

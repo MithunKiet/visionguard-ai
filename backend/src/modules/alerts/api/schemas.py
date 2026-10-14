@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from typing import Annotated
+
+from pydantic import BaseModel, StringConstraints
 
 
 class AlertOut(BaseModel):
@@ -25,11 +27,11 @@ class AcknowledgeRequest(BaseModel):
 
 
 class ResolveRequest(BaseModel):
-    note: str | None = None
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)] | None = None
 
 
 class FalsePositiveRequest(BaseModel):
-    reason: str
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
 class AssignRequest(BaseModel):
