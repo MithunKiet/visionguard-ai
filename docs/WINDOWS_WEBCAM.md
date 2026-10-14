@@ -30,7 +30,9 @@ The default is camera index 0 using DirectShow. The process has a deadline in ca
 
 ## What comes next
 
-Once capture works, supply a trusted PPE checkpoint compatible with this project's detector and independently labeled test examples. There are currently no compatible weights installed in the cloud workspace. A generic person detector cannot establish whether a helmet or vest is present. Follow [REAL_CAMERA_VALIDATION.md](REAL_CAMERA_VALIDATION.md) for model and label requirements.
+Once capture works, try the separate [local PPE webcam trial](PPE_WEBCAM_TRIAL.md) by running `test-ppe-windows.cmd`. It downloads a verified public six-class model and shows predictions locally.
+
+For production accuracy evaluation, supply a trusted PPE checkpoint compatible with this project's detector and independently labeled test examples. There are currently no compatible weights installed in the cloud workspace. A generic person detector cannot establish whether a helmet or vest is present. Follow [REAL_CAMERA_VALIDATION.md](REAL_CAMERA_VALIDATION.md) for model and label requirements.
 
 A laptop webcam is useful for an initial close-range check. Its results cannot establish performance for factory cameras at different heights, distances, angles or lighting conditions. No minimum webcam result is treated as production approval.
 
