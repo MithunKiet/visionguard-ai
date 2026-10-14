@@ -948,4 +948,4 @@ Live-video access and deployment: [Secure live video](docs/SECURE_LIVE_VIDEO.md)
 
 Real-camera testing: [Validation workflow](docs/REAL_CAMERA_VALIDATION.md) and [current evidence](docs/REAL_CAMERA_VALIDATION_STATUS.md).
 
-Windows laptop webcam: [Local webcam check](docs/WINDOWS_WEBCAM.md) and [local PPE detection trial](docs/PPE_WEBCAM_TRIAL.md).
+Windows laptop webcam: [Local webcam check](docs/WINDOWS_WEBCAM.md) and [local PPE detection trial](docs/PPE_WEBCAM_TRIAL.md). Next: [measure the trial model against labeled images](docs/PPE_ACCURACY_EVALUATION.md).
