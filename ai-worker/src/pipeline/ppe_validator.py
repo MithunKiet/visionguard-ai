@@ -187,5 +187,9 @@ class PPEValidator:
             self._tracker.reset(key)
         return confirmed
 
+    def mark_gap(self) -> None:
+        """An unprocessed frame breaks voting without discarding delivery cooldowns."""
+        self._tracker._counts.clear()
+
     def acknowledge(self, violation: dict) -> None:
         self._tracker.mark_fired(violation["tracker_key"])

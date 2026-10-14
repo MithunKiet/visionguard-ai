@@ -12,7 +12,9 @@ from src.pipeline.batch_detector import BatchDetector
 from src.pipeline.ppe_validator import PPEValidator
 from src.events.publisher import publish
 from src.config.settings import settings
-from src.health.metrics import frames_processed_total, violations_detected_total
+from src.health.metrics import (
+    camera_last_processed_timestamp, camera_target_fps, frames_processed_total, violations_detected_total,
+)
 
 log = structlog.get_logger()
 
@@ -56,7 +58,10 @@ class CameraWorker:
         # The RTSP connection stays open and frames keep being read even when
         # off, so turning back on is instant — no reconnect needed.
         self._active = active
+        camera_target_fps.labels(camera_id=self.camera_id).set(self.zone_config.get("frame_sample_fps", 2) if active else 0)
 
+        camera_last_processed_timestamp.labels(camera_id=self.camera_id).set(0)
+        frames_processed_total.labels(camera_id=self.camera_id).inc(0)
         self._reader = FrameReader(camera_id, rtsp_url, self.zone_config.get("frame_sample_fps", 2), on_status=self._on_stream_status)
         # Shared BatchDetector, one per process — every camera on this
         # worker submits frames to it so inference can run in batches
@@ -81,6 +86,7 @@ class CameraWorker:
         if self._active == active:
             return
         self._active = active
+        camera_target_fps.labels(camera_id=self.camera_id).set(self.zone_config.get("frame_sample_fps", 2) if active else 0)
         log.info("camera_worker.active_changed", camera_id=self.camera_id, active=active)
 
     def _normalize_config(self, config: dict) -> dict:
@@ -99,6 +105,7 @@ class CameraWorker:
         fps = new_config.get("frame_sample_fps")
         if fps:
             self._reader.set_sample_fps(fps)
+        camera_target_fps.labels(camera_id=self.camera_id).set(self._reader.sample_fps if self._active else 0)
 
     async def run(self) -> None:
         if self._isolated:
@@ -154,8 +161,13 @@ class CameraWorker:
         # thread inside BatchDetector).
         await self._check_camera_spec()
 
-        detections = await self._detector.detect(frame, camera_id=self.camera_id)
+        try:
+            detections = await self._detector.detect(frame, camera_id=self.camera_id)
+        except Exception:
+            self._validator.mark_gap()
+            raise
         frames_processed_total.labels(camera_id=self.camera_id).inc()
+        camera_last_processed_timestamp.labels(camera_id=self.camera_id).set(time.time())
         violations = self._validator.evaluate(detections, self.zone_config, auto_mark=False)
 
         await self._publish_occupancy(detections)

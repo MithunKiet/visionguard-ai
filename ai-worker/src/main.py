@@ -9,7 +9,7 @@ import httpx
 from src.config.settings import settings
 from src.config.zone_sync import ZoneConfigSync
 from src.events.publisher import init_publisher, close_publisher, publish
-from src.health.metrics import start_metrics_server
+from src.health.metrics import camera_target_fps, start_metrics_server
 from src.pipeline.batch_detector import BatchDetector
 from src.pipeline.camera_worker import CameraWorker
 
@@ -80,6 +80,7 @@ async def reconcile_cameras(workers: list, tasks: dict, detector, cameras: list)
         camera = assigned.get(worker.camera_id)
         task = tasks[worker.camera_id]
         if camera is None or camera["rtsp_url"] != worker.rtsp_url or task.done():
+            camera_target_fps.labels(camera_id=worker.camera_id).set(0)
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
             tasks.pop(worker.camera_id)
@@ -128,6 +129,9 @@ async def main() -> None:
         for task in tasks.values():
             task.cancel()
         await asyncio.gather(heartbeat, *tasks.values(), return_exceptions=True)
+        await detector.stop()
+        for worker in workers:
+            camera_target_fps.labels(camera_id=worker.camera_id).set(0)
         await config_sync.stop()
         await close_publisher()
         log.info("ai_worker.stopped")

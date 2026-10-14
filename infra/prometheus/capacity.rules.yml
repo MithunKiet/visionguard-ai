@@ -1,0 +1,43 @@
+groups:
+  - name: visionguard-capacity
+    rules:
+      - alert: VisionGuardWorkerMetricsUnavailable
+        expr: up{job="visionguard-ai-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Worker metrics are unavailable
+          description: Check worker health before assigning more cameras.
+      - alert: VisionGuardInferenceFailures
+        expr: sum by (instance, camera_id) (increase(vg_detection_failures_total[5m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Inference requests are failing or exceeding capacity
+          description: Inspect overload, timeout and inference error counters; stop increasing load.
+      - alert: VisionGuardCameraProcessingStalled
+        expr: (time() - vg_camera_last_processed_timestamp_seconds > 120) and on (instance, camera_id) (vg_camera_target_fps > 0)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: An assigned active camera has no recent inference results
+          description: Check the stream, worker circuit breaker and inference service.
+      - alert: VisionGuardCameraBelowTarget
+        expr: (rate(vg_frames_processed_total[5m]) < 0.9 * vg_camera_target_fps) and on (instance, camera_id) (vg_camera_target_fps > 0)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: A camera is processing below its configured sample rate
+          description: Check decode, inference and upload delays before adding cameras.
+      - alert: VisionGuardInferenceLatencyHigh
+        expr: histogram_quantile(0.95, sum by (instance, camera_id, le) (rate(vg_frame_processing_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Detection request p95 exceeds one second
+          description: This includes queue time; it is not capture-to-alert latency. Tune the threshold to the approved pilot target.

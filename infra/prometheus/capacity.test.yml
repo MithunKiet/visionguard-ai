@@ -1,0 +1,32 @@
+rule_files:
+  - capacity.rules.yml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'vg_camera_target_fps{instance="worker",camera_id="slow"}'
+        values: '2+0x15'
+      - series: 'vg_frames_processed_total{instance="worker",camera_id="slow"}'
+        values: '0+60x15'
+      - series: 'vg_camera_last_processed_timestamp_seconds{instance="worker",camera_id="slow"}'
+        values: '0+60x15'
+      - series: 'vg_camera_target_fps{instance="worker",camera_id="inactive"}'
+        values: '0+0x15'
+      - series: 'vg_frames_processed_total{instance="worker",camera_id="inactive"}'
+        values: '0+0x15'
+      - series: 'vg_camera_last_processed_timestamp_seconds{instance="worker",camera_id="inactive"}'
+        values: '0+0x15'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: VisionGuardCameraBelowTarget
+        exp_alerts:
+          - exp_labels:
+              instance: worker
+              camera_id: slow
+              severity: warning
+            exp_annotations:
+              summary: A camera is processing below its configured sample rate
+              description: Check decode, inference and upload delays before adding cameras.
+      - eval_time: 15m
+        alertname: VisionGuardCameraProcessingStalled
+        exp_alerts: []

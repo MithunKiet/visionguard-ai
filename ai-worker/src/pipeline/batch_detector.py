@@ -1,83 +1,111 @@
-"""
-BatchDetector — shared across every CameraWorker in this process. Instead
-of each camera calling PPEDetector.detect() on its own frame the moment it
-reads one (N sequential single-image GPU calls), cameras submit frames here
-and a background loop groups whatever arrived within a short window into
-one batched inference call. A GPU processes a batch far more efficiently
-than the same N images one at a time, so this raises how many cameras a
-single worker/GPU can serve before frame processing falls behind.
-
-Also fixes a separate waste: previously every CameraWorker instantiated
-its own PPEDetector, loading a full duplicate copy of the model onto the
-GPU per camera. One BatchDetector wraps a single PPEDetector shared by all.
-"""
+"""Shared, bounded inference batching. Native model execution remains serial."""
 import asyncio
 import time
-from typing import List
 
 import numpy as np
 import structlog
 
+from src.config.settings import settings
 from src.health.metrics import batch_size as batch_size_metric
-from src.health.metrics import detection_queue_depth, frame_processing_seconds
-from src.pipeline.detector import Detection, PPEDetector
+from src.health.metrics import (
+    detection_failures_total, detection_queue_depth, frame_processing_seconds, inference_batch_seconds,
+)
 
 log = structlog.get_logger()
-
 MAX_BATCH_SIZE = 8
-MAX_WAIT_SECONDS = 0.05  # collect for up to 50ms before running an under-sized batch
+MAX_WAIT_SECONDS = 0.05
+
+
+class DetectionOverloaded(RuntimeError):
+    pass
 
 
 class BatchDetector:
+    def __init__(self, detector=None, *, queue_size=None, timeout=None):
+        if detector is None:
+            from src.pipeline.detector import PPEDetector
+            detector = PPEDetector()
+        self._detector = detector
+        self._queue = asyncio.Queue(maxsize=queue_size or settings.DETECTION_QUEUE_SIZE)
+        self._timeout = timeout if timeout is not None else settings.DETECTION_TIMEOUT_SECONDS
+        self._loop_task = None
+        self._closed = False
 
-    def __init__(self, detector: PPEDetector | None = None):
-        self._detector = detector or PPEDetector()
-        self._queue: asyncio.Queue = asyncio.Queue()
-        self._loop_task: asyncio.Task | None = None
-
-    def start(self) -> None:
+    def start(self):
+        if self._closed:
+            raise RuntimeError("Detector is stopped")
         if self._loop_task is None:
             self._loop_task = asyncio.create_task(self._run())
 
-    async def detect(self, frame: np.ndarray, camera_id: str = "unknown") -> List[Detection]:
+    async def detect(self, frame: np.ndarray, camera_id: str = "unknown"):
         self.start()
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
+        future = asyncio.get_running_loop().create_future()
         submitted_at = time.monotonic()
-        await self._queue.put((frame, future, camera_id))
-        result = await future
-        frame_processing_seconds.labels(camera_id=camera_id).observe(time.monotonic() - submitted_at)
-        return result
+        try:
+            self._queue.put_nowait((frame, future))
+        except asyncio.QueueFull:
+            detection_failures_total.labels(camera_id=camera_id, reason="overload").inc()
+            raise DetectionOverloaded("Inference queue is full") from None
+        detection_queue_depth.set(self._queue.qsize())
+        try:
+            return await asyncio.wait_for(future, timeout=self._timeout)
+        except asyncio.TimeoutError:
+            detection_failures_total.labels(camera_id=camera_id, reason="timeout").inc()
+            raise
+        except Exception:
+            detection_failures_total.labels(camera_id=camera_id, reason="inference").inc()
+            raise
+        finally:
+            frame_processing_seconds.labels(camera_id=camera_id).observe(time.monotonic() - submitted_at)
 
-    async def _run(self) -> None:
-        while True:
-            batch = [await self._queue.get()]
-            deadline = time.monotonic() + MAX_WAIT_SECONDS
+    async def stop(self):
+        self._closed = True
+        if self._loop_task is not None:
+            self._loop_task.cancel()
+            await asyncio.gather(self._loop_task, return_exceptions=True)
+        while not self._queue.empty():
+            _, future = self._queue.get_nowait()
+            if not future.done():
+                future.cancel()
+        detection_queue_depth.set(0)
 
-            while len(batch) < MAX_BATCH_SIZE:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
+    async def _run(self):
+        batch = []
+        try:
+            while True:
+                batch = [await self._queue.get()]
+                detection_queue_depth.set(self._queue.qsize())
+                deadline = time.monotonic() + MAX_WAIT_SECONDS
+                while len(batch) < MAX_BATCH_SIZE:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    try:
+                        batch.append(await asyncio.wait_for(self._queue.get(), timeout=remaining))
+                        detection_queue_depth.set(self._queue.qsize())
+                    except asyncio.TimeoutError:
+                        break
+                # Cancelled or timed-out queued frames must not consume inference.
+                batch = [item for item in batch if not item[1].done()]
+                if not batch:
+                    continue
+                batch_size_metric.observe(len(batch))
                 try:
-                    batch.append(await asyncio.wait_for(self._queue.get(), timeout=remaining))
-                except asyncio.TimeoutError:
-                    break
-
-            # Capacity signal: frames still waiting behind the batch we're
-            # about to run — sustained growth here means cameras are
-            # submitting faster than this GPU can drain.
-            detection_queue_depth.set(self._queue.qsize())
-            batch_size_metric.observe(len(batch))
-
-            frames = [item[0] for item in batch]
-            try:
-                results = await asyncio.to_thread(self._detector.detect_batch, frames)
-            except Exception as e:
-                log.error("batch_detector.inference_failed", batch_size=len(frames), error=str(e))
-                for _, future, _ in batch:
-                    if not future.done():
-                        future.set_exception(e)
-                continue
-
-            for (_, future, _), detections in zip(batch, results):
+                    with inference_batch_seconds.time():
+                        results = await asyncio.to_thread(self._detector.detect_batch, [item[0] for item in batch])
+                    if len(results) != len(batch):
+                        raise ValueError("Detector returned the wrong number of frame results")
+                except Exception as error:
+                    log.error("batch_detector.inference_failed", batch_size=len(batch), error_type=type(error).__name__)
+                    for _, future in batch:
+                        if not future.done():
+                            future.set_exception(error)
+                else:
+                    for (_, future), detections in zip(batch, results):
+                        if not future.done():
+                            future.set_result(detections)
+                batch = []
+        finally:
+            for _, future in batch:
                 if not future.done():
-                    future.set_result(detections)
+                    future.cancel()

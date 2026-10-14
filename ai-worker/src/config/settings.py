@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +37,9 @@ class WorkerSettings(BaseSettings):
     # (heartbeat, camera assignment fetch) that happen before any user is logged in.
     WORKER_API_KEY: str = "dev-worker-key-change-me"
     ENTERPRISE_ID: str = ""
+
+    DETECTION_QUEUE_SIZE: int = Field(default=32, ge=1, le=1024)
+    DETECTION_TIMEOUT_SECONDS: float = Field(default=5.0, ge=0.1, le=120)
 
     FRAME_SAMPLE_FPS: int = 2
     REQUIRED_CONSECUTIVE_FRAMES: int = 3
