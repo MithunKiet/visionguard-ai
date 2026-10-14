@@ -20,9 +20,16 @@ def probe_worker(config):
     # Parent discards stderr, including native FFmpeg diagnostics that can
     # contain RTSP passwords. The URL travels through stdin, never argv/logs.
     import cv2
-    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
-    cap = cv2.VideoCapture(config["url"], cv2.CAP_FFMPEG, [
-        cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 10000])
+    preview = config.get("preview", False)
+    if "camera_index" in config:
+        backend = cv2.CAP_ANY
+        if sys.platform == "win32":
+            backend = cv2.CAP_DSHOW if config["backend"] == "directshow" else cv2.CAP_MSMF
+        cap = cv2.VideoCapture(config["camera_index"], backend)
+    else:
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+        cap = cv2.VideoCapture(config["url"], cv2.CAP_FFMPEG, [
+            cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 10000])
     try:
         if not cap.isOpened():
             return {"status": "unreachable", "frames_decoded": 0}
@@ -33,6 +40,7 @@ def probe_worker(config):
         gaps, luminance = [], []
         dimensions = Counter()
         read_failed = False
+        cancelled = False
         while time.monotonic() - start < config["seconds"]:
             ok, frame = cap.read()
             now = time.monotonic()
@@ -46,9 +54,16 @@ def probe_worker(config):
                 gaps.append(now - last_frame_at)
             last_frame_at = now
             luminance.append(float(cv2.cvtColor(cv2.resize(frame, (160, 90)), cv2.COLOR_BGR2GRAY).mean()))
+            if preview:
+                cv2.imshow("VisionGuard webcam check - Q to stop (no recording)", frame)
+                if cv2.waitKey(1) & 0xFF in (ord("q"), 27) or cv2.getWindowProperty(
+                        "VisionGuard webcam check - Q to stop (no recording)", cv2.WND_PROP_VISIBLE) < 1:
+                    cancelled = True
+                    break
         elapsed = time.monotonic() - start
         frames = sum(dimensions.values())
-        return {"status": "stream_measured" if frames > 1 and not read_failed else "stream_incomplete",
+        status = "stream_measured" if frames > 1 and not read_failed else "stream_incomplete"
+        return {"status": "probe_cancelled" if cancelled else status,
                 "frames_decoded": frames, "read_failed": read_failed, "elapsed_seconds": elapsed,
                 "reported_fps": reported_fps if math.isfinite(reported_fps) and reported_fps > 0 else None,
                 "decoded_fps": (frames - 1) / (last_frame_at - first_frame_at) if frames > 1 and last_frame_at > first_frame_at else None,
@@ -57,6 +72,8 @@ def probe_worker(config):
                 "accuracy_validated": False, "footage_saved": False}
     finally:
         cap.release()
+        if preview:
+            cv2.destroyAllWindows()
 
 
 def probe(env_name, seconds):
@@ -66,10 +83,20 @@ def probe(env_name, seconds):
     parsed = urlsplit(url)
     if parsed.scheme not in {"rtsp", "rtsps"} or not parsed.hostname or parsed.fragment:
         raise ValueError("Set the named environment variable to the authorized RTSP URL")
+    return run_probe({"url": url, "seconds": seconds})
+
+
+def webcam_probe(camera_index, seconds, backend="directshow", preview=True):
+    if not 0 <= camera_index <= 32 or not 1 <= seconds <= 300 or backend not in {"directshow", "msmf"}:
+        raise ValueError("Invalid webcam index, duration or backend")
+    return run_probe({"camera_index": camera_index, "seconds": seconds, "backend": backend, "preview": preview})
+
+
+def run_probe(config):
     try:
         child = subprocess.run([sys.executable, "-m", "src.validation.camera", "_probe"],
-                               input=json.dumps({"url": url, "seconds": seconds}), text=True,
-                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=seconds + 25,
+                               input=json.dumps(config), text=True,
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=config["seconds"] + 25,
                                env={**os.environ, "OPENCV_LOG_LEVEL": "SILENT"})
         if child.returncode:
             return {"status": "probe_failed", "accuracy_validated": False}
@@ -171,6 +198,12 @@ def main():
     p.add_argument("--url-env", default="VALIDATION_RTSP_URL")
     p.add_argument("--seconds", type=int, default=30)
     p.add_argument("--output", type=Path, required=True)
+    p = sub.add_parser("webcam", help="Check a local webcam with a preview; no recording or upload")
+    p.add_argument("--camera-index", type=int, default=0)
+    p.add_argument("--backend", choices=["directshow", "msmf"], default="directshow")
+    p.add_argument("--seconds", type=int, default=30)
+    p.add_argument("--no-preview", action="store_true")
+    p.add_argument("--output", type=Path, required=True)
     p = sub.add_parser("evaluate", help="Score independently labeled held-out camera frames")
     p.add_argument("--manifest", type=Path, required=True)
     p.add_argument("--weights", type=Path, required=True)
@@ -184,6 +217,10 @@ def main():
             raise ValueError("Choose a new report path; existing evidence is never overwritten")
         if args.mode == "probe":
             report = probe(args.url_env, args.seconds)
+        elif args.mode == "webcam":
+            report = webcam_probe(args.camera_index, args.seconds, args.backend, not args.no_preview)
+            report["source"] = "local_webcam"
+            report["camera_index"] = args.camera_index
         else:
             if not 0 <= args.confidence <= 1 or not 0 < args.iou <= 1:
                 raise ValueError("Invalid scoring threshold")

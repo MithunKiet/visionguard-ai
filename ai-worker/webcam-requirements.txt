@@ -1,0 +1,3 @@
+# Separate preview environment: do not install alongside opencv-python-headless.
+numpy==1.26.4
+opencv-python==4.10.0.84

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "fix/**"]
+    branches: [main, "fix/**", "feat/real-camera-validation"]
   pull_request:
     branches: [main]
 
@@ -128,3 +128,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f frontend/Dockerfile.prod -t visionguard-frontend:ci .
+
+  windows-webcam:
+    name: Windows webcam runner regressions
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ai-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r webcam-requirements.txt pytest
+      - run: python -m pytest tests/test_webcam_validation.py

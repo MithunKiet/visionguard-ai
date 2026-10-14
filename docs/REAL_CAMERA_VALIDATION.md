@@ -2,6 +2,8 @@
 
 The validation runner is read-only: it does not publish events, create alerts, notify staff, write to application databases or deploy model weights. Stream quality and detection accuracy are separate measurements. A successful probe is not evidence of accurate PPE detection, and frame scores do not validate the temporal alert pipeline.
 
+For a Windows laptop webcam, start with [WINDOWS_WEBCAM.md](WINDOWS_WEBCAM.md); RTSP is not required for that local check.
+
 ## Required inputs
 
 - An authorized RTSP camera reachable from the validation machine. Store the full URL in an environment variable such as `VALIDATION_RTSP_URL`, including credentials if required. Do not put passwords in commands, Git, reports or chat. The cloud environment will need a permitted network route to the camera; a private factory address is not automatically reachable from the cloud.
