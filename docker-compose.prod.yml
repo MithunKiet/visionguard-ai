@@ -29,15 +29,37 @@ services:
       MTX_PATHDEFAULTS_PUBLISHPASS: ${MEDIAMTX_PUBLISH_PASSWORD:?Set a strong private media publisher password}
 
   ai-worker:
+    volumes: !override
+      - ./ai-worker/models:/app/models:ro
+    deploy:
+      resources:
+        reservations:
+          devices: !override
+            - driver: nvidia
+              device_ids: ["${WORKER_1_GPU_DEVICE_ID:?Set an explicitly tested GPU device ID}"]
+              capabilities: [gpu]
     environment:
       WORKER_API_KEY: ${WORKER_1_API_KEY:?Set the credential for worker-1}
+      DETECTION_QUEUE_SIZE: ${DETECTION_QUEUE_SIZE:-32}
+      DETECTION_TIMEOUT_SECONDS: ${DETECTION_TIMEOUT_SECONDS:-5}
       ENVIRONMENT: production
       DEMO_MODE: "false"
     ports: !reset []
 
   ai-worker-2:
+    volumes: !override
+      - ./ai-worker/models:/app/models:ro
+    deploy:
+      resources:
+        reservations:
+          devices: !override
+            - driver: nvidia
+              device_ids: ["${WORKER_2_GPU_DEVICE_ID:?Set an explicitly tested GPU device ID}"]
+              capabilities: [gpu]
     environment:
       WORKER_API_KEY: ${WORKER_2_API_KEY:?Set the credential for worker-2}
+      DETECTION_QUEUE_SIZE: ${DETECTION_QUEUE_SIZE:-32}
+      DETECTION_TIMEOUT_SECONDS: ${DETECTION_TIMEOUT_SECONDS:-5}
       ENVIRONMENT: production
       DEMO_MODE: "false"
     ports: !reset []
