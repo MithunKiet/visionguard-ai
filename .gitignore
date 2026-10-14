@@ -60,3 +60,7 @@ media/*
 # Browser regression artifacts
 frontend/test-results/
 frontend/playwright-report/
+
+# Private capacity inputs and generated measurements
+/capacity-data/
+/capacity-results/

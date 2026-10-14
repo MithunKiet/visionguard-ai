@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "fix/**"]
+    branches: [main, "fix/**", "feat/production-capacity"]
   pull_request:
     branches: [main]
 
@@ -25,7 +25,7 @@ jobs:
           pip install -r requirements.txt
           pip install ruff
       - name: Lint (ruff)
-        run: ruff check src tests
+        run: ruff check src tests ../infra/capacity
       - name: Tests
         run: pytest --cov=src --cov-report=term-missing
 
@@ -40,13 +40,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # Only the light deps the unit tests need — ultralytics/torch/opencv
-      # are runtime-only and far too heavy for CI test jobs.
+      # Exercise queue/scoring logic without downloading the GPU inference stack.
       - name: Install test dependencies
         run: |
-          pip install pytest pytest-asyncio pydantic-settings structlog ruff httpx numpy==1.26.4 opencv-python-headless==4.10.0.84
+          pip install pytest pytest-asyncio pydantic-settings structlog ruff httpx numpy==1.26.4 opencv-python-headless==4.10.0.84 prometheus-client==0.21.1
       - name: Lint (ruff)
-        run: ruff check src/pipeline/ppe_validator.py src/pipeline/types.py src/config tests
+        run: ruff check src/pipeline/ppe_validator.py src/pipeline/types.py src/pipeline/batch_detector.py src/health src/capacity src/config tests
       - name: Tests
         run: pytest
 
@@ -65,6 +64,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Capacity load-script syntax
+        run: node --check ../infra/capacity/api-load.js
       - name: Type-check + build
         run: npm run build
       - name: Install browser
@@ -119,6 +120,8 @@ jobs:
       - run: pip install -r requirements.txt
       - run: alembic upgrade head
       - run: pytest tests/test_review_integration.py tests/test_notification_outbox.py tests/test_live_video.py
+      - name: Capacity monitoring rules
+        run: docker run --rm --entrypoint promtool -v "$GITHUB_WORKSPACE/infra/prometheus:/rules:ro" -w /rules prom/prometheus:v3.2.1 test rules capacity.test.yml
       - name: Production configuration
         run: python ../infra/check_production_config.py
 

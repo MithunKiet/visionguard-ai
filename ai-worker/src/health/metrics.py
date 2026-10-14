@@ -1,21 +1,8 @@
-"""
-Prometheus metrics for capacity planning — answers "how many cameras can
-one worker/GPU handle" from real numbers instead of guessing:
+"""Worker throughput, request latency and health metrics.
 
-- vg_detection_queue_depth: frames waiting on the GPU right now. Sustained
-  growth means cameras are submitting faster than the GPU can drain —
-  the clearest "you're over capacity" signal.
-- vg_frame_processing_seconds: submit-to-result latency per camera. Rising
-  latency under load is the leading indicator, before the queue visibly backs up.
-- vg_batch_size: how many frames land in each GPU call (max 8, see
-  batch_detector.py). Consistently near 1 means load is too low to batch
-  effectively; near 8 means the GPU is well-utilized.
-- vg_camera_connected / vg_frame_reader_reconnect_total: stream health,
-  independent of processing load.
-- vg_frames_processed_total / vg_violations_detected_total: throughput.
-
-Exposed on METRICS_PORT (default 8001) via prometheus_client's own tiny
-HTTP server — started once at worker startup, no FastAPI/aiohttp needed.
+The bounded queue alone cannot prove capacity: each camera waits for its own
+result, so overload also appears as falling per-camera FPS and stale results.
+Inference timings exclude camera/network buffering and alert delivery.
 """
 import structlog
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
@@ -36,7 +23,7 @@ batch_size = Histogram(
 
 detection_queue_depth = Gauge(
     "vg_detection_queue_depth",
-    "Frames waiting in the shared BatchDetector queue, sampled per batch cycle",
+    "Frames currently waiting in the shared BatchDetector queue",
 )
 
 camera_connected = Gauge(
@@ -67,3 +54,17 @@ violations_detected_total = Counter(
 def start_metrics_server(port: int) -> None:
     start_http_server(port)
     log.info("metrics.started", port=port)
+
+# These signals measure inference service behavior, not camera capture latency.
+detection_failures_total = Counter(
+    "vg_detection_failures_total", "Detection requests rejected or failed", ["camera_id", "reason"],
+)
+inference_batch_seconds = Histogram(
+    "vg_inference_batch_seconds", "Wall time for one batched model call including preprocessing/postprocessing",
+)
+camera_target_fps = Gauge(
+    "vg_camera_target_fps", "Configured sampled detection FPS; zero when unassigned or inactive", ["camera_id"],
+)
+camera_last_processed_timestamp = Gauge(
+    "vg_camera_last_processed_timestamp_seconds", "Unix time of the last successful inference result", ["camera_id"],
+)
