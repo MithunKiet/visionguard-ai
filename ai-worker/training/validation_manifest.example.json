@@ -1,0 +1,21 @@
+{
+  "dataset_id": "replace-with-site-and-held-out-session-id",
+  "source": "real_camera",
+  "split": "held_out",
+  "frames": [
+    {
+      "image": "images/camera-01-day-0001.jpg",
+      "label": "labels/camera-01-day-0001.txt",
+      "camera_id": "camera-01",
+      "session_id": "held-out-shift-01",
+      "condition": "day-near-unobstructed"
+    },
+    {
+      "image": "images/camera-01-night-0001.jpg",
+      "label": "labels/camera-01-night-0001.txt",
+      "camera_id": "camera-01",
+      "session_id": "held-out-shift-02",
+      "condition": "night-far-partial-occlusion"
+    }
+  ]
+}

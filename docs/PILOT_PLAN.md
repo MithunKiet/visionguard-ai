@@ -6,7 +6,9 @@ Start with 2–4 cameras in one factory, with a named site owner and reviewer. T
 
 Record the camera models, resolution, lens/field of view, mounting height, distance to each observation area, network path, lighting and operating shifts. Select the PPE classes the supplied model actually supports. Define acceptable missed-event and false-alert rates, alert latency, recovery time and data retention with the site owner before testing; no universal accuracy or cameras-per-GPU claim is assumed.
 
-Use a separate pilot tenant and isolated camera network. Configure unique worker credentials, trusted camera hosts, HTTPS, storage access and backup/restore procedures. Keep public live playback disabled until the tenant-authorized media gateway is implemented. Use a controlled test recipient for notifications; verify durable delivery and retries before relying on alerts operationally.
+Use a separate pilot tenant and isolated camera network. Configure unique worker credentials, trusted camera hosts, HTTPS, storage access and backup/restore procedures. Configure the authenticated HLS gateway with private media relays and explicit camera mappings; follow `SECURE_LIVE_VIDEO.md`. Use a controlled test recipient for notifications; verify durable delivery and retries before relying on alerts operationally.
+
+Use [REAL_CAMERA_VALIDATION.md](REAL_CAMERA_VALIDATION.md) for the non-recording RTSP probe and held-out runtime-detector evaluation. Current evidence and missing inputs are tracked in [REAL_CAMERA_VALIDATION_STATUS.md](REAL_CAMERA_VALIDATION_STATUS.md).
 
 ## Camera placement and detection evaluation
 

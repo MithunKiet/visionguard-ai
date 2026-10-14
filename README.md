@@ -945,3 +945,5 @@ Step 4 → Connect Camera     (RTSP URL + test connection)
 - Auto AI worker assignment on completion
 
 Live-video access and deployment: [Secure live video](docs/SECURE_LIVE_VIDEO.md).
+
+Real-camera testing: [Validation workflow](docs/REAL_CAMERA_VALIDATION.md) and [current evidence](docs/REAL_CAMERA_VALIDATION_STATUS.md).
