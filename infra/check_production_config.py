@@ -33,6 +33,9 @@ for name in ("ai-worker", "ai-worker-2"):
     state = next(m for m in mounts if m["target"] == "/app/state")
     assert models["read_only"] and state["type"] == "volume" and not state.get("read_only")
     assert services[name]["environment"]["EDGE_STATE_DIR"] == "/app/state"
+    assert int(services[name]["shm_size"]) > 0
+    assert int(services[name]["environment"]["CAPTURE_MAX_FRAME_BYTES"]) > 0
+    assert float(services[name]["environment"]["FRAME_MAX_AGE_SECONDS"]) > 0
     devices = services[name]["deploy"]["resources"]["reservations"]["devices"]
     assert len(devices) == 1 and devices[0]["device_ids"] and "count" not in devices[0]
 assert services["ai-worker"]["volumes"][1]["source"] != services["ai-worker-2"]["volumes"][1]["source"]

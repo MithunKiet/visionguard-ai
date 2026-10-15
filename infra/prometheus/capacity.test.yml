@@ -4,6 +4,29 @@ evaluation_interval: 1m
 tests:
   - interval: 1m
     input_series:
+      - series: 'vg_frames_discarded_total{instance="worker",camera_id="late",reason="stale_inference"}'
+        values: '0+1x10'
+      - series: 'vg_frames_discarded_total{instance="worker",camera_id="normal",reason="superseded"}'
+        values: '0+100x10'
+      - series: 'vg_capture_restarts_total{instance="worker",camera_id="stuck",reason="stalled"}'
+        values: '0+1x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: VisionGuardStaleFramesDiscarded
+        exp_alerts:
+          - exp_labels: {instance: worker, camera_id: late, severity: warning}
+            exp_annotations:
+              summary: Camera frames exceed the local freshness budget
+              description: Inspect capture handoff and inference latency; this does not measure camera or DVR buffering.
+      - eval_time: 10m
+        alertname: VisionGuardCaptureRestarting
+        exp_alerts:
+          - exp_labels: {instance: worker, camera_id: stuck, severity: warning}
+            exp_annotations:
+              summary: A camera capture process repeatedly restarts
+              description: Check stream connectivity, decode limits, process resources and the restart reason.
+  - interval: 1m
+    input_series:
       - series: 'vg_edge_rejected_total{instance="edge"}'
         values: '0+1x15'
       - series: 'vg_edge_oldest_age_seconds{instance="edge"}'

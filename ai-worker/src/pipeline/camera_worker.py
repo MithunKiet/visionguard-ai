@@ -1,15 +1,18 @@
 import asyncio
 import time
+from contextlib import aclosing
+from datetime import datetime, timezone
 import structlog
 import numpy as np
 
 from src.pipeline.frame_reader import FrameReader
-from src.pipeline.batch_detector import BatchDetector
+from src.pipeline.batch_detector import BatchDetector, DetectionExpired
 from src.pipeline.ppe_validator import PPEValidator
 from src.events.publisher import publish, publish_incident
 from src.config.settings import settings
 from src.health.metrics import (
     camera_last_processed_timestamp, camera_target_fps, frames_processed_total, violations_detected_total,
+    frame_local_age, frames_discarded,
 )
 
 log = structlog.get_logger()
@@ -46,6 +49,7 @@ class CameraWorker:
         # The RTSP connection stays open and frames keep being read even when
         # off, so turning back on is instant — no reconnect needed.
         self._active = active
+        self._policy_revision = 0
         camera_target_fps.labels(camera_id=self.camera_id).set(self.zone_config.get("frame_sample_fps", 2) if active else 0)
 
         camera_last_processed_timestamp.labels(camera_id=self.camera_id).set(0)
@@ -66,6 +70,9 @@ class CameraWorker:
         self._spec_mismatch_active = False
 
     async def _on_stream_status(self, offline: bool) -> None:
+        self._validator.mark_gap()
+        self._policy_revision += 1
+        self._last_spec_check = 0
         event = "camera_offline_detected" if offline else "camera_reconnected"
         await publish(f"events.{event}", {"event": event, "camera_id": self.camera_id,
             "enterprise_id": self.enterprise_id, "factory_id": self.factory_id, "zone_id": self.zone_id})
@@ -74,6 +81,8 @@ class CameraWorker:
         if self._active == active:
             return
         self._active = active
+        self._policy_revision += 1
+        self._validator.mark_gap()
         camera_target_fps.labels(camera_id=self.camera_id).set(self.zone_config.get("frame_sample_fps", 2) if active else 0)
         log.info("camera_worker.active_changed", camera_id=self.camera_id, active=active)
 
@@ -89,6 +98,7 @@ class CameraWorker:
         """Hot-swap zone config (rule #8) — takes effect on the next frame.
         Frame sampling rate is pushed down into the reader immediately."""
         self.zone_config = self._normalize_config(new_config)
+        self._policy_revision += 1
         self._validator = PPEValidator()
         fps = new_config.get("frame_sample_fps")
         if fps:
@@ -109,12 +119,13 @@ class CameraWorker:
         # while the worker process keeps running.
         while not self._isolated:
             try:
-                async for frame in self._reader.read_frames():
-                    await self._process_frame(frame)
-                    self._failure_count = 0
+                async with aclosing(self._reader.read_frames()) as frames:
+                    async for packet in frames:
+                        await self._process_frame(packet.image, packet=packet)
+                        self._failure_count = 0
             except Exception as e:
                 self._failure_count += 1
-                log.error("camera_worker.error", camera_id=self.camera_id, error=str(e),
+                log.error("camera_worker.error", camera_id=self.camera_id, error_type=type(e).__name__,
                           failures=self._failure_count)
 
                 if self._failure_count >= CIRCUIT_BREAKER_THRESHOLD:
@@ -134,11 +145,33 @@ class CameraWorker:
 
                 await asyncio.sleep(5)
 
-    async def _process_frame(self, frame: np.ndarray) -> None:
+    async def _process_frame(self, frame: np.ndarray, *, packet=None) -> None:
         if not self._active:
             # Turned off — drop the frame with zero GPU/CPU work. The RTSP
             # read loop above keeps running so the stream stays connected
             # and turning back on is instant.
+            return
+
+        received_at = packet.received_at if packet else time.monotonic()
+        wall_time = packet.received_wall_time if packet else time.time()
+        revision = self._policy_revision
+        validator = self._validator
+
+        def discard_if_invalid(phase):
+            reason = None
+            age = time.monotonic() - received_at
+            if not 0 <= age <= settings.FRAME_MAX_AGE_SECONDS:
+                reason = f"stale_{phase}"
+            elif not self._active or revision != self._policy_revision:
+                reason = "policy_changed"
+            elif packet and not self._reader.is_current(packet):
+                reason = "stream_changed"
+            if reason:
+                validator.mark_gap()
+                frames_discarded.labels(camera_id=self.camera_id, reason=reason).inc()
+            return reason is not None
+
+        if discard_if_invalid("before_inference"):
             return
 
         # Submits to the shared BatchDetector, which groups this frame with
@@ -149,16 +182,30 @@ class CameraWorker:
         # thread inside BatchDetector).
         await self._check_camera_spec()
 
+        if discard_if_invalid("before_inference"):
+            return
+
         try:
-            detections = await self._detector.detect(frame, camera_id=self.camera_id)
+            detections = await self._detector.detect(frame, camera_id=self.camera_id,
+                deadline=received_at + settings.FRAME_MAX_AGE_SECONDS)
+        except DetectionExpired:
+            validator.mark_gap()
+            frames_discarded.labels(camera_id=self.camera_id, reason="stale_inference").inc()
+            return
         except Exception:
-            self._validator.mark_gap()
+            validator.mark_gap()
             raise
+        frame_local_age.labels(camera_id=self.camera_id).observe(max(0, time.monotonic() - received_at))
+        if discard_if_invalid("after_inference"):
+            return
         frames_processed_total.labels(camera_id=self.camera_id).inc()
         camera_last_processed_timestamp.labels(camera_id=self.camera_id).set(time.time())
-        violations = self._validator.evaluate(detections, self.zone_config, auto_mark=False)
+        violations = validator.evaluate(detections, self.zone_config, auto_mark=False)
+        observed_at = datetime.fromtimestamp(wall_time, timezone.utc).isoformat()
 
         for v in violations:
+            if discard_if_invalid("before_event"):
+                return
             if v.get("review"):
                 await publish("events.low_confidence_violation", {
                     "event": "low_confidence_violation",
@@ -167,6 +214,7 @@ class CameraWorker:
                     "factory_id": self.factory_id,
                     "zone_id": self.zone_id,
                     **{k: value for k, value in v.items() if k != "tracker_key"},
+                    "timestamp": observed_at,
                 })
             else:
                 await publish_incident(f"events.{v['event']}", {
@@ -179,14 +227,16 @@ class CameraWorker:
                     "track_id": v.get("track_id"),
                     "bbox": v["bbox"],
                     "config_version": self.zone_config.get("version", 1),
+                    "timestamp": observed_at,
                 }, frame)
 
-            self._validator.acknowledge(v)
+            validator.acknowledge(v)
             violations_detected_total.labels(camera_id=self.camera_id, violation_type=v["event"]).inc()
 
-        await self._publish_occupancy(detections)
+        if not discard_if_invalid("before_event"):
+            await self._publish_occupancy(detections, timestamp=observed_at)
 
-    async def _publish_occupancy(self, detections: list) -> None:
+    async def _publish_occupancy(self, detections: list, *, timestamp=None) -> None:
         """Person count per frame → occupancy_updated on change or heartbeat,
         overcrowding_detected when the count exceeds the zone capacity."""
         person_threshold = self.zone_config.get("person_threshold", 0.70)
@@ -209,6 +259,7 @@ class CameraWorker:
                 "factory_id": self.factory_id,
                 "zone_id": self.zone_id,
                 "count": count,
+                **({"timestamp": timestamp} if timestamp else {}),
             })
 
         max_occupancy = self.zone_config.get("max_occupancy")
@@ -225,6 +276,7 @@ class CameraWorker:
                 "zone_id": self.zone_id,
                 "count": count,
                 "max_occupancy": max_occupancy,
+                **({"timestamp": timestamp} if timestamp else {}),
             })
             self._last_overcrowding_fired = now
             log.warning("camera_worker.overcrowding", camera_id=self.camera_id,

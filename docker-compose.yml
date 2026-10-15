@@ -155,6 +155,7 @@ services:
       context: ./ai-worker
       dockerfile: Dockerfile
     container_name: vg_ai_worker
+    shm_size: ${WORKER_SHM_SIZE:-256m}
     environment:
       BACKEND_API_URL: http://backend:8000
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-vguser}:${RABBITMQ_PASSWORD:-vgpass}@rabbitmq:5672/${RABBITMQ_VHOST:-visionguard}
@@ -163,6 +164,10 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       WORKER_ID: worker-1
+      FRAME_MAX_AGE_SECONDS: ${FRAME_MAX_AGE_SECONDS:-2}
+      CAPTURE_STALL_SECONDS: ${CAPTURE_STALL_SECONDS:-15}
+      CAPTURE_STOP_TIMEOUT_SECONDS: ${CAPTURE_STOP_TIMEOUT_SECONDS:-1}
+      CAPTURE_MAX_FRAME_BYTES: ${CAPTURE_MAX_FRAME_BYTES:-6220800}
       EDGE_STATE_DIR: /app/state
       EDGE_MAX_EVENTS: ${EDGE_MAX_EVENTS:-10000}
       EDGE_MAX_BYTES: ${EDGE_MAX_BYTES:-536870912}
@@ -197,6 +202,7 @@ services:
       context: ./ai-worker
       dockerfile: Dockerfile
     container_name: vg_ai_worker_2
+    shm_size: ${WORKER_SHM_SIZE:-256m}
     environment:
       BACKEND_API_URL: http://backend:8000
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-vguser}:${RABBITMQ_PASSWORD:-vgpass}@rabbitmq:5672/${RABBITMQ_VHOST:-visionguard}
@@ -205,6 +211,10 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       WORKER_ID: worker-2
+      FRAME_MAX_AGE_SECONDS: ${FRAME_MAX_AGE_SECONDS:-2}
+      CAPTURE_STALL_SECONDS: ${CAPTURE_STALL_SECONDS:-15}
+      CAPTURE_STOP_TIMEOUT_SECONDS: ${CAPTURE_STOP_TIMEOUT_SECONDS:-1}
+      CAPTURE_MAX_FRAME_BYTES: ${CAPTURE_MAX_FRAME_BYTES:-6220800}
       EDGE_STATE_DIR: /app/state
       EDGE_MAX_EVENTS: ${EDGE_MAX_EVENTS:-10000}
       EDGE_MAX_BYTES: ${EDGE_MAX_BYTES:-536870912}

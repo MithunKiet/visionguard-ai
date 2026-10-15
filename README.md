@@ -4,6 +4,7 @@
 > Production status: review fixes and remaining deployment requirements are tracked in [docs/REVIEW_FIXES.md](docs/REVIEW_FIXES.md). Camera capacity and detection accuracy require a measured site pilot.
 > Alert delivery: [durable retries, delivery status and administrator replay](docs/ALERT_DELIVERY.md) require database migration `0018`.
 > Edge incidents: [durable local acceptance, evidence retries and bounded offline assignments](docs/DURABLE_EDGE_EVENTS.md). Preserve each worker's persistent state volume across upgrades.
+> Camera capture: [isolated capture processes and local freshness deadlines](docs/CAPTURE_ISOLATION.md). Default raw frame limit is 1080p; re-measure CPU/RAM before raising camera budgets.
 > Current schema: `0019`. Configure each worker's [factory and camera limit](docs/WORKER_SCHEDULING.md) after upgrading; unconfigured workers receive no camera streams.
   <p align="center">Enterprise Factory Safety Monitoring & Compliance Platform</p>
   <p align="center">
@@ -164,7 +165,7 @@ visionguard-ai/
 │   └── src/
 │       ├── main.py                   Worker entrypoint
 │       ├── pipeline/                 CameraWorker — full detection loop
-│       │   ├── frame_reader.py       RTSP capture + reconnect
+│       │   ├── frame_reader.py       Capture supervision + latest-frame handoff
 │       │   ├── detector.py           YOLO inference
 │       │   ├── tracker.py            ByteTrack integration
 │       │   ├── ppe_validator.py      PPE rule evaluation

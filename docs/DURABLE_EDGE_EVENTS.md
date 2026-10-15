@@ -4,7 +4,7 @@ P2 adds a local SQLite journal to each Linux AI worker. It protects **accepted i
 
 ## Acceptance and delivery
 
-1. A confirmed PPE detection receives an event UUID, processing timestamp and deterministic snapshot key. JPEG bytes and event metadata commit together locally before the detector acknowledges its cooldown.
+1. A confirmed PPE detection receives an event UUID, observation timestamp (local decode time with P3) and deterministic snapshot key. JPEG bytes and event metadata commit together locally before the detector acknowledges its cooldown.
 2. Separate background loops publish the event to RabbitMQ and upload its JPEG to MinIO. Neither waits for the other. Each retries failures indefinitely with backoff capped at 60 seconds.
 3. Events use persistent messages, publisher confirmations and mandatory routing. An unroutable message stays pending. An uncertain acknowledgement can cause replay with the same event ID and timestamp; the backend's existing transactional receipt deduplication prevents duplicate processing of that ID.
 4. The local row is removed only after broker confirmation and successful evidence upload. Metadata-only events need only broker confirmation. If JPEG encoding fails, the incident is still accepted without a snapshot.
@@ -61,4 +61,4 @@ Local verification on 2026-10-15:
 - 48 selected backend integration tests passed against PostgreSQL, including duplicate replay after local journal restart producing one violation and one alert while retaining the original timestamp and snapshot key. Existing notification delivery regressions also passed.
 - Lint, production Compose validation and Prometheus rule evaluation passed.
 
-Object-store failures were simulated in the retry tests; there was no real GPU/DVR/site outage drill or 200-camera measurement. Native upload calls use socket timeouts, not an absolute thread termination deadline. P3 still needs capture isolation and source-frame freshness checks; P4–P7 remain tracked in [the remediation plan](MULTI_FACTORY_REMEDIATION.md).
+Object-store failures were simulated in the retry tests; there was no real GPU/DVR/site outage drill or 200-camera measurement. Native upload calls use socket timeouts, not an absolute thread termination deadline. P3 now provides [capture isolation and local decode-age checks](CAPTURE_ISOLATION.md); upstream camera/DVR freshness still needs site validation. P4–P7 remain tracked in [the remediation plan](MULTI_FACTORY_REMEDIATION.md).

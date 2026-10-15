@@ -40,6 +40,10 @@ class WorkerSettings(BaseSettings):
 
     DETECTION_QUEUE_SIZE: int = Field(default=32, ge=1, le=1024)
     DETECTION_TIMEOUT_SECONDS: float = Field(default=5.0, ge=0.1, le=120)
+    FRAME_MAX_AGE_SECONDS: float = Field(default=2.0, ge=0.1, le=60)
+    CAPTURE_STALL_SECONDS: float = Field(default=15.0, ge=1, le=120)
+    CAPTURE_STOP_TIMEOUT_SECONDS: float = Field(default=1.0, ge=0.1, le=10)
+    CAPTURE_MAX_FRAME_BYTES: int = Field(default=1920 * 1080 * 3, ge=3, le=100663296)
 
     EDGE_STATE_DIR: str = "state"
     EDGE_MAX_EVENTS: int = Field(default=10000, ge=1, le=1000000)

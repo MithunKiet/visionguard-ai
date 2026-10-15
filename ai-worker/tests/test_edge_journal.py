@@ -292,6 +292,7 @@ async def test_publisher_starts_offline_and_closes_local_state(journal, monkeypa
 async def test_camera_does_not_start_cooldown_when_durable_acceptance_fails(monkeypatch):
     from src.pipeline import camera_worker
     worker = camera_worker.CameraWorker.__new__(camera_worker.CameraWorker)
+    worker._policy_revision = 0
     worker._active = True
     worker.camera_id, worker.factory_id, worker.zone_id = str(uuid4()), str(uuid4()), str(uuid4())
     worker.enterprise_id = IDENTITY["enterprise_id"]

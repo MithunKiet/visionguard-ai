@@ -40,7 +40,7 @@ frame_reader_reconnects_total = Counter(
 
 frames_processed_total = Counter(
     "vg_frames_processed_total",
-    "Total frames run through detection",
+    "Fresh inference results accepted by the camera pipeline",
     ["camera_id"],
 )
 
@@ -75,3 +75,8 @@ edge_oldest_age = Gauge("vg_edge_oldest_age_seconds", "Age of oldest retained ed
 edge_rejected = Counter("vg_edge_rejected_total", "Events not accepted by durable local storage")
 edge_delivery_failures = Counter("vg_edge_delivery_failures_total", "Edge delivery retry failures", ["channel"])
 edge_cache_active = Gauge("vg_edge_assignment_cache_active", "1 while relying on cached assignments")
+
+capture_last_received = Gauge("vg_capture_last_received_timestamp_seconds", "Wall time after the latest sampled frame decoded locally", ["camera_id"])
+capture_restarts = Counter("vg_capture_restarts_total", "Capture process restarts", ["camera_id", "reason"])
+frames_discarded = Counter("vg_frames_discarded_total", "Frames/results discarded before violation acceptance", ["camera_id", "reason"])
+frame_local_age = Histogram("vg_frame_local_age_seconds", "Age since local decode at inference result; excludes upstream buffering", ["camera_id"])

@@ -18,7 +18,7 @@ This file is persistent project memory. Read it before continuing fleet-readines
 | --- | --- | --- | --- |
 | P1 | Factory-bound worker scheduling, explicit measured camera limits, concurrent admission control, pending-camera backfill | No foreign factory/tenant assignments; last-slot races cannot exceed limits; offline/unconfigured workers receive no new assignments; pending cameras resume once capacity is available | Implemented and locally verified |
 | P2 | Durable edge incidents and evidence retries; remove synchronous snapshot dependency; cached startup configuration | Short-lived incident survives broker/storage outage and process restart; replay keeps stable event IDs; bounded storage and explicit full-disk behavior | Implemented and locally verified |
-| P3 | Independent capture, bounded latest-frame handoff and frame-age checks; isolate blocking operations | Slow inference/storage and a stalled stream do not accumulate stale detections or stall healthy cameras; reconnect and shutdown tests | Pending |
+| P3 | Independent capture, bounded latest-frame handoff and local decode-age checks; isolate blocking operations | Slow inference/storage and a stalled stream do not accumulate stale detections or stall healthy cameras; reconnect and shutdown tests | Implemented and locally verified; upstream age needs site validation |
 | P4 | Actual GPU/model readiness and production fail-closed GPU startup | Required CUDA absence fails startup; heartbeat reports actual runtime state; model startup and device checks tested on target GPU | Pending |
 | P5 | Automatic failed-worker recovery with ownership leases/fencing | Worker loss recovers within agreed RTO; partitions/recovery never cause duplicate active ownership; standby respects locality and capacity | Pending |
 | P6 | Batch assignment/configuration reads and fleet monitoring | Assignment-query count does not grow per camera; every worker registered in monitoring; representative API/broker/database load measured | Partial: batch reads verified; fleet monitoring/load pending |
@@ -28,7 +28,7 @@ P1 pending-camera backfill is not automatic failover. Do not reassign stale-work
 
 ## Current implementation decisions
 
-- P1 and P2 are implemented as separately tested releases; keep every later priority visible here.
+- P1, P2 and P3 are implemented as separately tested releases; keep every later priority visible here.
 - Bind each worker to one factory; allow multiple workers in the same factory. A worker heartbeat must not grant itself factory scope or increase capacity.
 - Factory/capacity configuration is administrator-controlled and tenant-scoped.
 - New/legacy workers have no scheduling permission until explicitly configured. Existing assignment rows must not silently grant cross-factory stream access after upgrade.
@@ -61,4 +61,13 @@ P2 validation on 2026-10-15:
 - Configured lint, production Compose validation, Prometheus semantic rule tests and whitespace checks passed. Existing dependency deprecation warnings remain.
 - Evidence-store failures were simulated. No production GPU image rebuild, real camera/DVR outage drill, physical power-loss test, production object-store test or fleet-capacity measurement was performed. GitHub Actions results must be checked separately.
 
-Next implementation: P3. Separate camera capture from inference with a bounded latest-frame handoff, validate source-frame age, and isolate stalled streams/blocking native operations. Preserve P2 local acceptance and replay semantics. P4–P7 remain as listed above; production GPU/site evidence cannot be manufactured in this workspace.
+P3 implemented with one supervised capture process per assigned camera, bounded shared/latest-frame slots, local decode-age deadlines and a dedicated inference executor. See [CAPTURE_ISOLATION.md](CAPTURE_ISOLATION.md) for process lifecycle, settings, memory sizing, timestamp semantics and upgrade requirements. No migration is required. The default shared slot supports 1080p BGR; larger feeds require an explicit memory budget.
+
+P3 validation on 2026-10-15:
+
+- AI suite: 131 passed, including spawned children stuck during open/read/release or holding a lock; reconnect without overlapping old children; healthy-camera progress; slow-consumer replacement; FPS changes; cancellation/revocation cleanup; stale/config-displaced result rejection; dedicated inference execution; existing RabbitMQ and ONNX checks.
+- Native OpenCV/FFmpeg smoke passed using a generated 320x240, 20 FPS RTSP source served by local MediaMTX 1.12.3. This measures local handoff behavior, not factory-camera freshness or capacity.
+- The PostgreSQL edge replay regression passed. Configured lint, production Compose checks, Prometheus semantic checks and whitespace checks passed.
+- Frame age begins after local decode. Camera/DVR buffering, frozen-scene replay, real exposure timestamps, production GPU/image validation and integrated fleet soak remain unverified. Measure whole-process-tree resources: capture children add CPU/RAM beyond parent worker metrics. Native GPU hangs still require worker recovery. GitHub Actions results must be checked separately.
+
+Next implementation: P4. Validate the actual production inference device/model at startup, fail closed when required CUDA is unavailable, and report observed runtime readiness in heartbeats. Keep offline acceptance and capture isolation intact. Actual target-GPU evidence remains a deployment gate; P5–P7 remain pending.

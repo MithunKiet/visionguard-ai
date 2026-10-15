@@ -75,15 +75,19 @@ async def send_heartbeat() -> None:
 async def reconcile_cameras(workers: list, tasks: dict, detector, cameras: list) -> None:
     """Reconcile authoritative assignments, including missed config events."""
     assigned = {camera["camera_id"]: camera for camera in cameras}
+    removed = []
     for worker in list(workers):
         camera = assigned.get(worker.camera_id)
         task = tasks[worker.camera_id]
         if camera is None or camera["rtsp_url"] != worker.rtsp_url or task.done():
             camera_target_fps.labels(camera_id=worker.camera_id).set(0)
             task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+            removed.append(task)
             tasks.pop(worker.camera_id)
             workers.remove(worker)
+    # Reap disconnected captures concurrently: a factory-wide revocation must
+    # not pay every native capture's termination timeout sequentially.
+    await asyncio.gather(*removed, return_exceptions=True)
     existing = {worker.camera_id: worker for worker in workers}
     for camera_id, camera in assigned.items():
         config = camera.get("zone_config") or {}

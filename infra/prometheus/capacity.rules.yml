@@ -1,6 +1,22 @@
 groups:
   - name: visionguard-capacity
     rules:
+      - alert: VisionGuardStaleFramesDiscarded
+        expr: sum by (instance, camera_id) (increase(vg_frames_discarded_total{reason=~"stale_.*"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Camera frames exceed the local freshness budget
+          description: Inspect capture handoff and inference latency; this does not measure camera or DVR buffering.
+      - alert: VisionGuardCaptureRestarting
+        expr: sum by (instance, camera_id) (increase(vg_capture_restarts_total[5m])) >= 3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: A camera capture process repeatedly restarts
+          description: Check stream connectivity, decode limits, process resources and the restart reason.
       - alert: VisionGuardEdgeEventRejected
         expr: increase(vg_edge_rejected_total[5m]) > 0
         labels:
