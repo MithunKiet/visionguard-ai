@@ -119,7 +119,9 @@ export function Violations() {
                   />
                 </TableCell>
                 <TableCell>
-                  {v.needs_review ? (
+                  {v.is_false_positive ? (
+                    <Chip size="small" variant="outlined" label="False positive" sx={{ height: 22, fontSize: 12 }} />
+                  ) : v.needs_review ? (
                     <Chip size="small" color="warning" variant="outlined" label="Review" sx={{ height: 22, fontSize: 12 }} />
                   ) : (
                     <Typography variant="body2" color="text.disabled">

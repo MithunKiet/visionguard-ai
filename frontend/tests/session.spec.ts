@@ -203,3 +203,140 @@ test("live video clears playback when camera access is denied", async ({ page })
   await expect(page.getByRole("alert")).toHaveText("Live streaming is not configured or access is unavailable.");
   await expect(page.locator("video")).toHaveCount(0);
 });
+
+async function incidentApi(page: Page, options: { viewer?: boolean; failure?: number; snapshot?: string | null } = {}) {
+  await mockApi(page);
+  if (options.viewer) await page.route("**/api/v1/auth/login", route => route.fulfill({ json: {
+    success: true, data: { access_token: "viewer-token", is_master_session: false,
+      user: { id: "viewer", enterprise_id: "A", name: "Viewer", roles: ["VIEWER"], is_first_login: false } },
+  } }));
+  const incident = { id: "review-1", alert_number: "ALT-REVIEW-1", alert_type: "PPE_VIOLATION_HELMET",
+    severity: "Critical", status: "Open", created_on: "2026-10-14T00:00:00Z", sla_due_at: "2026-10-14T00:15:00Z",
+    acknowledged_on: null, resolved_on: null, violation_id: "violation-1", factory_name: "North factory",
+    zone_name: "Loading bay", camera_name: "Entrance camera", review_history: [] as any[] };
+  const writes: { path: string; body: any }[] = [];
+  const lists: URL[] = [];
+  let denied = false;
+  await page.route("**/api/v1/alerts**", async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() === "PATCH") {
+      writes.push({ path: url.pathname, body: request.postDataJSON() });
+      if (options.failure) {
+        if (options.failure === 409) {
+          incident.status = "Resolved";
+          incident.review_history.push({ id: "concurrent", from_status: "Open", to_status: "Resolved", reviewer_name: "Other reviewer", comment: "Already checked on site.", created_on: "2026-10-14T01:00:00Z" });
+        }
+        return route.fulfill({ status: options.failure, json: { success: false, error: { code: "REVIEW_FAILED" } } });
+      }
+      const from = incident.status;
+      incident.status = url.pathname.endsWith("/resolve") ? "Resolved" : url.pathname.endsWith("/false-positive") ? "FalsePositive" : "Acknowledged";
+      incident.review_history.push({ id: `history-${writes.length}`, from_status: from, to_status: incident.status,
+        reviewer_name: "Safety reviewer", created_on: "2026-10-14T01:00:00Z", comment: request.postDataJSON().note ?? request.postDataJSON().reason ?? null });
+      return route.fulfill({ json: { success: true, data: incident } });
+    }
+    if (url.pathname.endsWith("/review-1")) {
+      return route.fulfill(denied ? { status: 404, json: { success: false } } : { json: { success: true, data: incident } });
+    }
+    lists.push(url);
+    const matches = (!url.searchParams.get("status") || url.searchParams.get("status") === incident.status)
+      && (!url.searchParams.get("severity") || url.searchParams.get("severity") === incident.severity);
+    return route.fulfill({ json: { success: true, data: matches ? [incident] : [], meta: { total: matches ? 1 : 0 } } });
+  });
+  await page.route("**/api/v1/violations/violation-1", route => route.fulfill({ json: { success: true, data: {
+    confidence: 0.82, created_on: "2026-10-14T00:00:00Z", needs_review: true, is_false_positive: false,
+    snapshot_url: options.snapshot === undefined ? "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=" : options.snapshot,
+  } } }));
+  await page.goto("/login");
+  await signIn(page);
+  await page.getByRole("link", { name: "Alerts", exact: true }).click();
+  await page.getByRole("button", { name: "Review ALT-REVIEW-1", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("North factory · Loading bay · Entrance camera");
+  return { writes, lists, deny: () => { denied = true; } };
+}
+
+test("incident resolution requires a real note and displays saved history", async ({ page }) => {
+  const state = await incidentApi(page);
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Model confidence: 82%");
+  await expect(dialog.getByAltText("Incident snapshot")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Save review" })).toBeDisabled();
+  await dialog.getByLabel("Resolution note").fill("   ");
+  await expect(dialog.getByRole("button", { name: "Save review" })).toBeDisabled();
+  await dialog.getByLabel("Resolution note").fill("  Checked the snapshot and corrected helmet use.  ");
+  await dialog.getByRole("button", { name: "Save review" }).click();
+  await expect(dialog).toContainText("Review saved.");
+  await expect(dialog).toContainText("Open → Resolved");
+  await expect(dialog).toContainText("Safety reviewer");
+  await expect(dialog).toContainText("Checked the snapshot and corrected helmet use.");
+  await expect(dialog.getByRole("button", { name: "Save review" })).toHaveCount(0);
+  expect(state.writes).toEqual([{ path: "/api/v1/alerts/review-1/resolve", body: { note: "Checked the snapshot and corrected helmet use." } }]);
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByText("No alerts for this filter.")).toBeVisible();
+});
+
+test("false-positive review enforces the reason limit and persists the selected outcome", async ({ page }) => {
+  const state = await incidentApi(page, { snapshot: null });
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("No snapshot was recorded for this incident.");
+  await dialog.getByLabel("Review decision").click();
+  await page.getByRole("option", { name: "Mark as false positive" }).click();
+  await dialog.getByLabel("False-positive reason").fill("x".repeat(201));
+  await expect(dialog.getByRole("button", { name: "Save review" })).toBeDisabled();
+  await dialog.getByLabel("False-positive reason").fill("Confirmed helmet on site; camera angle hid it.");
+  await dialog.getByRole("button", { name: "Save review" }).click();
+  await expect(dialog).toContainText("Open → False positive");
+  expect(state.writes[0]).toEqual({ path: "/api/v1/alerts/review-1/false-positive", body: { reason: "Confirmed helmet on site; camera angle hid it." } });
+});
+
+test("viewers can inspect incident evidence but cannot submit decisions", async ({ page }) => {
+  const state = await incidentApi(page, { viewer: true });
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("You have read-only access to incident reviews.");
+  await expect(dialog.getByRole("button", { name: "Save review" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Acknowledge" })).toHaveCount(0);
+  expect(state.writes).toHaveLength(0);
+});
+
+test("concurrent incident decisions refresh the status without overwriting the other review", async ({ page }) => {
+  const state = await incidentApi(page, { failure: 409 });
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Resolution note").fill("My proposed resolution.");
+  await dialog.getByRole("button", { name: "Save review" }).click();
+  await expect(dialog).toContainText("The review was not accepted.");
+  await expect(dialog).toContainText("Other reviewer");
+  await expect(dialog).toContainText("Already checked on site.");
+  await expect(dialog.getByRole("button", { name: "Save review" })).toHaveCount(0);
+  await expect(dialog.getByText("Review saved.")).toHaveCount(0);
+  expect(state.writes).toHaveLength(1);
+});
+
+test("failed incident saves retain the review note and do not claim success", async ({ page }) => {
+  await incidentApi(page, { failure: 500 });
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Resolution note").fill("Keep this draft for retry.");
+  await dialog.getByRole("button", { name: "Save review" }).click();
+  await expect(dialog).toContainText("Could not confirm that the review was saved.");
+  await expect(dialog.getByLabel("Resolution note")).toHaveValue("Keep this draft for retry.");
+  await expect(dialog.getByText("Review saved.")).toHaveCount(0);
+});
+
+test("revoked incident access removes cached evidence and review actions", async ({ page }) => {
+  const state = await incidentApi(page);
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByAltText("Incident snapshot")).toBeVisible();
+  state.deny();
+  await dialog.getByRole("button", { name: "Refresh evidence" }).click();
+  await expect(dialog).toContainText("Incident could not be loaded.");
+  await expect(dialog.getByAltText("Incident snapshot")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Save review" })).toHaveCount(0);
+});
+
+test("incident filters use server-side severity and status", async ({ page }) => {
+  const state = await incidentApi(page);
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByLabel("Severity", { exact: true }).click();
+  await page.getByRole("option", { name: "Low", exact: true }).click();
+  await expect(page.getByText("No alerts for this filter.")).toBeVisible();
+  expect(state.lists.some(url => url.searchParams.get("severity") === "Low" && url.searchParams.get("status") === "Open" && url.searchParams.get("page") === "1")).toBe(true);
+});

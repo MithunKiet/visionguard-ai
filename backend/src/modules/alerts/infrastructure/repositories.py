@@ -77,6 +77,39 @@ class AlertRepository:
         row = result.scalar_one_or_none()
         return await self._to_entity(row) if row else None
 
+    async def get_review_details(
+        self, alert_id: str, enterprise_id: str, scope: ScopeFilter | None = None,
+    ) -> dict:
+        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
+        visible = select(Alert.id).where(Alert.public_id == alert_id, Alert.enterprise_id == ent_pk)
+        if scope is not None:
+            visible = await apply_zone_scope(self._db, visible, scope, Alert.factory_id, Alert.zone_id)
+        location = (await self._db.execute(
+            select(Factory.name, Zone.name, Camera.name)
+            .select_from(Alert)
+            .outerjoin(Factory, (Factory.id == Alert.factory_id) & (Factory.enterprise_id == ent_pk))
+            .outerjoin(Zone, (Zone.id == Alert.zone_id) & (Zone.enterprise_id == ent_pk))
+            .outerjoin(Camera, (Camera.id == Alert.camera_id) & (Camera.enterprise_id == ent_pk))
+            .where(Alert.id.in_(visible))
+        )).one_or_none()
+        rows = (await self._db.execute(
+            select(AlertHistory, User.name)
+            .outerjoin(User, (User.public_id == AlertHistory.created_by) & (User.enterprise_id == ent_pk))
+            .where(AlertHistory.alert_id.in_(visible))
+            .order_by(AlertHistory.created_at.asc(), AlertHistory.id.asc())
+        )).all()
+        return {
+            "factory_name": location[0] if location else None,
+            "zone_name": location[1] if location else None,
+            "camera_name": location[2] if location else None,
+            "review_history": [{
+                "id": history.public_id, "from_status": history.from_status,
+                "to_status": history.to_status, "comment": history.comment,
+                "reviewer_name": name,
+                "created_on": history.created_at.isoformat() if history.created_at else None,
+            } for history, name in rows],
+        }
+
     async def list(
         self,
         enterprise_id: str,
@@ -167,10 +200,13 @@ class AlertRepository:
         )
         if result.rowcount != 1:
             raise VisionGuardException(code="INVALID_TRANSITION", message="Alert state changed", status_code=409)
-        if to_status == "FalsePositive" and alert.violation_id:
+        if to_status in {"Resolved", "FalsePositive"} and alert.violation_id:
+            review_values = {"needs_review": False}
+            if to_status == "FalsePositive":
+                review_values.update(is_false_positive=True, fp_reason=comment)
             await self._db.execute(update(PPEViolation).where(
                 PPEViolation.public_id == alert.violation_id, PPEViolation.enterprise_id == ent_pk,
-            ).values(is_false_positive=True, fp_reason=comment))
+            ).values(**review_values))
         alert_pk = await to_pk(self._db, Alert, alert_id)
         # Append history
         self._db.add(AlertHistory(

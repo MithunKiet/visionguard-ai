@@ -946,6 +946,7 @@ Step 4 → Connect Camera     (RTSP URL + test connection)
 
 Live-video access and deployment: [Secure live video](docs/SECURE_LIVE_VIDEO.md).
 
+Incident review: [Evidence, reviewer decisions and status history](docs/INCIDENT_REVIEW.md).
 Production preparation and sizing: [Measure capacity before scaling](docs/PRODUCTION_CAPACITY.md).
 
 Real-camera testing: [Validation workflow](docs/REAL_CAMERA_VALIDATION.md) and [current evidence](docs/REAL_CAMERA_VALIDATION_STATUS.md).
