@@ -4,7 +4,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.modules.worker.domain.entities import WorkerEntity
-from src.shared.database.models import AIWorker, Enterprise
+from src.shared.database.models import AIWorker, Enterprise, Factory
 
 
 class WorkerRepository:
@@ -42,21 +42,23 @@ class WorkerRepository:
     async def list_active(self, enterprise_id: str) -> list[WorkerEntity]:
         ent_pk = await self._resolve_enterprise_pk(enterprise_id)
         result = await self._db.execute(
-            select(AIWorker).where(
+            select(AIWorker, Factory.public_id).outerjoin(Factory, Factory.id == AIWorker.factory_id).where(
                 AIWorker.enterprise_id == ent_pk,
                 AIWorker.status == "Online",
-                AIWorker.last_heartbeat > datetime.now(timezone.utc) - timedelta(seconds=90),
+                AIWorker.last_heartbeat > datetime.now(timezone.utc) - timedelta(seconds=60),
+                AIWorker.deleted_at.is_(None), AIWorker.is_active.is_(True),
             )
         )
-        return [self._to_entity_sync(r, enterprise_id) for r in result.scalars()]
+        return [self._to_entity_sync(r, enterprise_id, factory_id) for r, factory_id in result.all()]
 
     async def list_all(self, enterprise_id: str) -> list[WorkerEntity]:
         ent_pk = await self._resolve_enterprise_pk(enterprise_id)
         result = await self._db.execute(
-            select(AIWorker).where(AIWorker.enterprise_id == ent_pk)
+            select(AIWorker, Factory.public_id).outerjoin(Factory, Factory.id == AIWorker.factory_id)
+            .where(AIWorker.enterprise_id == ent_pk, AIWorker.deleted_at.is_(None))
             .order_by(AIWorker.worker_id)
         )
-        return [self._to_entity_sync(r, enterprise_id) for r in result.scalars()]
+        return [self._to_entity_sync(r, enterprise_id, factory_id) for r, factory_id in result.all()]
 
     async def upsert_heartbeat(
         self,
@@ -91,16 +93,8 @@ class WorkerRepository:
                 )
             )
             await self._db.commit()
-            return WorkerEntity(
-                id=existing_row.public_id,
-                enterprise_id=enterprise_id,
-                worker_id=worker_id,
-                status="Online",
-                hostname=hostname,
-                model_version=model_version,
-                gpu_available=gpu_available,
-                last_heartbeat=now,
-            )
+            await self._db.refresh(existing_row)
+            return await self._to_entity(existing_row)
         else:
             ent_pk = await self._resolve_enterprise_pk(enterprise_id)
             row = AIWorker(
@@ -134,10 +128,13 @@ class WorkerRepository:
         enterprise_public_id = await self._db.scalar(
             select(Enterprise.public_id).where(Enterprise.id == row.enterprise_id)
         )
-        return self._to_entity_sync(row, enterprise_public_id)
+        factory_public_id = await self._db.scalar(select(Factory.public_id).where(
+            Factory.id == row.factory_id,
+        )) if row.factory_id is not None else None
+        return self._to_entity_sync(row, enterprise_public_id, factory_public_id)
 
     @staticmethod
-    def _to_entity_sync(row: AIWorker, enterprise_public_id: str) -> WorkerEntity:
+    def _to_entity_sync(row: AIWorker, enterprise_public_id: str, factory_public_id: str | None = None) -> WorkerEntity:
         return WorkerEntity(
             id=row.public_id,
             enterprise_id=enterprise_public_id,
@@ -147,4 +144,6 @@ class WorkerRepository:
             model_version=row.model_version,
             gpu_available=row.gpu_available,
             last_heartbeat=row.last_heartbeat,
+            factory_id=factory_public_id,
+            max_cameras=row.max_cameras,
         )

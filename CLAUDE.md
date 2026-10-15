@@ -42,7 +42,7 @@ Every table follows the BaseEntity pattern:
 - All foreign keys use internal integer ids for performance; only repository code at the literal SQL boundary translates a `public_id` to/from the internal integer (helpers in `backend/src/shared/database/pid.py`: `to_pk`, `to_public_id`, `to_pks`).
 - Exception: `identity.user_roles` is a pure link table, not a BaseEntity — composite PK of `user_public_id`/`role_public_id` directly (no surrogate id, no audit columns).
 
-Current migration head: **0018**.
+Current migration head: **0019**.
 
 ## Multi-tenancy
 
@@ -65,5 +65,7 @@ Email, Slack, Webhook, Desktop.
 `SYSTEM_ADMIN`, `ENTERPRISE_ADMIN`, `FACTORY_MANAGER`, `SAFETY_OFFICER`, `SUPERVISOR`, `VIEWER`. A user may hold multiple roles simultaneously — authorization checks for intersection, not equality (`require_roles()`). Role-based access is combined with data-visibility rules (e.g. a Factory Manager can only access their assigned factory's data).
 
 ## Current status (verified)
+
+Multi-factory remediation priorities, deployment context and implementation handoff are tracked in [docs/MULTI_FACTORY_REMEDIATION.md](docs/MULTI_FACTORY_REMEDIATION.md). Read and update that plan when continuing fleet-readiness work.
 
 Automated unit/integration/browser checks and a synthetic event/report smoke validate the implemented paths. Alert delivery now uses a transactional PostgreSQL outbox with bounded retries and administrator replay; see `docs/ALERT_DELIVERY.md`. Live video uses a per-asset authenticated HLS gateway; see `docs/SECURE_LIVE_VIDEO.md` for required private relays and camera mappings. Real-camera model accuracy, GPU capacity, real-camera media/TLS validation, provider/load validation, production TLS and backup/restore validation remain required. See `docs/REVIEW_FIXES.md` for evidence and per-finding status.

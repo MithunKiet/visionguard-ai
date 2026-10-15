@@ -12,6 +12,8 @@ class WorkerEntity:
     model_version: str | None = None
     gpu_available: bool = False
     last_heartbeat: datetime | None = None
+    factory_id: str | None = None
+    max_cameras: int = 0
 
     @property
     def is_alive(self) -> bool:

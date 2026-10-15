@@ -61,7 +61,8 @@ async def setup():
             await db.flush()
             db.add(UserRole(user_public_id=user.public_id, role_public_id=role.public_id))
             users[name] = user
-        worker = AIWorker(enterprise_id=enterprise.id, worker_id=uuid4().hex, status="Online")
+        worker = AIWorker(enterprise_id=enterprise.id, worker_id=uuid4().hex, status="Online",
+                          factory_id=locations[0].factory.id, max_cameras=1)
         db.add(worker)
         await db.commit()
         tokens = {}

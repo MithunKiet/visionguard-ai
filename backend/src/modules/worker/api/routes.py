@@ -1,10 +1,13 @@
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.modules.worker.api.schemas import HeartbeatRequest, WorkerResponse
+from src.modules.worker.api.schemas import HeartbeatRequest, WorkerResponse, WorkerSchedulingRequest
 from src.modules.worker.application.services import WorkerService
 from src.modules.worker.infrastructure.repositories import WorkerRepository
+from src.modules.worker.infrastructure.scheduling import WorkerSchedulingRepository
 from src.shared.database.session import get_db
 from src.shared.responses import ApiResponse
 from src.shared.security.dependencies import (
@@ -53,6 +56,21 @@ async def heartbeat(
     return ApiResponse(data=_to_response(worker))
 
 
+@router.put("/{worker_public_id}/scheduling", response_model=ApiResponse[WorkerResponse],
+            summary="Set a worker's allowed factory and measured camera limit")
+async def configure_worker_scheduling(
+    worker_public_id: UUID,
+    body: WorkerSchedulingRequest,
+    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    await WorkerSchedulingRepository(db).configure(
+        str(worker_public_id), user.enterprise_id, str(body.factory_id), body.max_cameras, user.user_id,
+    )
+    worker = await WorkerRepository(db).get_by_id(str(worker_public_id))
+    return ApiResponse(data=_to_response(worker))
+
+
 @router.get(
     "/{worker_id}/cameras",
     response_model=ApiResponse[list],
@@ -82,4 +100,6 @@ def _to_response(w) -> dict:
         "gpu_available": w.gpu_available,
         "last_heartbeat": w.last_heartbeat,
         "is_alive": w.is_alive,
+        "factory_id": w.factory_id,
+        "max_cameras": w.max_cameras,
     }

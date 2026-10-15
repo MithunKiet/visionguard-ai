@@ -119,7 +119,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: alembic upgrade head
-      - run: pytest tests/test_review_integration.py tests/test_notification_outbox.py tests/test_live_video.py
+      - run: pytest tests/test_review_integration.py tests/test_notification_outbox.py tests/test_live_video.py tests/test_worker_scheduling.py
       - name: Capacity monitoring rules
         run: docker run --rm --entrypoint promtool -v "$GITHUB_WORKSPACE/infra/prometheus:/rules:ro" -w /rules prom/prometheus:v3.2.1 test rules capacity.test.yml
       - name: Production configuration

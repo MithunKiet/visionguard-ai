@@ -72,12 +72,14 @@ docker compose logs -f backend
 
 ## 5. Start the AI Worker
 
+Before expecting camera processing, sign in as an administrator and configure the seeded worker's factory and camera budget using [WORKER_SCHEDULING.md](WORKER_SCHEDULING.md). Migration `0019` leaves workers unconfigured by default; seeded assignment rows alone do not authorize streams. For this single synthetic camera, a budget of one is sufficient for the demo setup and is not a hardware capacity measurement.
+
 ```bash
 docker compose up -d ai-worker
 docker compose logs -f ai-worker
 ```
 
-Expected log sequence: `ai_worker.starting` -> `detector.loading` -> `ai_worker.cameras_loaded count=1` -> `camera_worker.started`.
+Look for `ai_worker.starting`, `detector.loading`, and then `camera_worker.started` after the configured assignment is fetched. An unconfigured worker will not start camera tasks.
 
 **Real detection requires compatible PPE weights or an explicitly configured remote provider.** Without either, the current worker refuses to start unless development-only `DEMO_MODE=true` is explicitly set; synthetic mode does not validate PPE accuracy. For actual camera testing, use [REAL_CAMERA_VALIDATION.md](REAL_CAMERA_VALIDATION.md). To exercise only the alert pipeline, publish a synthetic event:
 

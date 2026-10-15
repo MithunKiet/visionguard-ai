@@ -3,6 +3,7 @@
 
 > Production status: review fixes and remaining deployment requirements are tracked in [docs/REVIEW_FIXES.md](docs/REVIEW_FIXES.md). Camera capacity and detection accuracy require a measured site pilot.
 > Alert delivery: [durable retries, delivery status and administrator replay](docs/ALERT_DELIVERY.md) require database migration `0018`.
+> Current schema: `0019`. Configure each worker's [factory and camera limit](docs/WORKER_SCHEDULING.md) after upgrading; unconfigured workers receive no camera streams.
   <p align="center">Enterprise Factory Safety Monitoring & Compliance Platform</p>
   <p align="center">
     <img src="https://img.shields.io/badge/Python-3.11+-blue?style=flat-square&logo=python" />
@@ -278,10 +279,10 @@ API docs: `http://localhost:8000/docs`
 ```bash
 cd ai-worker
 pip install -r requirements.txt
-DEVICE=cpu python -m src.main
+USE_GPU=false python -m src.main
 ```
 
-> For real cameras: add RTSP URLs to `ai-worker/src/config/settings.py` → `CAMERAS` list.
+> Supply compatible PPE weights and worker credentials, register cameras through the Cameras page/API, and configure the registered worker's [factory and camera limit](docs/WORKER_SCHEDULING.md). Workers fetch assignments from the backend; there is no static `CAMERAS` settings list. Synthetic detection requires explicit development-only `DEMO_MODE=true`.
 
 ### 6. Start frontend
 
@@ -949,6 +950,8 @@ Live-video access and deployment: [Secure live video](docs/SECURE_LIVE_VIDEO.md)
 Incident review: [Evidence, reviewer decisions and status history](docs/INCIDENT_REVIEW.md).
 
 Production preparation and sizing: [Measure capacity before scaling](docs/PRODUCTION_CAPACITY.md).
+
+Multi-factory readiness: [Priority plan](docs/MULTI_FACTORY_REMEDIATION.md) and [worker factory/capacity configuration](docs/WORKER_SCHEDULING.md).
 
 Real-camera testing: [Validation workflow](docs/REAL_CAMERA_VALIDATION.md) and [current evidence](docs/REAL_CAMERA_VALIDATION_STATUS.md).
 

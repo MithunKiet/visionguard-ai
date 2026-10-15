@@ -11,6 +11,7 @@ Regression coverage checks persisted camera state and worker polling after react
 ## Deployment and compatibility
 
 - The subsequent [durable alert delivery change](ALERT_DELIVERY.md) requires migration `0018`. It adds transactional delivery jobs, independent retries and administrator status/replay controls. The validation numbers below describe the earlier review remediation; current delivery-specific validation is recorded in that guide.
+- Current multi-factory scheduling requires migration `0019` and explicit administrator configuration of each worker's factory and camera budget. Unconfigured workers receive no streams. Follow the coordinated upgrade instructions in [WORKER_SCHEDULING.md](WORKER_SCHEDULING.md).
 
 - Run `alembic upgrade head` before starting the new backend. Migration `0017` adds event receipts, stored review/bounding-box fields, and a PostgreSQL sequence for globally unique alert numbers. Existing data is preserved. Container startup runs migrations under a PostgreSQL advisory lock; readiness rejects an older schema.
 - All previously issued access and refresh tokens must be replaced by signing in again. New tokens carry a password-derived, keyed session fingerprint. Password changes invalidate both token types. HTTP authorization reads current roles, scope and account status. WebSocket delivery checks the same policy; idle sockets revalidate every 15 seconds.

@@ -5,6 +5,7 @@ import structlog
 
 from src.modules.worker.domain.entities import WorkerEntity
 from src.modules.worker.infrastructure.repositories import WorkerRepository
+from src.modules.worker.infrastructure.scheduling import WorkerSchedulingRepository
 
 log = structlog.get_logger()
 
@@ -59,6 +60,9 @@ class WorkerService:
         if not worker or worker.enterprise_id != enterprise_id:
             from src.core.exceptions import NotFoundException
             raise NotFoundException("Worker", worker_id)
+        if worker.factory_id is None or worker.max_cameras < 1:
+            return []
+        await WorkerSchedulingRepository(db).admit_pending(enterprise_id, worker_public_id=worker.id)
         worker_db_id = await self._repo.get_internal_id_by_worker_id(worker_id, enterprise_id)
         if not worker_db_id:
             return []
@@ -69,33 +73,17 @@ class WorkerService:
         Return cameras + zone configs assigned to this worker.
         Used by the AI Worker on startup to know what to watch.
         """
-        from src.modules.camera.infrastructure.repositories import CameraRepository
-        from src.shared.database.models import Zone, ZoneConfig
-        from src.shared.database.pid import to_pk
-        from sqlalchemy import select
-
-        cam_repo = CameraRepository(db)
-        cameras = await cam_repo.list_by_worker(worker_db_id)
-
+        rows = await WorkerSchedulingRepository(db).assignment_rows(worker_db_id)
         result = []
-        for cam in cameras:
-            # Fetch zone config for this camera's zone — cam.zone_id is the
-            # zone's public_id; ZoneConfig.zone_id is the internal FK, so
-            # resolve before querying.
-            zone_pk = await to_pk(db, Zone, cam.zone_id)
-            config_result = await db.execute(
-                select(ZoneConfig).where(ZoneConfig.zone_id == zone_pk)
-            )
-            config = config_result.scalar_one_or_none()
-
+        for cam, enterprise_id, factory_id, zone_id, config in rows:
             result.append({
-                "id": str(cam.id),
-                "camera_id": str(cam.id),
+                "id": str(cam.public_id),
+                "camera_id": str(cam.public_id),
                 "camera_code": cam.code,
                 "rtsp_url": cam.rtsp_url,
-                "enterprise_id": str(cam.enterprise_id),
-                "factory_id": str(cam.factory_id),
-                "zone_id": str(cam.zone_id),
+                "enterprise_id": str(enterprise_id),
+                "factory_id": str(factory_id),
+                "zone_id": str(zone_id),
                 "status": cam.status,
                 "in_maintenance": cam.in_maintenance,
                 "ppe_overrides": cam.ppe_overrides or {},

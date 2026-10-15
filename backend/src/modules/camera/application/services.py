@@ -100,8 +100,7 @@ class CameraService:
         )
         camera = await self._cameras.create(entity)
 
-        # Auto-assign to least-loaded worker
-        await self._assign_worker_round_robin(camera)
+        await self._assign_worker(camera, db)
 
         log.info("camera.created", camera_id=str(camera.id), name=name)
         return camera
@@ -275,22 +274,15 @@ class CameraService:
             "rtsp_latency_ms": probe["latency_ms"],
         }
 
-    # ── Worker Assignment (round-robin) ────────────────────────────────────
+    # ── Factory-scoped worker admission ───────────────────────────────────
 
-    async def _assign_worker_round_robin(self, camera: CameraEntity) -> None:
-        workers = await self._workers.list_active(camera.enterprise_id)
-        if not workers:
-            log.warning("camera.no_workers_available", camera_id=str(camera.id))
-            return
-
-        # Pick worker with fewest cameras
-        counts = []
-        for w in workers:
-            worker_pk = await self._workers.get_internal_id(w.id)
-            count = await self._cameras.count_by_worker(worker_pk)
-            counts.append((count, w))
-
-        counts.sort(key=lambda x: x[0])
-        chosen = counts[0][1]
-        await self._cameras.assign_worker(camera.id, chosen.id)
-        log.info("camera.worker_assigned", camera_id=str(camera.id), worker_id=str(chosen.id))
+    async def _assign_worker(self, camera: CameraEntity, db) -> None:
+        from src.modules.worker.infrastructure.scheduling import WorkerSchedulingRepository
+        assignments = await WorkerSchedulingRepository(db).admit_pending(
+            camera.enterprise_id, camera_id=camera.id,
+        )
+        camera.worker_id = assignments.get(camera.id)
+        if camera.worker_id:
+            log.info("camera.worker_assigned", camera_id=camera.id, worker_id=camera.worker_id)
+        else:
+            log.warning("camera.assignment_pending", camera_id=camera.id)

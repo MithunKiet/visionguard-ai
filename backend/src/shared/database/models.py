@@ -10,7 +10,7 @@ Every foreign key below points at another model's internal integer `id`.
 """
 from sqlalchemy import (
     Column, String, Boolean, BigInteger, Integer, Float, Text, Date,
-    DateTime, Time, ForeignKey, Index, func,
+    DateTime, Time, ForeignKey, Index, CheckConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -150,7 +150,10 @@ class Zone(BaseEntity):
 
 class AIWorker(BaseEntity):
     __tablename__ = "ai_workers"
-    __table_args__ = {"schema": "worker"}
+    __table_args__ = (
+        CheckConstraint("max_cameras >= 0", name="ck_ai_workers_max_cameras"),
+        {"schema": "worker"},
+    )
 
     enterprise_id   = Column(BigInteger, ForeignKey("enterprises.id"), nullable=True, index=True)
     worker_id       = Column(String(100), unique=True, nullable=False)
@@ -159,6 +162,8 @@ class AIWorker(BaseEntity):
     model_version   = Column(String(50))
     last_heartbeat  = Column(DateTime(timezone=True))
     gpu_available   = Column(Boolean, default=False)
+    factory_id      = Column(BigInteger, ForeignKey("factories.id"), nullable=True, index=True)
+    max_cameras     = Column(Integer, nullable=False, default=0, server_default="0")
 
 
 # ─── Cameras ─────────────────────────────────────────────────────────────────
