@@ -45,6 +45,10 @@ Heartbeat payloads cannot set `factory_id` or `max_cameras`; additional fields a
 
 Changing a budget upward requires new measurements if the model, stream profile, sampling rate or hardware changed. Configuration changes record the administrator and update timestamp; this change does not add an immutable scheduling-history ledger.
 
+## Cached assignments during an outage
+
+P2 workers may use a previously authorized local assignment snapshot during transport errors, HTTP 429 or HTTP 5xx, default age limit 300 seconds. Revocation during a partition cannot be observed immediately; expiry is enforced at the next reconciliation after the age limit, plus request duration. Explicit authorization rejection or an authoritative empty assignment clears access. Set `EDGE_ASSIGNMENT_CACHE_SECONDS=0` to disable fallback. This is not a distributed ownership lease; stop/fence the original worker before transferring assignments. See [DURABLE_EDGE_EVENTS.md](DURABLE_EDGE_EVENTS.md) for identity binding, invalidation and persistent-volume recovery.
+
 ## Rollback
 
 Stop the new workers and all backend instances before downgrade. Migration downgrade to `0018` removes factory/capacity policy columns and preserves camera assignments. Running the previous application reintroduces the earlier locality/capacity weaknesses; do not use rollback as an approved multi-factory operating mode. Restore policy configuration after any re-upgrade, as the removed values cannot be recovered automatically.

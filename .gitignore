@@ -65,6 +65,7 @@ frontend/playwright-report/
 # Private capacity inputs and generated measurements
 /capacity-data/
 /capacity-results/
+/ai-worker/state/
 
 # Private real-camera validation inputs and generated evidence
 /validation-data/

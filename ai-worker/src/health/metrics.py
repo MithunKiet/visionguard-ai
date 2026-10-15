@@ -46,7 +46,7 @@ frames_processed_total = Counter(
 
 violations_detected_total = Counter(
     "vg_violations_detected_total",
-    "Total violations published",
+    "Total violations accepted by durable local storage",
     ["camera_id", "violation_type"],
 )
 
@@ -68,3 +68,10 @@ camera_target_fps = Gauge(
 camera_last_processed_timestamp = Gauge(
     "vg_camera_last_processed_timestamp_seconds", "Unix time of the last successful inference result", ["camera_id"],
 )
+
+edge_pending = Gauge("vg_edge_pending", "Durable edge records awaiting delivery", ["channel"])
+edge_pending_bytes = Gauge("vg_edge_pending_bytes", "Logical bytes retained by the edge journal")
+edge_oldest_age = Gauge("vg_edge_oldest_age_seconds", "Age of oldest retained edge record")
+edge_rejected = Counter("vg_edge_rejected_total", "Events not accepted by durable local storage")
+edge_delivery_failures = Counter("vg_edge_delivery_failures_total", "Edge delivery retry failures", ["channel"])
+edge_cache_active = Gauge("vg_edge_assignment_cache_active", "1 while relying on cached assignments")

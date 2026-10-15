@@ -1,14 +1,13 @@
 from src.config.logging_config import configure_logging
 
-configure_logging()
-
 import asyncio
 import platform
 import structlog
 import httpx
 from src.config.settings import settings
 from src.config.zone_sync import ZoneConfigSync
-from src.events.publisher import init_publisher, close_publisher, publish
+from src.config.assignment_cache import refresh_assignments
+from src.events.publisher import get_journal, init_publisher, close_publisher, publish
 from src.health.metrics import camera_target_fps, start_metrics_server
 from src.pipeline.batch_detector import BatchDetector
 from src.pipeline.camera_worker import CameraWorker
@@ -47,7 +46,7 @@ async def fetch_assigned_cameras() -> list[dict]:
             timeout=10.0,
         )
         resp.raise_for_status()
-        return resp.json().get("data") or []
+        return resp.json()["data"]
 
 
 async def send_heartbeat() -> None:
@@ -63,14 +62,14 @@ async def send_heartbeat() -> None:
         try:
             await register_worker()
         except Exception as e:
-            log.warning("ai_worker.heartbeat_failed", error=str(e))
+            log.warning("ai_worker.heartbeat_failed", error_type=type(e).__name__)
         try:
             await publish("events.worker_heartbeat", {
                 "event": "worker_heartbeat",
                 "worker_id": settings.WORKER_ID,
             })
         except Exception as e:
-            log.warning("ai_worker.heartbeat_publish_failed", error=str(e))
+            log.warning("ai_worker.heartbeat_publish_failed", error_type=type(e).__name__)
 
 
 async def reconcile_cameras(workers: list, tasks: dict, detector, cameras: list) -> None:
@@ -109,27 +108,32 @@ async def main() -> None:
     log.info("ai_worker.starting", worker_id=settings.WORKER_ID)
     start_metrics_server(settings.METRICS_PORT)
     await init_publisher()
-    await register_worker()
-    detector = BatchDetector()
-    detector.start()
+    detector = None
     tasks = {}
     workers = []
-    config_sync = ZoneConfigSync(workers)
-    heartbeat = asyncio.create_task(send_heartbeat())
-    await config_sync.start()
+    config_sync = ZoneConfigSync(workers, invalidate_cache=lambda: asyncio.to_thread(get_journal().clear_cache))
+    heartbeat = None
     try:
+        detector = BatchDetector()
+        detector.start()
+        heartbeat = asyncio.create_task(send_heartbeat())
+        await config_sync.start()
         while True:
             try:
-                await reconcile_cameras(workers, tasks, detector, await fetch_assigned_cameras())
+                cameras = await refresh_assignments(get_journal(), register_worker, fetch_assigned_cameras)
             except Exception as error:
                 log.error("ai_worker.reconciliation_failed", error_type=type(error).__name__)
+                cameras = []  # Corrupt/unreadable state cannot extend old authorization.
+            await reconcile_cameras(workers, tasks, detector, cameras)
             await asyncio.sleep(30)
     finally:
-        heartbeat.cancel()
+        if heartbeat:
+            heartbeat.cancel()
         for task in tasks.values():
             task.cancel()
-        await asyncio.gather(heartbeat, *tasks.values(), return_exceptions=True)
-        await detector.stop()
+        await asyncio.gather(*([heartbeat] if heartbeat else []), *tasks.values(), return_exceptions=True)
+        if detector:
+            await detector.stop()
         for worker in workers:
             camera_target_fps.labels(camera_id=worker.camera_id).set(0)
         await config_sync.stop()
@@ -138,4 +142,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    configure_logging()
     asyncio.run(main())

@@ -43,9 +43,9 @@ jobs:
       # Exercise validation and queue logic without the GPU inference stack.
       - name: Install test dependencies
         run: |
-          pip install pytest pytest-asyncio pydantic-settings structlog ruff httpx numpy==1.26.4 opencv-python-headless==4.10.0.84 prometheus-client==0.21.1 Pillow==12.3.0
+          pip install pytest pytest-asyncio pydantic-settings structlog ruff httpx numpy==1.26.4 opencv-python-headless==4.10.0.84 prometheus-client==0.21.1 Pillow==12.3.0 aio-pika==9.4.3 minio==7.2.11
       - name: Lint (ruff)
-        run: ruff check src/pipeline/ppe_validator.py src/pipeline/types.py src/pipeline/batch_detector.py src/health src/capacity src/config src/validation tests
+        run: ruff check src/pipeline/ppe_validator.py src/pipeline/types.py src/pipeline/batch_detector.py src/pipeline/camera_worker.py src/main.py src/events src/health src/capacity src/config src/validation tests
       - name: Tests
         run: pytest
 
@@ -119,7 +119,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: alembic upgrade head
-      - run: pytest tests/test_review_integration.py tests/test_notification_outbox.py tests/test_live_video.py tests/test_worker_scheduling.py
+      - run: pytest tests/test_review_integration.py tests/test_notification_outbox.py tests/test_live_video.py tests/test_worker_scheduling.py tests/test_edge_replay.py
       - name: Capacity monitoring rules
         run: docker run --rm --entrypoint promtool -v "$GITHUB_WORKSPACE/infra/prometheus:/rules:ro" -w /rules prom/prometheus:v3.2.1 test rules capacity.test.yml
       - name: Production configuration

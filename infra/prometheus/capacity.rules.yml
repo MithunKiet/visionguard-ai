@@ -1,6 +1,29 @@
 groups:
   - name: visionguard-capacity
     rules:
+      - alert: VisionGuardEdgeEventRejected
+        expr: increase(vg_edge_rejected_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: An incident could not be saved locally
+          description: Check journal capacity, free disk, permissions and filesystem health; rejected incidents are not guaranteed recoverable.
+      - alert: VisionGuardEdgeDeliveryBacklog
+        expr: vg_edge_oldest_age_seconds > 300
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Durable edge delivery is delayed
+          description: Inspect pending event and evidence counts, broker routing and object storage; preserve the worker state volume.
+      - alert: VisionGuardUsingCachedAssignments
+        expr: vg_edge_assignment_cache_active == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Worker is using temporary cached camera authorization
+          description: Restore API connectivity before the cached authorization expires and camera tasks stop.
       - alert: VisionGuardWorkerMetricsUnavailable
         expr: up{job="visionguard-ai-worker"} == 0
         for: 2m

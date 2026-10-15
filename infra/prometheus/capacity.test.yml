@@ -4,6 +4,36 @@ evaluation_interval: 1m
 tests:
   - interval: 1m
     input_series:
+      - series: 'vg_edge_rejected_total{instance="edge"}'
+        values: '0+1x15'
+      - series: 'vg_edge_oldest_age_seconds{instance="edge"}'
+        values: '0+60x15'
+      - series: 'vg_edge_assignment_cache_active{instance="edge"}'
+        values: '1+0x15'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: VisionGuardEdgeEventRejected
+        exp_alerts:
+          - exp_labels: {instance: edge, severity: critical}
+            exp_annotations:
+              summary: An incident could not be saved locally
+              description: Check journal capacity, free disk, permissions and filesystem health; rejected incidents are not guaranteed recoverable.
+      - eval_time: 10m
+        alertname: VisionGuardEdgeDeliveryBacklog
+        exp_alerts:
+          - exp_labels: {instance: edge, severity: warning}
+            exp_annotations:
+              summary: Durable edge delivery is delayed
+              description: Inspect pending event and evidence counts, broker routing and object storage; preserve the worker state volume.
+      - eval_time: 10m
+        alertname: VisionGuardUsingCachedAssignments
+        exp_alerts:
+          - exp_labels: {instance: edge, severity: warning}
+            exp_annotations:
+              summary: Worker is using temporary cached camera authorization
+              description: Restore API connectivity before the cached authorization expires and camera tasks stop.
+  - interval: 1m
+    input_series:
       - series: 'vg_camera_target_fps{instance="worker",camera_id="slow"}'
         values: '2+0x15'
       - series: 'vg_frames_processed_total{instance="worker",camera_id="slow"}'

@@ -9,6 +9,7 @@ stale/duplicate events are discarded. Also applies camera_status_changed
 events (manual on/off from the dashboard) the same way — in-place, no
 reconnect.
 """
+import asyncio
 import json
 
 import aio_pika
@@ -20,19 +21,34 @@ log = structlog.get_logger()
 
 CONFIG_EXCHANGE = "config_events"
 
-_connection = None
-
-
 class ZoneConfigSync:
 
-    def __init__(self, camera_workers: list):
+    def __init__(self, camera_workers: list, invalidate_cache=None):
         # CameraWorker instances, matched by zone_id on each event
         self._workers = camera_workers
+        self._connection = None
+        self._task = None
+        self._invalidate_cache = invalidate_cache
 
     async def start(self) -> None:
-        global _connection
-        _connection = await aio_pika.connect_robust(settings.RABBITMQ_URL)
-        channel = await _connection.channel()
+        self._task = asyncio.create_task(self._run())
+
+    async def _run(self):
+        while True:
+            try:
+                await self._connect()
+                while not self._connection.is_closed:
+                    await asyncio.sleep(1)
+            except Exception as error:
+                log.warning("zone_sync.retry", error_type=type(error).__name__)
+            finally:
+                await self._close_connection()
+            await asyncio.sleep(5)
+
+    async def _connect(self):
+        self._connection = await aio_pika.connect_robust(settings.RABBITMQ_URL,
+            timeout=settings.EDGE_NETWORK_TIMEOUT_SECONDS, fail_fast=True)
+        channel = await self._connection.channel()
         exchange = await channel.declare_exchange(
             CONFIG_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True
         )
@@ -46,8 +62,19 @@ class ZoneConfigSync:
         log.info("zone_sync.listening", worker_id=settings.WORKER_ID)
 
     async def stop(self) -> None:
-        if _connection:
-            await _connection.close()
+        if self._task:
+            self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
+            self._task = None
+        await self._close_connection()
+
+    async def _close_connection(self):
+        if self._connection:
+            try:
+                await asyncio.wait_for(self._connection.close(), timeout=3)
+            except Exception:
+                pass
+            self._connection = None
 
     async def _on_message(self, message: aio_pika.IncomingMessage) -> None:
         async with message.process(requeue=False):
@@ -57,6 +84,10 @@ class ZoneConfigSync:
                 log.warning("zone_sync.bad_payload")
                 return
 
+            if self._invalidate_cache and body.get("enterprise_id") == settings.ENTERPRISE_ID:
+                # An observed push may supersede the last HTTP snapshot. Never
+                # restart offline with that older snapshot until HTTP refreshes it.
+                await self._invalidate_cache()
             if message.routing_key == "config.zone_config_updated":
                 self._apply_zone_config(body)
             elif message.routing_key == "config.camera_status_changed":

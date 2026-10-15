@@ -28,7 +28,12 @@ print("Production Compose checks passed: private services, no development mounts
 
 for name in ("ai-worker", "ai-worker-2"):
     mounts = services[name].get("volumes", [])
-    assert len(mounts) == 1 and mounts[0]["target"] == "/app/models" and mounts[0]["read_only"]
+    assert len(mounts) == 2
+    models = next(m for m in mounts if m["target"] == "/app/models")
+    state = next(m for m in mounts if m["target"] == "/app/state")
+    assert models["read_only"] and state["type"] == "volume" and not state.get("read_only")
+    assert services[name]["environment"]["EDGE_STATE_DIR"] == "/app/state"
     devices = services[name]["deploy"]["resources"]["reservations"]["devices"]
     assert len(devices) == 1 and devices[0]["device_ids"] and "count" not in devices[0]
-print("Worker checks passed: read-only model mounts and explicit GPU allocation.")
+assert services["ai-worker"]["volumes"][1]["source"] != services["ai-worker-2"]["volumes"][1]["source"]
+print("Worker checks passed: read-only models, separate persistent journals and explicit GPU allocation.")

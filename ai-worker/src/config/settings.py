@@ -41,6 +41,14 @@ class WorkerSettings(BaseSettings):
     DETECTION_QUEUE_SIZE: int = Field(default=32, ge=1, le=1024)
     DETECTION_TIMEOUT_SECONDS: float = Field(default=5.0, ge=0.1, le=120)
 
+    EDGE_STATE_DIR: str = "state"
+    EDGE_MAX_EVENTS: int = Field(default=10000, ge=1, le=1000000)
+    EDGE_MAX_BYTES: int = Field(default=536870912, ge=1048576)
+    EDGE_MIN_FREE_BYTES: int = Field(default=67108864, ge=0)
+    EDGE_ASSIGNMENT_CACHE_SECONDS: int = Field(default=300, ge=0, le=3600)
+    EDGE_NETWORK_TIMEOUT_SECONDS: float = Field(default=10, ge=1, le=60)
+    MINIO_SECURE: bool = False
+
     FRAME_SAMPLE_FPS: int = 2
     REQUIRED_CONSECUTIVE_FRAMES: int = 3
     SNAPSHOT_CONFIDENCE_THRESHOLD: float = 0.60

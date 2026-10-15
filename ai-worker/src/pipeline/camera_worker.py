@@ -1,16 +1,12 @@
 import asyncio
 import time
-import uuid
 import structlog
 import numpy as np
-import cv2
-from datetime import datetime, timezone
-from minio import Minio
 
 from src.pipeline.frame_reader import FrameReader
 from src.pipeline.batch_detector import BatchDetector
 from src.pipeline.ppe_validator import PPEValidator
-from src.events.publisher import publish
+from src.events.publisher import publish, publish_incident
 from src.config.settings import settings
 from src.health.metrics import (
     camera_last_processed_timestamp, camera_target_fps, frames_processed_total, violations_detected_total,
@@ -33,14 +29,6 @@ OVERCROWDING_COOLDOWN_SECONDS = 120
 # recovers within minutes, so re-alerting every processed frame would just
 # spam the same fact — recheck at most this often per connection.
 SPEC_MISMATCH_COOLDOWN_SECONDS = 600
-
-# Shared across all CameraWorker instances in this process — one client
-# connection reused for every snapshot upload instead of reconnecting per call.
-_minio = Minio(settings.MINIO_ENDPOINT,
-               access_key=settings.MINIO_ACCESS_KEY,
-               secret_key=settings.MINIO_SECRET_KEY,
-               secure=False)
-
 
 class CameraWorker:
 
@@ -170,10 +158,7 @@ class CameraWorker:
         camera_last_processed_timestamp.labels(camera_id=self.camera_id).set(time.time())
         violations = self._validator.evaluate(detections, self.zone_config, auto_mark=False)
 
-        await self._publish_occupancy(detections)
-
         for v in violations:
-            violations_detected_total.labels(camera_id=self.camera_id, violation_type=v["event"]).inc()
             if v.get("review"):
                 await publish("events.low_confidence_violation", {
                     "event": "low_confidence_violation",
@@ -184,8 +169,7 @@ class CameraWorker:
                     **{k: value for k, value in v.items() if k != "tracker_key"},
                 })
             else:
-                snapshot_key = await self._capture_snapshot(frame, v["event"])
-                await publish(f"events.{v['event']}", {
+                await publish_incident(f"events.{v['event']}", {
                     "event": v["event"],
                     "camera_id": self.camera_id,
                     "enterprise_id": self.enterprise_id,
@@ -194,11 +178,13 @@ class CameraWorker:
                     "confidence": v["confidence"],
                     "track_id": v.get("track_id"),
                     "bbox": v["bbox"],
-                    "snapshot_key": snapshot_key,
                     "config_version": self.zone_config.get("version", 1),
-                })
+                }, frame)
 
             self._validator.acknowledge(v)
+            violations_detected_total.labels(camera_id=self.camera_id, violation_type=v["event"]).inc()
+
+        await self._publish_occupancy(detections)
 
     async def _publish_occupancy(self, detections: list) -> None:
         """Person count per frame → occupancy_updated on change or heartbeat,
@@ -231,7 +217,6 @@ class CameraWorker:
             and count > max_occupancy
             and (now - self._last_overcrowding_fired) >= OVERCROWDING_COOLDOWN_SECONDS
         ):
-            self._last_overcrowding_fired = now
             await publish("events.overcrowding_detected", {
                 "event": "overcrowding_detected",
                 "camera_id": self.camera_id,
@@ -241,6 +226,7 @@ class CameraWorker:
                 "count": count,
                 "max_occupancy": max_occupancy,
             })
+            self._last_overcrowding_fired = now
             log.warning("camera_worker.overcrowding", camera_id=self.camera_id,
                         count=count, max_occupancy=max_occupancy)
 
@@ -289,23 +275,3 @@ class CameraWorker:
             "expected_width": settings.MIN_EXPECTED_WIDTH,
             "expected_height": settings.MIN_EXPECTED_HEIGHT,
         })
-
-    async def _capture_snapshot(self, frame: np.ndarray, event_name: str) -> str:
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
-        key = f"{self.enterprise_id}/{self.factory_id}/{self.zone_id}/{self.camera_id}/{ts}_{event_name}_{uuid.uuid4().hex}.jpg"
-        # JPEG encode + the MinIO PUT are both blocking I/O — same reasoning
-        # as detect() above, offload so this camera's upload doesn't stall
-        # every other camera on this worker.
-        await asyncio.to_thread(self._upload_snapshot, frame, key)
-        return key
-
-    def _upload_snapshot(self, frame: np.ndarray, key: str) -> None:
-        import io
-        _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        _minio.put_object(
-            settings.MINIO_BUCKET_SNAPSHOTS,
-            key,
-            data=io.BytesIO(buf.tobytes()),
-            length=len(buf),
-            content_type="image/jpeg",
-        )

@@ -163,6 +163,11 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       WORKER_ID: worker-1
+      EDGE_STATE_DIR: /app/state
+      EDGE_MAX_EVENTS: ${EDGE_MAX_EVENTS:-10000}
+      EDGE_MAX_BYTES: ${EDGE_MAX_BYTES:-536870912}
+      EDGE_MIN_FREE_BYTES: ${EDGE_MIN_FREE_BYTES:-67108864}
+      EDGE_ASSIGNMENT_CACHE_SECONDS: ${EDGE_ASSIGNMENT_CACHE_SECONDS:-300}
       WORKER_API_KEY: ${WORKER_API_KEY:-dev-worker-key-change-me}
       ENTERPRISE_ID: ${SEED_ENTERPRISE_ID:-}
       USE_GPU: "true"
@@ -172,6 +177,7 @@ services:
       - ./ai-worker:/app
       - ./ai-worker/models:/app/models
       - ./logs/ai-worker-1:/app/logs
+      - worker_1_state:/app/state
     ports:
       - "${AI_WORKER_1_METRICS_PORT:-9101}:8001"
     deploy:
@@ -199,6 +205,11 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       WORKER_ID: worker-2
+      EDGE_STATE_DIR: /app/state
+      EDGE_MAX_EVENTS: ${EDGE_MAX_EVENTS:-10000}
+      EDGE_MAX_BYTES: ${EDGE_MAX_BYTES:-536870912}
+      EDGE_MIN_FREE_BYTES: ${EDGE_MIN_FREE_BYTES:-67108864}
+      EDGE_ASSIGNMENT_CACHE_SECONDS: ${EDGE_ASSIGNMENT_CACHE_SECONDS:-300}
       WORKER_API_KEY: ${WORKER_API_KEY:-dev-worker-key-change-me}
       ENTERPRISE_ID: ${SEED_ENTERPRISE_ID:-}
       USE_GPU: "true"
@@ -208,6 +219,7 @@ services:
       - ./ai-worker:/app
       - ./ai-worker/models:/app/models
       - ./logs/ai-worker-2:/app/logs
+      - worker_2_state:/app/state
     ports:
       - "${AI_WORKER_2_METRICS_PORT:-9102}:8001"
     deploy:
@@ -271,6 +283,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  worker_1_state:
+  worker_2_state:
   postgres_data:
   redis_data:
   rabbitmq_data:

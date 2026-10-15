@@ -3,6 +3,7 @@
 
 > Production status: review fixes and remaining deployment requirements are tracked in [docs/REVIEW_FIXES.md](docs/REVIEW_FIXES.md). Camera capacity and detection accuracy require a measured site pilot.
 > Alert delivery: [durable retries, delivery status and administrator replay](docs/ALERT_DELIVERY.md) require database migration `0018`.
+> Edge incidents: [durable local acceptance, evidence retries and bounded offline assignments](docs/DURABLE_EDGE_EVENTS.md). Preserve each worker's persistent state volume across upgrades.
 > Current schema: `0019`. Configure each worker's [factory and camera limit](docs/WORKER_SCHEDULING.md) after upgrading; unconfigured workers receive no camera streams.
   <p align="center">Enterprise Factory Safety Monitoring & Compliance Platform</p>
   <p align="center">
@@ -550,7 +551,7 @@ Add more dashboards by dropping additional JSON exports into `infra/grafana/prov
 
 ## Backups
 
-PostgreSQL (all relational data) and MinIO (violation snapshots, reports, logos, models) are the durable stores — Redis and RabbitMQ hold only cache/in-flight queue state and don't need backing up; both rebuild themselves after a restore.
+PostgreSQL and MinIO retain application data and evidence. RabbitMQ also holds confirmed events awaiting backend consumption, and each worker state volume holds pending incidents/evidence. Those pending events are not recoverable from a PostgreSQL/MinIO backup alone. Preserve worker volumes and plan broker durability, draining and recovery; see [durable edge recovery](docs/DURABLE_EDGE_EVENTS.md). Redis cache can be rebuilt.
 
 ```bash
 ./infra/backup/backup.sh              # -> ./backups/<timestamp>/{postgres.dump, minio/}
@@ -571,7 +572,7 @@ Backups are written to `./backups/` (git-ignored). Schedule `backup.sh` via cron
 | 500 | 3–5 node cluster | 20+ workers | PostgreSQL read replicas |
 | 1000+ | API Gateway + cluster | 50+ workers | Kubernetes |
 
-No code changes required — horizontal scaling only.
+The table above is a historical planning sketch, not measured capacity or a deployment recommendation. Use the [measured sizing workflow](docs/PRODUCTION_CAPACITY.md) and [remaining remediation gates](docs/MULTI_FACTORY_REMEDIATION.md) before choosing a worker count.
 
 ---
 
