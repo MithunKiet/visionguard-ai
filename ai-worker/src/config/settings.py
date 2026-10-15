@@ -19,6 +19,8 @@ class WorkerSettings(BaseSettings):
     DEMO_MODE: bool = False
     ENVIRONMENT: str = "development"
     YOLO_MODEL_PATH: str = "models/yolov8s-ppe.pt"
+    YOLO_MODEL_SHA256: str = Field(default="", pattern=r"^(?:[a-fA-F0-9]{64})?$")
+    MODEL_STALL_SECONDS: float = Field(default=30, ge=1, le=600)
     METRICS_PORT: int = 8001
 
     # Option B (no local fine-tuned model yet): call a community-trained PPE

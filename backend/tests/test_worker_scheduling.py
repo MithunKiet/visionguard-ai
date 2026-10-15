@@ -263,3 +263,20 @@ async def test_heartbeat_cannot_self_authorize_factory_or_capacity(setup):
     assert response.status_code == 200
     assert response.json()["data"]["factory_id"] == s.places[0].factory.public_id
     assert response.json()["data"]["max_cameras"] == 1
+
+
+@pytest.mark.parametrize("cuda_active", [False, True])
+async def test_runtime_heartbeat_identity_roundtrips_without_changing_scheduling(setup, cuda_active):
+    from src.core.settings import settings
+    s = setup
+    model_version = "ppe:" + "a" * 40  # Worker sends mode plus a checkpoint digest prefix.
+    h = {"X-Worker-Key": settings.WORKER_API_KEY, "X-Enterprise-Id": s.enterprise.public_id}
+    response = await s.client.post("/api/v1/workers/heartbeat", headers=h,
+        json={"worker_id": s.worker.worker_id, "model_version": model_version, "gpu_available": cuda_active})
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["model_version"] == model_version and data["gpu_available"] is cuda_active
+    assert data["factory_id"] == s.places[0].factory.public_id and data["max_cameras"] == 1
+    async with AsyncSessionFactory() as db:
+        worker = await db.get(AIWorker, s.worker.id)
+        assert worker.model_version == model_version and worker.gpu_available is cuda_active

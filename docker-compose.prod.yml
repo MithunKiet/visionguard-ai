@@ -41,6 +41,10 @@ services:
               capabilities: [gpu]
     environment:
       WORKER_API_KEY: ${WORKER_1_API_KEY:?Set the credential for worker-1}
+      USE_GPU: "true"
+      YOLO_MODEL_PATH: ${PPE_MODEL_PATH:-models/yolov8s-ppe.pt}
+      YOLO_MODEL_SHA256: ${PPE_MODEL_SHA256:?Set the reviewed local PPE checkpoint SHA-256}
+      MODEL_STALL_SECONDS: ${MODEL_STALL_SECONDS:-30}
       DETECTION_QUEUE_SIZE: ${DETECTION_QUEUE_SIZE:-32}
       DETECTION_TIMEOUT_SECONDS: ${DETECTION_TIMEOUT_SECONDS:-5}
       ENVIRONMENT: production
@@ -60,6 +64,10 @@ services:
               capabilities: [gpu]
     environment:
       WORKER_API_KEY: ${WORKER_2_API_KEY:?Set the credential for worker-2}
+      USE_GPU: "true"
+      YOLO_MODEL_PATH: ${PPE_MODEL_PATH:-models/yolov8s-ppe.pt}
+      YOLO_MODEL_SHA256: ${PPE_MODEL_SHA256:?Set the reviewed local PPE checkpoint SHA-256}
+      MODEL_STALL_SECONDS: ${MODEL_STALL_SECONDS:-30}
       DETECTION_QUEUE_SIZE: ${DETECTION_QUEUE_SIZE:-32}
       DETECTION_TIMEOUT_SECONDS: ${DETECTION_TIMEOUT_SECONDS:-5}
       ENVIRONMENT: production

@@ -1,6 +1,6 @@
 # Multi-factory remediation plan and session handoff
 
-Updated: 2026-10-15. Review baseline: `0051fde`.
+Updated: 2026-10-16. Review baseline: `0051fde`.
 
 This file is persistent project memory. Read it before continuing fleet-readiness work and update status, evidence and remaining risks after each implementation. It does not assert that chat memory persists between sessions.
 
@@ -19,7 +19,7 @@ This file is persistent project memory. Read it before continuing fleet-readines
 | P1 | Factory-bound worker scheduling, explicit measured camera limits, concurrent admission control, pending-camera backfill | No foreign factory/tenant assignments; last-slot races cannot exceed limits; offline/unconfigured workers receive no new assignments; pending cameras resume once capacity is available | Implemented and locally verified |
 | P2 | Durable edge incidents and evidence retries; remove synchronous snapshot dependency; cached startup configuration | Short-lived incident survives broker/storage outage and process restart; replay keeps stable event IDs; bounded storage and explicit full-disk behavior | Implemented and locally verified |
 | P3 | Independent capture, bounded latest-frame handoff and local decode-age checks; isolate blocking operations | Slow inference/storage and a stalled stream do not accumulate stale detections or stall healthy cameras; reconnect and shutdown tests | Implemented and locally verified; upstream age needs site validation |
-| P4 | Actual GPU/model readiness and production fail-closed GPU startup | Required CUDA absence fails startup; heartbeat reports actual runtime state; model startup and device checks tested on target GPU | Pending |
+| P4 | Actual GPU/model readiness and production fail-closed GPU startup | Required CUDA absence fails startup; heartbeat reports actual runtime state; model startup and device checks tested on target GPU | Guards implemented and locally verified; target GPU acceptance pending |
 | P5 | Automatic failed-worker recovery with ownership leases/fencing | Worker loss recovers within agreed RTO; partitions/recovery never cause duplicate active ownership; standby respects locality and capacity | Pending |
 | P6 | Batch assignment/configuration reads and fleet monitoring | Assignment-query count does not grow per camera; every worker registered in monitoring; representative API/broker/database load measured | Partial: batch reads verified; fleet monitoring/load pending |
 | P7 | Site deployment, shared-service recovery, production model/data validation and staged rollout | DVR compatibility; independent labels; 24-hour integrated soak; restore/failure drills; measured hardware sizing at 10–20, then 50–100, then 200 cameras per factory | Pending; needs site hardware/data |
@@ -28,7 +28,7 @@ P1 pending-camera backfill is not automatic failover. Do not reassign stale-work
 
 ## Current implementation decisions
 
-- P1, P2 and P3 are implemented as separately tested releases; keep every later priority visible here.
+- P1–P3 and the P4 startup/runtime guards are implemented as separately tested releases; keep every later priority visible here.
 - Bind each worker to one factory; allow multiple workers in the same factory. A worker heartbeat must not grant itself factory scope or increase capacity.
 - Factory/capacity configuration is administrator-controlled and tenant-scoped.
 - New/legacy workers have no scheduling permission until explicitly configured. Existing assignment rows must not silently grant cross-factory stream access after upgrade.
@@ -70,4 +70,13 @@ P3 validation on 2026-10-15:
 - The PostgreSQL edge replay regression passed. Configured lint, production Compose checks, Prometheus semantic checks and whitespace checks passed.
 - Frame age begins after local decode. Camera/DVR buffering, frozen-scene replay, real exposure timestamps, production GPU/image validation and integrated fleet soak remain unverified. Measure whole-process-tree resources: capture children add CPU/RAM beyond parent worker metrics. Native GPU hangs still require worker recovery. GitHub Actions results must be checked separately.
 
-Next implementation: P4. Validate the actual production inference device/model at startup, fail closed when required CUDA is unavailable, and report observed runtime readiness in heartbeats. Keep offline acceptance and capture isolation intact. Actual target-GPU evidence remains a deployment gate; P5–P7 remain pending.
+P4 startup/runtime guards implemented: production requires a pinned local nine-class checkpoint and CUDA, verifies model/predictor device placement through warmup, and reports observed device/artifact identity. Native loading runs on the inference executor. A bounded preflight command records startup evidence without cameras or alerts. See [MODEL_READINESS.md](MODEL_READINESS.md) for new production environment requirements and the GPU acceptance workflow. Schema remains 0019.
+
+P4 validation on 2026-10-16:
+
+- Main AI suite: 156 passed, two optional tests skipped (RTSP and real CPU-model smoke). Existing real RabbitMQ and trial ONNX checks ran.
+- Actual CPU-model smoke passed separately using pinned PyTorch 2.5.1+cpu / torchvision 0.20.1+cpu / Ultralytics 8.3.50 and locally generated untrained nine-class test weights. The real probe successfully loaded/warmed the CPU model and rejected a CUDA request on the CPU-only runner. This is execution evidence, not accuracy validation or a production model artifact.
+- 23 PostgreSQL integration tests passed, covering existing scheduling isolation/concurrency, heartbeat artifact/device round trips and edge replay. Lint, production Compose and Prometheus semantic checks passed. Existing backend dependency deprecation warnings remain; GitHub Actions results must be checked separately.
+- Actual target-GPU acceptance is still pending. Production GPU image/dependency compatibility, CUDA warmup on the chosen host, reviewed production weights, accuracy/capacity and forced recovery from a native hang remain unverified. Model readiness is not a distributed ownership lease. Preserve this external gate even when moving to the next code priority.
+
+Next code implementation: P5, failed-worker recovery with ownership leases/fencing. Design the lease and partition behavior before moving assignments: a stale heartbeat alone must not transfer a camera while its old owner can still run. Respect factory boundaries, measured capacity, cached-authorization expiry and durable replay ownership. P4 target-GPU acceptance and P6–P7 site/load gates remain open.

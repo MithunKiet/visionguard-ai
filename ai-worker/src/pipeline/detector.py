@@ -21,12 +21,13 @@ if not hasattr(sys, "set_int_max_str_digits"):
     sys.set_int_max_str_digits = set_int_max_str_digits
 
 import time
+import hashlib
+from pathlib import Path
 
 import cv2
 import numpy as np
 import structlog
 from typing import List
-from ultralytics import YOLO
 
 from src.config.settings import settings
 from src.pipeline.remote_ppe_client import RoboflowPPEClient
@@ -114,12 +115,29 @@ REMOTE_MATCH_HORIZONTAL_SLACK = 0.2
 class PPEDetector:
 
     def __init__(self):
-        import torch
-        device = "cuda" if settings.USE_GPU and torch.cuda.is_available() else "cpu"
-        if settings.DEMO_MODE and settings.ENVIRONMENT == "production":
-            raise RuntimeError("Synthetic detection is disabled in production")
-
+        self._ready = False
+        self._failed = False
+        self._remote_client = None
+        production = settings.ENVIRONMENT.lower() == "production"
+        if production and (settings.DEMO_MODE or not settings.USE_GPU):
+            raise RuntimeError("Production workers require CUDA and forbid demo mode")
         self._ppe_mode = os.path.isfile(settings.YOLO_MODEL_PATH)
+        if production and not self._ppe_mode:
+            raise RuntimeError("Production requires a local PPE checkpoint; remote/demo fallback is disabled")
+        if production and not settings.YOLO_MODEL_SHA256:
+            raise RuntimeError("Production requires the reviewed PPE checkpoint SHA-256")
+        if self._ppe_mode:
+            self.model_sha256 = self._hash_model(settings.YOLO_MODEL_PATH)
+            if settings.YOLO_MODEL_SHA256 and self.model_sha256 != settings.YOLO_MODEL_SHA256.lower():
+                raise RuntimeError("PPE checkpoint checksum mismatch")
+        elif settings.YOLO_MODEL_SHA256:
+            raise RuntimeError("Pinned PPE checkpoint is missing")
+
+        import torch
+        from ultralytics import YOLO
+        if settings.USE_GPU and (not torch.cuda.is_available() or torch.cuda.device_count() < 1):
+            raise RuntimeError("CUDA was requested but is unavailable; CPU fallback is disabled")
+        self.device = "cuda:0" if settings.USE_GPU else "cpu"
         self._remote_mode = not self._ppe_mode and bool(settings.ROBOFLOW_API_KEY)
         model_path = settings.YOLO_MODEL_PATH if self._ppe_mode else _FALLBACK_MODEL
 
@@ -150,27 +168,84 @@ class PPEDetector:
         else:
             self._remote_client = None
 
-        log.info("detector.loading", model=model_path, device=device)
-        self._model = YOLO(model_path)
-        if self._ppe_mode:
+        try:
+            log.info("detector.loading", model=Path(model_path).name, device=self.device)
+            self._model = YOLO(model_path)
+            if self._model.task != "detect":
+                raise RuntimeError("PPE checkpoint must be an object detection model")
             names = self._model.names
-            if any(names.get(index) != name for index, name in PPE_CLASSES.items()):
+            if self._ppe_mode and names != PPE_CLASSES:
                 raise RuntimeError("PPE model class mapping does not match the configured detector")
-        self._model.to(device)
-        log.info("detector.ready", device=device, ppe_mode=self._ppe_mode, remote_mode=self._remote_mode)
+            if not self._ppe_mode:
+                if names.get(0) != "person":
+                    raise RuntimeError("Development fallback must provide the COCO person class")
+                self.model_sha256 = self._hash_model(model_path)
+            self._model.to(self.device)
+            self._verify_device(require_predictor=False)
+            # Exercise preprocessing, predictor initialization, inference and parsing
+            # without opening cameras, persisting incidents or publishing alerts.
+            self.detect_batch([np.zeros((640, 640, 3), dtype=np.uint8)])
+            if settings.USE_GPU:
+                torch.cuda.synchronize(0)
+            self._verify_device()
+            self.mode = "ppe" if self._ppe_mode else "remote" if self._remote_mode else "demo"
+            self.model_version = f"{self.mode}:{self.model_sha256[:40]}"  # Existing DB column is 50 characters.
+            self._ready = True
+            log.info("detector.ready", device=self.device, mode=self.mode, model_sha256=self.model_sha256)
+        except BaseException:
+            if self._remote_client:
+                self._remote_client.close()
+            raise
+
+    @staticmethod
+    def _hash_model(path):
+        with open(path, "rb") as file:
+            return hashlib.file_digest(file, "sha256").hexdigest()
+
+    def _verify_device(self, *, require_predictor=True):
+        devices = [str(self._model.device)]
+        if require_predictor:
+            predictor = self._model.predictor
+            devices.extend([str(predictor.device), str(predictor.model.device)])
+        if any(device != self.device for device in devices):
+            raise RuntimeError("Loaded model or predictor is not using the requested inference device")
+
+    def heartbeat_fields(self):
+        if not self._ready or self._failed:
+            raise RuntimeError("Model runtime is not ready")
+        try:
+            self._verify_device()
+        except Exception:
+            self._ready = False
+            self._failed = True
+            raise
+        return {"gpu_available": self.device.startswith("cuda:"), "model_version": self.model_version}
 
     def preprocess(self, frame: np.ndarray) -> np.ndarray:
         """Rule 13: CLAHE preprocessing on every frame before YOLO inference."""
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
+        lightness, a, b = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = cv2.merge([clahe.apply(l), a, b])
+        enhanced = cv2.merge([clahe.apply(lightness), a, b])
         return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
     def detect(self, frame: np.ndarray) -> List[Detection]:
         return self.detect_batch([frame])[0]
 
     def detect_batch(self, frames: List[np.ndarray]) -> List[List[Detection]]:
+        if self._failed:
+            raise RuntimeError("Model runtime failed; restart is required")
+        try:
+            self._verify_device(require_predictor=False)
+            result = self._detect_batch(frames)
+            self._verify_device()
+            return result
+        except Exception:
+            self._ready = False
+            self._failed = True
+            raise
+
+    def _detect_batch(self, frames: List[np.ndarray]) -> List[List[Detection]]:
         """
         Run inference on multiple camera frames in a single forward pass.
         A GPU processes a batch of N images far more efficiently than N
@@ -179,7 +254,9 @@ class PPEDetector:
         — BatchDetector groups pending per-camera frames and calls this.
         """
         processed = [self.preprocess(f) for f in frames]
-        results_list = self._model(processed, verbose=False)
+        results_list = self._model(processed, verbose=False, device=self.device)
+        if len(results_list) != len(frames):
+            raise RuntimeError("Model returned an invalid number of inference results")
 
         if self._remote_mode:
             # Sent unprocessed — the remote model was trained on plain

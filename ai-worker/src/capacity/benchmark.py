@@ -92,6 +92,8 @@ async def run(config):
     if digest != config["model_sha256"]:
         raise ValueError("Model checksum differs from the expected trusted artifact")
     settings.YOLO_MODEL_PATH = str(weights.resolve())
+    settings.YOLO_MODEL_SHA256 = digest
+    settings.ENVIRONMENT = "validation"  # Explicit CPU comparisons are not production deployment.
     settings.DEMO_MODE = False
     settings.ROBOFLOW_API_KEY = ""
     settings.USE_GPU = config["device"] == "cuda"

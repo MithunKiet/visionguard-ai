@@ -45,9 +45,30 @@ jobs:
         run: |
           pip install pytest pytest-asyncio pydantic-settings structlog ruff httpx numpy==1.26.4 opencv-python-headless==4.10.0.84 prometheus-client==0.21.1 Pillow==12.3.0 aio-pika==9.4.3 minio==7.2.11
       - name: Lint (ruff)
-        run: ruff check src/pipeline/ppe_validator.py src/pipeline/types.py src/pipeline/batch_detector.py src/pipeline/camera_worker.py src/pipeline/frame_reader.py src/pipeline/capture_process.py src/main.py src/events src/health src/capacity src/config src/validation tests
+        run: ruff check src/pipeline/ppe_validator.py src/pipeline/types.py src/pipeline/detector.py src/pipeline/batch_detector.py src/pipeline/camera_worker.py src/pipeline/frame_reader.py src/pipeline/capture_process.py src/main.py src/events src/health src/capacity src/config src/validation tests
       - name: Tests
         run: pytest
+
+  model-readiness-cpu:
+    name: Actual CPU model startup smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-worker
+    env:
+      TEST_MODEL_CPU_SMOKE: "1"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install torch==2.5.1+cpu torchvision==0.20.1+cpu --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install ultralytics==8.3.50 numpy==1.26.4 opencv-python==4.10.0.84 pydantic-settings==2.6.1 structlog==24.4.0 httpx==0.28.1 prometheus-client==0.21.1 pytest pytest-asyncio
+      # Random local weights test the loader/predictor contract, not accuracy.
+      - run: pytest tests/test_model_readiness.py -k actual_cpu_model --tb=short
 
   frontend:
     name: Frontend — type-check + build

@@ -142,6 +142,7 @@ def evaluate(manifest_path, weights, confidence, iou_threshold, device):
     # Same preprocessing and detector class mapping as production; no network
     # inference, demo detections, database writes, notifications or model deploy.
     settings.YOLO_MODEL_PATH = str(weights.resolve())
+    settings.ENVIRONMENT = "validation"  # Offline evaluation may explicitly select CPU.
     settings.DEMO_MODE = False
     settings.ROBOFLOW_API_KEY = ""
     settings.USE_GPU = device == "cuda"

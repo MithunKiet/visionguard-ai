@@ -6,6 +6,7 @@ import subprocess
 
 root = Path(__file__).resolve().parents[1]
 env = {**os.environ, "VITE_WS_URL": "wss://test.invalid", "CAMERA_ALLOWED_HOSTS": '["camera.test.invalid"]',
+       "PPE_MODEL_SHA256": "0" * 64,
        "WORKER_CREDENTIALS": '{"worker-1":{"key":"test-only","enterprise_id":"test-only"}}',
        "WORKER_1_GPU_DEVICE_ID": "0", "WORKER_2_GPU_DEVICE_ID": "1", "MEDIA_HLS_SECRET": "test-only", "MEDIAMTX_PUBLISH_PASSWORD": "test-only", "WORKER_1_API_KEY": "test-only", "WORKER_2_API_KEY": "test-only"}
 result = subprocess.run(["docker", "compose", "-f", "docker-compose.yml", "-f", "docker-compose.prod.yml",
@@ -36,6 +37,10 @@ for name in ("ai-worker", "ai-worker-2"):
     assert int(services[name]["shm_size"]) > 0
     assert int(services[name]["environment"]["CAPTURE_MAX_FRAME_BYTES"]) > 0
     assert float(services[name]["environment"]["FRAME_MAX_AGE_SECONDS"]) > 0
+    assert services[name]["environment"]["USE_GPU"] == "true"
+    assert services[name]["environment"]["ENVIRONMENT"] == "production"
+    assert services[name]["environment"]["DEMO_MODE"] == "false"
+    assert services[name]["environment"]["YOLO_MODEL_SHA256"] == "0" * 64
     devices = services[name]["deploy"]["resources"]["reservations"]["devices"]
     assert len(devices) == 1 and devices[0]["device_ids"] and "count" not in devices[0]
 assert services["ai-worker"]["volumes"][1]["source"] != services["ai-worker-2"]["volumes"][1]["source"]

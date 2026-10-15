@@ -34,7 +34,7 @@ Rebuild/recreate workers to deploy; schema remains `0019`. Preserve P2 state vol
 
 Re-measure capacity after this upgrade. Capture now drains and decodes streams continuously, so CPU/network demand can rise compared with an inference-blocked reader. Each camera adds a Python/OpenCV process, decoder buffers, a shared slot, parent frame copies and its current inference image. The slot budget is not a cap on the whole process or native decoder allocation. Size shared memory from at least `assigned cameras × CAPTURE_MAX_FRAME_BYTES` plus allocator headroom; Python shared arenas may fall back to temporary storage when shared memory is insufficient. Check `/dev/shm`, temporary storage, process limits and the entire container/process-tree RSS/CPU, not only the parent Prometheus process metrics. A larger shared-memory allowance is not preallocated camera capacity.
 
-An OS process stuck in uninterruptible kernel I/O may require host intervention even after kill; software deadlines do not guarantee the OS can reap it. No automatic cross-host takeover is added. P4 GPU readiness and P5 fenced failover remain separate priorities.
+An OS process stuck in uninterruptible kernel I/O may require host intervention even after kill; software deadlines do not guarantee the OS can reap it. No automatic cross-host takeover is added. P4 now supplies [verified startup/runtime guards](MODEL_READINESS.md), with actual target-GPU acceptance still pending. P5 fenced failover remains separate work.
 
 ## Monitoring and verification
 

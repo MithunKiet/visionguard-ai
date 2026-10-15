@@ -80,3 +80,5 @@ capture_last_received = Gauge("vg_capture_last_received_timestamp_seconds", "Wal
 capture_restarts = Counter("vg_capture_restarts_total", "Capture process restarts", ["camera_id", "reason"])
 frames_discarded = Counter("vg_frames_discarded_total", "Frames/results discarded before violation acceptance", ["camera_id", "reason"])
 frame_local_age = Histogram("vg_frame_local_age_seconds", "Age since local decode at inference result; excludes upstream buffering", ["camera_id"])
+model_ready = Gauge("vg_model_ready", "Verified model startup and no observed runtime readiness failure")
+model_cuda_active = Gauge("vg_model_cuda_active", "1 when the ready model and predictor use CUDA")

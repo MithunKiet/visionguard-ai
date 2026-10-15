@@ -314,7 +314,8 @@ async def test_runtime_can_boot_from_cache_and_always_closes_local_state(journal
     monkeypatch.setattr(settings, "ENTERPRISE_ID", IDENTITY["enterprise_id"])
     assignments = cameras()
     journal.save_cache(assignments, assignment_cache.authorization_identity())
-    detector = SimpleNamespace(start=Mock(), stop=AsyncMock())
+    detector = SimpleNamespace(initialize=AsyncMock(), start=Mock(), stop=AsyncMock(),
+        heartbeat_fields=Mock(return_value={"gpu_available": False, "model_version": "test"}))
     sync = SimpleNamespace(start=AsyncMock(), stop=AsyncMock())
     monkeypatch.setattr(runtime, "start_metrics_server", Mock())
     monkeypatch.setattr(runtime, "init_publisher", AsyncMock())

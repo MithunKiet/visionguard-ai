@@ -4,6 +4,20 @@ evaluation_interval: 1m
 tests:
   - interval: 1m
     input_series:
+      - series: 'vg_model_ready{instance="failed"}'
+        values: '0+0x10'
+      - series: 'vg_model_ready{instance="ready"}'
+        values: '1+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: VisionGuardModelNotReady
+        exp_alerts:
+          - exp_labels: {instance: failed, severity: critical}
+            exp_annotations:
+              summary: Worker model readiness is unavailable
+              description: Check checkpoint checksum, class mapping, CUDA device and startup or runtime failures before admitting cameras.
+  - interval: 1m
+    input_series:
       - series: 'vg_frames_discarded_total{instance="worker",camera_id="late",reason="stale_inference"}'
         values: '0+1x10'
       - series: 'vg_frames_discarded_total{instance="worker",camera_id="normal",reason="superseded"}'

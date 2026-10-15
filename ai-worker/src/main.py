@@ -2,13 +2,14 @@ from src.config.logging_config import configure_logging
 
 import asyncio
 import platform
+from functools import partial
 import structlog
 import httpx
 from src.config.settings import settings
 from src.config.zone_sync import ZoneConfigSync
 from src.config.assignment_cache import refresh_assignments
 from src.events.publisher import get_journal, init_publisher, close_publisher, publish
-from src.health.metrics import camera_target_fps, start_metrics_server
+from src.health.metrics import camera_target_fps, start_metrics_server, model_ready, model_cuda_active
 from src.pipeline.batch_detector import BatchDetector
 from src.pipeline.camera_worker import CameraWorker
 
@@ -20,8 +21,21 @@ _AUTH_HEADERS = {
 }
 
 
-async def register_worker() -> None:
+def runtime_fields(detector):
+    try:
+        fields = detector.heartbeat_fields()
+    except Exception:
+        model_ready.set(0)
+        model_cuda_active.set(0)
+        raise
+    model_ready.set(1)
+    model_cuda_active.set(int(fields["gpu_available"]))
+    return fields
+
+
+async def register_worker(detector) -> None:
     """Register / heartbeat with the backend so it exists before we ask for cameras."""
+    fields = runtime_fields(detector)
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{settings.BACKEND_API_URL}/api/v1/workers/heartbeat",
@@ -29,8 +43,7 @@ async def register_worker() -> None:
             json={
                 "worker_id": settings.WORKER_ID,
                 "hostname": platform.node(),
-                "model_version": settings.YOLO_MODEL_PATH,
-                "gpu_available": settings.USE_GPU,
+                **fields,
             },
             timeout=10.0,
         )
@@ -49,7 +62,7 @@ async def fetch_assigned_cameras() -> list[dict]:
         return resp.json()["data"]
 
 
-async def send_heartbeat() -> None:
+async def send_heartbeat(detector) -> None:
     """AI Worker rule #11: heartbeat every 30 seconds, HTTP + event for observability.
 
     Both calls are independently guarded — a transient RabbitMQ hiccup here
@@ -60,13 +73,14 @@ async def send_heartbeat() -> None:
     while True:
         await asyncio.sleep(30)
         try:
-            await register_worker()
+            await register_worker(detector)
         except Exception as e:
             log.warning("ai_worker.heartbeat_failed", error_type=type(e).__name__)
         try:
             await publish("events.worker_heartbeat", {
                 "event": "worker_heartbeat",
                 "worker_id": settings.WORKER_ID,
+                **runtime_fields(detector),
             })
         except Exception as e:
             log.warning("ai_worker.heartbeat_publish_failed", error_type=type(e).__name__)
@@ -111,6 +125,8 @@ async def reconcile_cameras(workers: list, tasks: dict, detector, cameras: list)
 async def main() -> None:
     log.info("ai_worker.starting", worker_id=settings.WORKER_ID)
     start_metrics_server(settings.METRICS_PORT)
+    model_ready.set(0)
+    model_cuda_active.set(0)
     await init_publisher()
     detector = None
     tasks = {}
@@ -119,18 +135,24 @@ async def main() -> None:
     heartbeat = None
     try:
         detector = BatchDetector()
+        await detector.initialize()
+        runtime_fields(detector)
         detector.start()
-        heartbeat = asyncio.create_task(send_heartbeat())
+        heartbeat = asyncio.create_task(send_heartbeat(detector))
         await config_sync.start()
         while True:
+            runtime_fields(detector)
             try:
-                cameras = await refresh_assignments(get_journal(), register_worker, fetch_assigned_cameras)
+                cameras = await refresh_assignments(get_journal(), partial(register_worker, detector), fetch_assigned_cameras)
             except Exception as error:
                 log.error("ai_worker.reconciliation_failed", error_type=type(error).__name__)
                 cameras = []  # Corrupt/unreadable state cannot extend old authorization.
+            runtime_fields(detector)
             await reconcile_cameras(workers, tasks, detector, cameras)
             await asyncio.sleep(30)
     finally:
+        model_ready.set(0)
+        model_cuda_active.set(0)
         if heartbeat:
             heartbeat.cancel()
         for task in tasks.values():

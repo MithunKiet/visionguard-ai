@@ -1,6 +1,14 @@
 groups:
   - name: visionguard-capacity
     rules:
+      - alert: VisionGuardModelNotReady
+        expr: vg_model_ready == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Worker model readiness is unavailable
+          description: Check checkpoint checksum, class mapping, CUDA device and startup or runtime failures before admitting cameras.
       - alert: VisionGuardStaleFramesDiscarded
         expr: sum by (instance, camera_id) (increase(vg_frames_discarded_total{reason=~"stale_.*"}[5m])) > 0
         for: 1m

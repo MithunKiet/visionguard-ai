@@ -27,19 +27,35 @@ class DetectionExpired(TimeoutError):
 
 class BatchDetector:
     def __init__(self, detector=None, *, queue_size=None, timeout=None):
-        if detector is None:
-            from src.pipeline.detector import PPEDetector
-            detector = PPEDetector()
         self._detector = detector
         self._queue = asyncio.Queue(maxsize=queue_size or settings.DETECTION_QUEUE_SIZE)
         self._timeout = timeout if timeout is not None else settings.DETECTION_TIMEOUT_SECONDS
         self._loop_task = None
         self._closed = False
+        self._inference_started_at = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vg-inference")
+
+    async def initialize(self):
+        if self._closed:
+            raise RuntimeError("Detector is stopped")
+        if self._detector is None:
+            def load():
+                from src.pipeline.detector import PPEDetector
+                return PPEDetector()
+            self._detector = await asyncio.get_running_loop().run_in_executor(self._executor, load)
+
+    def heartbeat_fields(self):
+        if self._closed or self._detector is None:
+            raise RuntimeError("Detector is not initialized")
+        if self._inference_started_at is not None and time.monotonic() - self._inference_started_at > settings.MODEL_STALL_SECONDS:
+            raise RuntimeError("Native inference is stalled; runtime readiness is unavailable")
+        return self._detector.heartbeat_fields()
 
     def start(self):
         if self._closed:
             raise RuntimeError("Detector is stopped")
+        if self._detector is None:
+            raise RuntimeError("Initialize the model before starting inference")
         if self._loop_task is None:
             self._loop_task = asyncio.create_task(self._run())
 
@@ -89,8 +105,12 @@ class BatchDetector:
         if not live:
             return {}
         batch_size_metric.observe(len(live))
-        with inference_batch_seconds.time():
-            results = self._detector.detect_batch([frame for _, frame in live])
+        self._inference_started_at = time.monotonic()
+        try:
+            with inference_batch_seconds.time():
+                results = self._detector.detect_batch([frame for _, frame in live])
+        finally:
+            self._inference_started_at = None
         if len(results) != len(live):
             raise ValueError("Detector returned the wrong number of frame results")
         return {index: detections for (index, _), detections in zip(live, results)}
