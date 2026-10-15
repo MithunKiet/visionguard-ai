@@ -5,7 +5,7 @@ This first step checks that your webcam opens and produces video. It displays a 
 ## Start
 
 1. Install **Python 3.11 for Windows** from https://www.python.org/downloads/windows/ and include the Python launcher. No GPU, Docker, RTSP server or camera password is needed.
-2. Download the `feat/real-camera-validation` branch of this repository as a ZIP and extract it. If you use Git, check out that branch and pull its latest changes first.
+2. Download the `main` branch of this repository as a ZIP and extract it. If you use Git, check out that branch and pull its latest changes first.
 3. Close Camera, Teams, Zoom and other applications using the webcam. Open any physical camera privacy shutter. In Windows Settings, find Camera privacy and enable camera access for desktop apps (Windows 11: Privacy & security → Camera; Windows 10: Privacy → Camera).
 4. Double-click **`check-webcam-windows.cmd`** in the extracted project folder. The first run creates a separate `.venv-webcam` environment and installs NumPy/OpenCV from the pinned requirements; internet is needed for dependency installation. No administrator access or execution-policy change is required.
 5. Allow the preview to run for 30 seconds. Press Q, Esc or close its window to stop early; an early stop is reported as cancelled, not as a completed check. The command window stays open so you can read any error.

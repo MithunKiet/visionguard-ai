@@ -4,7 +4,7 @@ Your submitted camera report establishes a 30-second laptop capture at 1280×720
 
 ## Run
 
-1. Download/extract the latest `feat/real-camera-validation` branch, or pull it in your existing checkout. 64-bit Python 3.11 for Windows x64 and the Python launcher are required, as with the camera check.
+1. Download/extract the latest `main` branch, or pull it in your existing checkout. 64-bit Python 3.11 for Windows x64 and the Python launcher are required, as with the camera check.
 2. Close other camera applications. Double-click **`test-ppe-windows.cmd`** at the project root. It installs CPU inference dependencies in `.venv-webcam` and downloads a roughly 43 MiB model from GitHub. Each download and every model load verifies the pinned SHA-256. Internet is used for setup; webcam frames are never uploaded.
 3. Let the preview run for 60 seconds, or press Q/Esc to finish. Start alone, with good lighting and head/torso visible. If available, try a real safety helmet and high-visibility vest, then compare predictions with and without them in a safe indoor setting. A cap or ordinary bright shirt is not a substitute for labeled PPE ground truth. Do not create hazardous scenarios.
 4. Share the generated `validation-results/ppe-trial-*.json` report and describe obvious correct/missed/incorrect predictions. The report contains counts and timings, not images or audio. No footage is recorded and no operational alerts are sent.
