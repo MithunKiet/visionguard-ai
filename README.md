@@ -947,3 +947,7 @@ Step 4 → Connect Camera     (RTSP URL + test connection)
 Live-video access and deployment: [Secure live video](docs/SECURE_LIVE_VIDEO.md).
 
 Production preparation and sizing: [Measure capacity before scaling](docs/PRODUCTION_CAPACITY.md).
+
+Real-camera testing: [Validation workflow](docs/REAL_CAMERA_VALIDATION.md) and [current evidence](docs/REAL_CAMERA_VALIDATION_STATUS.md).
+
+Windows laptop webcam: [Local webcam check](docs/WINDOWS_WEBCAM.md) and [local PPE detection trial](docs/PPE_WEBCAM_TRIAL.md). Next: [measure the trial model against labeled images](docs/PPE_ACCURACY_EVALUATION.md).

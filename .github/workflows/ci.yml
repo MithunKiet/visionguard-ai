@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "fix/**", "feat/production-capacity"]
+    branches: [main, "fix/**", "feat/**"]
   pull_request:
     branches: [main]
 
@@ -40,12 +40,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # Exercise queue/scoring logic without downloading the GPU inference stack.
+      # Exercise validation and queue logic without the GPU inference stack.
       - name: Install test dependencies
         run: |
-          pip install pytest pytest-asyncio pydantic-settings structlog ruff httpx numpy==1.26.4 opencv-python-headless==4.10.0.84 prometheus-client==0.21.1
+          pip install pytest pytest-asyncio pydantic-settings structlog ruff httpx numpy==1.26.4 opencv-python-headless==4.10.0.84 prometheus-client==0.21.1 Pillow==12.3.0
       - name: Lint (ruff)
-        run: ruff check src/pipeline/ppe_validator.py src/pipeline/types.py src/pipeline/batch_detector.py src/health src/capacity src/config tests
+        run: ruff check src/pipeline/ppe_validator.py src/pipeline/types.py src/pipeline/batch_detector.py src/health src/capacity src/config src/validation tests
       - name: Tests
         run: pytest
 
@@ -131,3 +131,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f frontend/Dockerfile.prod -t visionguard-frontend:ci .
+
+  windows-webcam:
+    name: Windows webcam runner regressions
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ai-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r ppe-trial-requirements.txt pytest
+      - run: python -m pytest tests/test_webcam_validation.py tests/test_ppe_trial.py tests/test_ppe_evaluate.py

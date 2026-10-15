@@ -1,0 +1,4 @@
+# CPU-only trial environment; no PyTorch, CUDA or remote model API.
+-r webcam-requirements.txt
+onnxruntime==1.23.2
+Pillow==12.3.0

@@ -79,7 +79,7 @@ docker compose logs -f ai-worker
 
 Expected log sequence: `ai_worker.starting` -> `detector.loading` -> `ai_worker.cameras_loaded count=1` -> `camera_worker.started`.
 
-**Note:** unless you've placed a fine-tuned PPE model at `ai-worker/models/yolov8s-ppe.pt`, the detector falls back to a generic pretrained YOLOv8 model (`detector.ppe_model_missing` log line) — it will detect people but won't emit real helmet/vest/etc. violations. To see the full alert pipeline without a real PPE model, publish a synthetic event instead:
+**Real detection requires compatible PPE weights or an explicitly configured remote provider.** Without either, the current worker refuses to start unless development-only `DEMO_MODE=true` is explicitly set; synthetic mode does not validate PPE accuracy. For actual camera testing, use [REAL_CAMERA_VALIDATION.md](REAL_CAMERA_VALIDATION.md). To exercise only the alert pipeline, publish a synthetic event:
 
 ```bash
 docker compose exec backend python -m scripts.publish_test_violation \
@@ -140,4 +140,4 @@ this is a camera-health signal, not a safety violation.
 
 - `401` from `/workers/heartbeat` or `/workers/{id}/cameras`: `WORKER_API_KEY` mismatch between backend and ai-worker, or missing `ENTERPRISE_ID` on the ai-worker container.
 - WebSocket never connects: check the browser console for the `/api/v1/ws/live` handshake (the JWT now travels as the Sec-WebSocket-Protocol header, not a query param) — the JWT must not be expired; log out/in to refresh.
-- No violations ever appear: expected if using the fallback YOLO model — use `publish_test_violation.py` to demo the pipeline instead.
+- No violations ever appear: first verify compatible PPE weights/provider configuration and startup errors. Generic COCO person detection and synthetic events are not PPE accuracy evidence.

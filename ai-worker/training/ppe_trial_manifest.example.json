@@ -1,0 +1,15 @@
+{
+  "dataset_id": "replace-with-your-held-out-webcam-session",
+  "source": "real_camera",
+  "split": "held_out",
+  "classes": ["boots", "helmet", "nohelmet", "novest", "person", "vest"],
+  "frames": [
+    {
+      "image": "images/frame-001.jpg",
+      "label": "labels/frame-001.txt",
+      "camera_id": "laptop-webcam",
+      "session_id": "held-out-session-01",
+      "condition": "day-near-unobstructed"
+    }
+  ]
+}
