@@ -1,6 +1,6 @@
 # Durable edge incidents
 
-P2 adds a local SQLite journal to each Linux AI worker. It protects **accepted incidents** during broker/object-storage outages and worker process restarts when the worker's persistent disk survives. DVR/NVR recording remains separate. No database migration is added; backend schema head remains `0019`.
+P2 adds a local SQLite journal to each Linux AI worker. It protects **accepted incidents** during broker/object-storage outages and worker process restarts when the worker's persistent disk survives. DVR/NVR recording remains separate. P2 itself added no migration; P5 now requires schema `0020` for ownership leases. See [WORKER_FAILOVER.md](WORKER_FAILOVER.md) before deployment.
 
 ## Acceptance and delivery
 
@@ -31,11 +31,11 @@ Choose storage from measured incident bursts and JPEG size, not camera count alo
 
 At a row/byte/disk limit or a failed local write, the worker rejects the new incident explicitly, increments `vg_edge_rejected_total`, and does not acknowledge its detection cooldown. Previously accepted incidents are never evicted to make room. A short-lived event can still be missed while storage is full or the worker is unavailable; this is bounded buffering, not unlimited loss prevention. Fix the cause promptly and verify draining rather than deleting the journal.
 
-The state directory is mode `0700`, with the database and owner lock mode `0600`. Cached RTSP credentials and evidence are plaintext on this local volume; protect the host and use encrypted storage where required. Do not commit, include in image build contexts, or distribute the state directory. Its process lock prevents two processes opening the same volume, but does not fence duplicate worker identities on separate machines.
+The state directory is mode `0700`, with the database and owner lock mode `0600`. Cached RTSP credentials and evidence are plaintext on this local volume; protect the host and use encrypted storage where required. Do not commit, include in image build contexts, or distribute the state directory. Its process lock prevents two processes opening the same volume, and P5 additionally fences camera ownership for duplicate worker identities on separate machines.
 
 ## Offline startup and authorization
 
-After a successful registration and assignment fetch, the worker saves the validated camera/configuration snapshot. A later transport error, HTTP 429 or HTTP 5xx can use that snapshot while it is fresh, including after process restart. Startup of event delivery and the configuration subscriber does not require RabbitMQ to be reachable. Model files and camera connectivity must still be available locally.
+After a successful registration and assignment fetch, the worker saves the validated camera/configuration snapshot. A later transport error, HTTP 429 or HTTP 5xx can use that snapshot while it is fresh. With P5, camera execution additionally requires an unexpired lease from the same process: cache TTL cannot extend ownership, and a restarted process must obtain a fresh grant. Startup of event delivery and the configuration subscriber does not require RabbitMQ to be reachable. Model files and camera connectivity must still be available locally.
 
 The cache is bound to worker/enterprise identity and a fingerprint of backend URL and worker credential. A credential change, expiry, backward-clock anomaly, invalid response, nonretryable HTTP rejection or authoritative empty assignment cannot grant old camera access. Observed same-enterprise configuration pushes invalidate the cached HTTP snapshot; a concurrent HTTP fetch cannot restore the invalidated snapshot.
 
@@ -47,7 +47,7 @@ Remote revocation cannot be discovered during a partition. Expiry is checked at 
 2. Preserve a distinct persistent volume for each identity. Compose mounts `worker_1_state` and `worker_2_state` at `/app/state`, alongside read-only model mounts in production. Keep the Compose project name stable so it reuses the existing named volumes. Run `python infra/check_production_config.py` to check the supplied topology.
 3. Recreate workers with those mounts. On first installation there is no cache until an authorized assignment fetch succeeds. Verify factory assignments, model readiness, stream processing and journal metrics.
 4. Restarting the same worker with its original state volume resumes pending delivery automatically. Do not use `docker compose down -v` or remove state volumes while they contain pending incidents. Losing a host disk loses incidents not yet handed off elsewhere.
-5. For controlled recovery on another host, stop/fence the original worker first, copy its stopped state directory consistently, and retain its worker/enterprise identity and credentials. The journal refuses a different owner. Test recovery and broker/object-store access before admitting more cameras. A second process with an independent disk is not protected by this local lock.
+5. For controlled recovery on another host, stop/fence the original worker first, copy its stopped state directory consistently, and retain its worker/enterprise identity and credentials. The journal refuses a different owner. Test recovery and broker/object-store access before admitting more cameras. A second process with an independent disk is not protected by the local lock; P5 camera leases still prevent it acquiring the first process's live camera ownership.
 
 Before rolling back to code that does not read this journal, drain both channels or retain the stopped state volume for later replay with compatible code. The existing PostgreSQL/MinIO backup script does not back up worker journals or broker queues; include these in the deployment recovery plan and test the chosen RPO/RTO.
 

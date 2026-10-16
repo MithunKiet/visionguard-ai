@@ -51,7 +51,7 @@ class WorkerService:
     async def list_workers(self, enterprise_id: str) -> list[WorkerEntity]:
         return await self._repo.list_all(enterprise_id)
 
-    async def get_worker_cameras_by_business_id(self, worker_id: str, db, enterprise_id: str) -> list:
+    async def get_worker_cameras_by_business_id(self, worker_id: str, db, enterprise_id: str, session_id: str | None = None) -> list:
         """
         Resolve the AI Worker's business id (e.g. "worker-1") to its internal
         integer id, then return cameras + zone configs assigned to it.
@@ -66,7 +66,13 @@ class WorkerService:
         worker_db_id = await self._repo.get_internal_id_by_worker_id(worker_id, enterprise_id)
         if not worker_db_id:
             return []
-        return await self.get_worker_cameras(worker_db_id, db)
+        if session_id is None:
+            # Internal legacy callers cannot acquire or renew leases.
+            return [c for c in await self.get_worker_cameras(worker_db_id, db) if not c["assignment_generation"]]
+        from src.modules.worker.infrastructure.leases import CameraLeaseRepository
+        grants = await CameraLeaseRepository(db).acquire(enterprise_id, worker_db_id, session_id)
+        return [{**c, "lease": grants[c["camera_id"]]} for c in await self.get_worker_cameras(worker_db_id, db)
+                if c["camera_id"] in grants]
 
     async def get_worker_cameras(self, worker_db_id: int, db) -> list:
         """
@@ -79,6 +85,7 @@ class WorkerService:
             result.append({
                 "id": str(cam.public_id),
                 "camera_id": str(cam.public_id),
+                "assignment_generation": cam.assignment_generation,
                 "camera_code": cam.code,
                 "rtsp_url": cam.rtsp_url,
                 "enterprise_id": str(enterprise_id),

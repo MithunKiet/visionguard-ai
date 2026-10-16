@@ -82,3 +82,6 @@ frames_discarded = Counter("vg_frames_discarded_total", "Frames/results discarde
 frame_local_age = Histogram("vg_frame_local_age_seconds", "Age since local decode at inference result; excludes upstream buffering", ["camera_id"])
 model_ready = Gauge("vg_model_ready", "Verified model startup and no observed runtime readiness failure")
 model_cuda_active = Gauge("vg_model_cuda_active", "1 when the ready model and predictor use CUDA")
+
+camera_lease_remaining = Gauge("vg_camera_lease_remaining_seconds", "Remaining local camera authorization, including stop margin", ["camera_id"])
+camera_lease_expirations = Counter("vg_camera_lease_expirations_total", "Camera pipelines stopped because ownership expired", ["camera_id"])

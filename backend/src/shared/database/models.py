@@ -10,7 +10,7 @@ Every foreign key below points at another model's internal integer `id`.
 """
 from sqlalchemy import (
     Column, String, Boolean, BigInteger, Integer, Float, Text, Date,
-    DateTime, Time, ForeignKey, Index, CheckConstraint, func,
+    DateTime, Time, ForeignKey, Index, CheckConstraint, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -175,6 +175,7 @@ class Camera(BaseEntity):
     factory_id          = Column(BigInteger, ForeignKey("factories.id"), nullable=False, index=True)
     zone_id             = Column(BigInteger, ForeignKey("zones.id"), nullable=False, index=True)
     worker_id           = Column(BigInteger, ForeignKey("worker.ai_workers.id"), nullable=True)
+    assignment_generation = Column(BigInteger, nullable=False, default=0, server_default="0")
     name                = Column(String(200), nullable=False)
     code                = Column(String(50), nullable=False)
     rtsp_url            = Column(String(500), nullable=False)
@@ -503,3 +504,19 @@ class EventReceipt(Base):
     __tablename__ = "event_receipts"
     event_id = Column(String(36), primary_key=True)
     processed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class CameraLease(Base):
+    """Ownership history retained for durable incident replay; never reuse a token."""
+    __tablename__ = "camera_leases"
+    __table_args__ = (
+        UniqueConstraint("camera_id", "generation", name="uq_camera_lease_generation"),
+        {"schema": "worker"},
+    )
+    token = Column(String(36), primary_key=True)
+    camera_id = Column(BigInteger, ForeignKey("cameras.id"), nullable=False)
+    generation = Column(BigInteger, nullable=False)
+    worker_id = Column(BigInteger, ForeignKey("worker.ai_workers.id"), nullable=False)
+    session_id = Column(String(36), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)

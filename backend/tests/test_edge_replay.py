@@ -1,12 +1,15 @@
 """Persisted edge replay against the real backend transaction boundary."""
 import importlib.util
 import json
+from datetime import datetime, timedelta
+from uuid import uuid4
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
-from src.shared.database.models import Alert, PPEViolation
+from src.shared.database.models import Alert, PPEViolation, CameraLease
+from src.modules.worker.infrastructure.leases import CameraLeaseRepository
 from src.shared.database.session import AsyncSessionFactory
 from tests.test_review_integration import event, pytestmark as pytestmark, setup as setup
 
@@ -20,6 +23,15 @@ async def test_restarted_edge_replay_keeps_one_incident_before_evidence_upload(s
 
     identity = {"worker_id": setup.worker.worker_id, "enterprise_id": setup.enterprise.public_id}
     body = event(setup)
+    async with AsyncSessionFactory() as db:
+        grant = (await CameraLeaseRepository(db).acquire(setup.enterprise.public_id,
+            setup.worker.id, str(uuid4())))[body["camera_id"]]
+        observed = datetime.fromisoformat(body["timestamp"])
+        await db.execute(update(CameraLease).where(CameraLease.token == grant["token"]).values(
+            started_at=observed - timedelta(seconds=10), expires_at=observed + timedelta(seconds=10)))
+        await db.commit()
+        await CameraLeaseRepository(db).acquire(setup.enterprise.public_id, setup.worker.id, str(uuid4()))
+    body.update(worker_id=setup.worker.worker_id, camera_lease={**grant, "observed_at": body["timestamp"]})
     body["snapshot_key"] = f"{body['enterprise_id']}/{body['factory_id']}/{body['zone_id']}/{body['camera_id']}/{body['event_id']}.jpg"
     journal = module.EdgeJournal(tmp_path / "edge", identity, min_free_bytes=0)
     journal.enqueue("events.helmet_missing_detected", body, b"test-evidence-not-yet-uploaded")

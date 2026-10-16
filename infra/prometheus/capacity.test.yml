@@ -97,3 +97,19 @@ tests:
       - eval_time: 15m
         alertname: VisionGuardCameraProcessingStalled
         exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'vg_camera_lease_expirations_total{instance="worker-a",camera_id="camera-1"}'
+        values: '0 0 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: VisionGuardCameraLeaseExpired
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: worker-a
+              camera_id: camera-1
+            exp_annotations:
+              summary: A camera stopped after its ownership lease expired
+              description: Check API connectivity and confirm a factory-local standby recovered the camera within the site RTO.

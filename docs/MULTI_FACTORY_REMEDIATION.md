@@ -20,7 +20,7 @@ This file is persistent project memory. Read it before continuing fleet-readines
 | P2 | Durable edge incidents and evidence retries; remove synchronous snapshot dependency; cached startup configuration | Short-lived incident survives broker/storage outage and process restart; replay keeps stable event IDs; bounded storage and explicit full-disk behavior | Implemented and locally verified |
 | P3 | Independent capture, bounded latest-frame handoff and local decode-age checks; isolate blocking operations | Slow inference/storage and a stalled stream do not accumulate stale detections or stall healthy cameras; reconnect and shutdown tests | Implemented and locally verified; upstream age needs site validation |
 | P4 | Actual GPU/model readiness and production fail-closed GPU startup | Required CUDA absence fails startup; heartbeat reports actual runtime state; model startup and device checks tested on target GPU | Guards implemented and locally verified; target GPU acceptance pending |
-| P5 | Automatic failed-worker recovery with ownership leases/fencing | Worker loss recovers within agreed RTO; partitions/recovery never cause duplicate active ownership; standby respects locality and capacity | Pending |
+| P5 | Automatic failed-worker recovery with ownership leases/fencing | Worker loss recovers within agreed RTO; partitions/recovery never cause duplicate active ownership; standby respects locality and capacity | Implemented and locally tested; site RTO and infrastructure failure drills pending |
 | P6 | Batch assignment/configuration reads and fleet monitoring | Assignment-query count does not grow per camera; every worker registered in monitoring; representative API/broker/database load measured | Partial: batch reads verified; fleet monitoring/load pending |
 | P7 | Site deployment, shared-service recovery, production model/data validation and staged rollout | DVR compatibility; independent labels; 24-hour integrated soak; restore/failure drills; measured hardware sizing at 10–20, then 50–100, then 200 cameras per factory | Pending; needs site hardware/data |
 
@@ -28,7 +28,7 @@ P1 pending-camera backfill is not automatic failover. Do not reassign stale-work
 
 ## Current implementation decisions
 
-- P1–P3 and the P4 startup/runtime guards are implemented as separately tested releases; keep every later priority visible here.
+- P1–P3, the P4 startup/runtime guards and P5 ownership leases are implemented as separately tested releases; keep every later priority visible here.
 - Bind each worker to one factory; allow multiple workers in the same factory. A worker heartbeat must not grant itself factory scope or increase capacity.
 - Factory/capacity configuration is administrator-controlled and tenant-scoped.
 - New/legacy workers have no scheduling permission until explicitly configured. Existing assignment rows must not silently grant cross-factory stream access after upgrade.
@@ -79,4 +79,14 @@ P4 validation on 2026-10-16:
 - 23 PostgreSQL integration tests passed, covering existing scheduling isolation/concurrency, heartbeat artifact/device round trips and edge replay. Lint, production Compose and Prometheus semantic checks passed. Existing backend dependency deprecation warnings remain; GitHub Actions results must be checked separately.
 - Actual target-GPU acceptance is still pending. Production GPU image/dependency compatibility, CUDA warmup on the chosen host, reviewed production weights, accuracy/capacity and forced recovery from a native hang remain unverified. Model readiness is not a distributed ownership lease. Preserve this external gate even when moving to the next code priority.
 
-Next code implementation: P5, failed-worker recovery with ownership leases/fencing. Design the lease and partition behavior before moving assignments: a stale heartbeat alone must not transfer a camera while its old owner can still run. Respect factory boundaries, measured capacity, cached-authorization expiry and durable replay ownership. P4 target-GPU acceptance and P6–P7 site/load gates remain open.
+P5 implemented on 2026-10-16 in migration `0020`: 90-second process-bound camera leases, five-second local stop margin, suspend-aware deadlines, independent capture expiry, factory/capacity-constrained automatic takeover and transactional event fencing. Old valid incidents retain their original grant across durable replay; stale telemetry/post-expiry observations are rejected. Legacy unleased assignments are never stolen. See [WORKER_FAILOVER.md](WORKER_FAILOVER.md) for coordinated upgrade/drain/rollback, the recovery budget and infrastructure assumptions.
+
+P5 local validation:
+
+- Full backend suite: 148 passed, two optional integration checks skipped (synthetic live-video relay and isolated notification RabbitMQ queue). After the final fail-closed history guard and additional regression cases, 19 targeted PostgreSQL failover/replay tests passed.
+- Full AI suite: 169 passed, two optional checks skipped (native RTSP and real CPU-model startup); real RabbitMQ and trial ONNX tests ran. Final targeted worker lease suite: 17 passed, including expired/previous-process/legacy cached assignment rejection and child-watchdog renewal without reconnect.
+- Migration 0019 → 0020 → 0019 → 0020 and schema readiness passed on the disposable database. Configured lint, production Compose validation, Prometheus rule evaluation and whitespace checks passed. Existing backend dependency deprecation warnings remain; GitHub Actions must be checked separately.
+
+ Site RTO, spare-capacity measurements, physical RTSP fencing under arbitrary host/kernel failures, authoritative database recovery and the integrated failure drill remain unverified. Backend/API outage deliberately stops leased detection after expiry; cached assignments cannot authorize longer offline operation or restart.
+
+Next implementation priority: P6, fleet monitoring coverage and representative API/broker/database load measurements. P4 target-GPU acceptance and P5/P7 site/failure-drill gates remain open. Do not infer a 200-camera capacity or uninterrupted monitoring guarantee from unit/integration tests.

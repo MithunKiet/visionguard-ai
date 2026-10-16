@@ -1,7 +1,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.modules.worker.api.schemas import HeartbeatRequest, WorkerResponse, WorkerSchedulingRequest
@@ -78,6 +78,7 @@ async def configure_worker_scheduling(
 )
 async def get_worker_cameras(
     worker_id: str,
+    x_worker_session: UUID = Header(...),
     ctx: WorkerContext = Depends(get_worker_context),
     svc: WorkerService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
@@ -85,7 +86,7 @@ async def get_worker_cameras(
     if ctx.worker_id and ctx.worker_id != worker_id:
         from src.core.exceptions import ForbiddenException
         raise ForbiddenException("Worker identity mismatch")
-    cameras = await svc.get_worker_cameras_by_business_id(worker_id, db, ctx.enterprise_id)
+    cameras = await svc.get_worker_cameras_by_business_id(worker_id, db, ctx.enterprise_id, session_id=str(x_worker_session))
     return ApiResponse(data=cameras)
 
 

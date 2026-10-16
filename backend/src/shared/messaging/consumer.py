@@ -4,6 +4,7 @@ from aio_pika import IncomingMessage
 from aio_pika.abc import AbstractRobustConnection
 
 from src.core.settings import settings
+from src.modules.worker.infrastructure.leases import fence_camera_event
 
 log = structlog.get_logger()
 
@@ -156,6 +157,7 @@ async def _handle_ppe_violation(routing_key: str, body: dict) -> None:
                 ).with_for_update(of=Camera))).scalar_one_or_none()
             if camera is None:
                 raise ValueError("Event camera/zone/enterprise mismatch")
+            await fence_camera_event(db, body, historical=True)
             db.info["enterprise_id"] = body["enterprise_id"]
             from src.shared.database.models import Factory
             factory_id = await db.scalar(select(Factory.public_id).where(Factory.id == camera.factory_id))
@@ -189,6 +191,7 @@ async def _handle_occupancy_updated(body: dict) -> None:
         return
 
     async with AsyncSessionFactory() as db:
+        await fence_camera_event(db, body)
         svc = OccupancyService(OccupancyRepository(db))
         entry = await svc.handle_occupancy_event(body)
 
@@ -232,6 +235,7 @@ async def _handle_infrastructure_alert(body, alert_type, severity, cooldown):
         async with db.begin():
             if not await _claim_alert_event(db, body):
                 return
+            await fence_camera_event(db, body, historical=True)
             db.info["enterprise_id"] = body["enterprise_id"]
             if alert_type == "OVERCROWDING" and await MaintenanceService.is_in_maintenance(db, body["camera_id"]):
                 return
@@ -271,6 +275,7 @@ async def _set_camera_status(body: dict, status: str) -> None:
         return
 
     async with AsyncSessionFactory() as db:
+        await fence_camera_event(db, body)
         changed = await CameraRepository(db).set_status(camera_id, status, preserve_inactive=True)
 
     if changed and enterprise_id:

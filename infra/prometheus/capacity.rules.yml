@@ -1,6 +1,13 @@
 groups:
   - name: visionguard-capacity
     rules:
+      - alert: VisionGuardCameraLeaseExpired
+        expr: increase(vg_camera_lease_expirations_total[5m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: A camera stopped after its ownership lease expired
+          description: Check API connectivity and confirm a factory-local standby recovered the camera within the site RTO.
       - alert: VisionGuardModelNotReady
         expr: vg_model_ready == 0
         for: 2m

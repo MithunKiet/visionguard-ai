@@ -6,9 +6,12 @@ import os
 import signal
 import sys
 import time
+import threading
 
 import cv2
 import numpy as np
+
+from src.config.ownership import lease_clock
 
 
 def open_capture(url, transport):
@@ -20,7 +23,17 @@ def open_capture(url, transport):
     ])
 
 
-def capture_stream(url, transport, pixels, metadata, lock, sample_fps, opener=open_capture):
+def capture_stream(url, transport, pixels, metadata, lock, sample_fps, lease_deadline=None, *, opener=open_capture):
+    if lease_deadline is not None:
+        # Independent of the parent's asyncio loop and of blocking native reads.
+        # Full host suspension/kernel failure still requires infrastructure fencing.
+        def expire():
+            while lease_clock() < lease_deadline.value:
+                time.sleep(0.05)
+            os._exit(0)
+        if lease_clock() >= lease_deadline.value:
+            return
+        threading.Thread(target=expire, daemon=True).start()
     if sys.platform == "linux":
         # A worker crash must not leave a camera connection running indefinitely.
         if ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGKILL, 0, 0, 0) != 0:

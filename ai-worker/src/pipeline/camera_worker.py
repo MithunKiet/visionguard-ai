@@ -10,9 +10,10 @@ from src.pipeline.batch_detector import BatchDetector, DetectionExpired
 from src.pipeline.ppe_validator import PPEValidator
 from src.events.publisher import publish, publish_incident
 from src.config.settings import settings
+from src.config.ownership import event_ownership, lease_valid, lease_clock
 from src.health.metrics import (
     camera_last_processed_timestamp, camera_target_fps, frames_processed_total, violations_detected_total,
-    frame_local_age, frames_discarded,
+    frame_local_age, frames_discarded, camera_lease_remaining, camera_lease_expirations,
 )
 
 log = structlog.get_logger()
@@ -37,7 +38,8 @@ class CameraWorker:
 
     def __init__(self, camera_id: str, rtsp_url: str, zone_config: dict,
                  enterprise_id: str, factory_id: str, zone_id: str, detector: BatchDetector,
-                 active: bool = True, ppe_overrides: dict | None = None):
+                 active: bool = True, ppe_overrides: dict | None = None, lease: dict | None = None):
+        self.lease = lease
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
         self.ppe_overrides = ppe_overrides or {}
@@ -55,6 +57,8 @@ class CameraWorker:
         camera_last_processed_timestamp.labels(camera_id=self.camera_id).set(0)
         frames_processed_total.labels(camera_id=self.camera_id).inc(0)
         self._reader = FrameReader(camera_id, rtsp_url, self.zone_config.get("frame_sample_fps", 2), on_status=self._on_stream_status)
+        if lease is not None:
+            self._reader.set_lease_deadline(lease["deadline"])
         # Shared BatchDetector, one per process — every camera on this
         # worker submits frames to it so inference can run in batches
         # instead of each camera loading its own model copy and calling
@@ -69,12 +73,47 @@ class CameraWorker:
         self._last_spec_check = 0.0
         self._spec_mismatch_active = False
 
+    def update_lease(self, lease):
+        if self.lease is None or lease["token"] != self.lease["token"]:
+            raise ValueError("A new ownership generation requires a fresh camera pipeline")
+        self.lease = lease
+        self._reader.set_lease_deadline(lease["deadline"])
+
+    async def _publish(self, route, body):
+        ownership = event_ownership(self.lease) if self.lease is not None else {}
+        await publish(route, {**body, **ownership})
+
+    async def _publish_incident(self, route, body, frame):
+        ownership = event_ownership(self.lease) if self.lease is not None else {}
+        await publish_incident(route, {**body, **ownership}, frame)
+
+    async def run(self):
+        # Independent of assignment polling, HTTP timeouts and GPU inference.
+        task = asyncio.create_task(self._run())
+        try:
+            while not task.done():
+                if self.lease is not None:
+                    camera_lease_remaining.labels(camera_id=self.camera_id).set(max(0, self.lease["deadline"] - lease_clock()))
+                if self.lease is not None and not lease_valid(self.lease):
+                    self._active = False
+                    self._validator.mark_gap()
+                    camera_target_fps.labels(camera_id=self.camera_id).set(0)
+                    camera_lease_expirations.labels(camera_id=self.camera_id).inc()
+                    log.warning("camera_worker.lease_expired", camera_id=self.camera_id)
+                    return
+                await asyncio.sleep(0.1)
+            await task
+        finally:
+            camera_lease_remaining.labels(camera_id=self.camera_id).set(0)
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
     async def _on_stream_status(self, offline: bool) -> None:
         self._validator.mark_gap()
         self._policy_revision += 1
         self._last_spec_check = 0
         event = "camera_offline_detected" if offline else "camera_reconnected"
-        await publish(f"events.{event}", {"event": event, "camera_id": self.camera_id,
+        await self._publish(f"events.{event}", {"event": event, "camera_id": self.camera_id,
             "enterprise_id": self.enterprise_id, "factory_id": self.factory_id, "zone_id": self.zone_id})
 
     def set_active(self, active: bool) -> None:
@@ -105,7 +144,7 @@ class CameraWorker:
             self._reader.set_sample_fps(fps)
         camera_target_fps.labels(camera_id=self.camera_id).set(self._reader.sample_fps if self._active else 0)
 
-    async def run(self) -> None:
+    async def _run(self) -> None:
         if self._isolated:
             log.error("camera_worker.isolated", camera_id=self.camera_id)
             return
@@ -130,7 +169,7 @@ class CameraWorker:
 
                 if self._failure_count >= CIRCUIT_BREAKER_THRESHOLD:
                     self._isolated = True
-                    await publish("events.camera_offline_detected", {
+                    await self._publish("events.camera_offline_detected", {
                         "event": "camera_offline_detected",
                         "camera_id": self.camera_id,
                         "enterprise_id": self.enterprise_id,
@@ -160,7 +199,9 @@ class CameraWorker:
         def discard_if_invalid(phase):
             reason = None
             age = time.monotonic() - received_at
-            if not 0 <= age <= settings.FRAME_MAX_AGE_SECONDS:
+            if self.lease is not None and not lease_valid(self.lease):
+                reason = "lease_expired"
+            elif not 0 <= age <= settings.FRAME_MAX_AGE_SECONDS:
                 reason = f"stale_{phase}"
             elif not self._active or revision != self._policy_revision:
                 reason = "policy_changed"
@@ -207,7 +248,7 @@ class CameraWorker:
             if discard_if_invalid("before_event"):
                 return
             if v.get("review"):
-                await publish("events.low_confidence_violation", {
+                await self._publish("events.low_confidence_violation", {
                     "event": "low_confidence_violation",
                     "camera_id": self.camera_id,
                     "enterprise_id": self.enterprise_id,
@@ -217,7 +258,7 @@ class CameraWorker:
                     "timestamp": observed_at,
                 })
             else:
-                await publish_incident(f"events.{v['event']}", {
+                await self._publish_incident(f"events.{v['event']}", {
                     "event": v["event"],
                     "camera_id": self.camera_id,
                     "enterprise_id": self.enterprise_id,
@@ -252,7 +293,7 @@ class CameraWorker:
         if (changed and elapsed >= OCCUPANCY_MIN_INTERVAL_SECONDS) or stale:
             self._last_occupancy_count = count
             self._last_occupancy_published = now
-            await publish("events.occupancy_updated", {
+            await self._publish("events.occupancy_updated", {
                 "event": "occupancy_updated",
                 "camera_id": self.camera_id,
                 "enterprise_id": self.enterprise_id,
@@ -268,7 +309,7 @@ class CameraWorker:
             and count > max_occupancy
             and (now - self._last_overcrowding_fired) >= OVERCROWDING_COOLDOWN_SECONDS
         ):
-            await publish("events.overcrowding_detected", {
+            await self._publish("events.overcrowding_detected", {
                 "event": "overcrowding_detected",
                 "camera_id": self.camera_id,
                 "enterprise_id": self.enterprise_id,
@@ -314,7 +355,7 @@ class CameraWorker:
                     actual_fps=fps, actual_resolution=f"{width}x{height}",
                     expected_fps=settings.MIN_EXPECTED_FPS,
                     expected_resolution=f"{settings.MIN_EXPECTED_WIDTH}x{settings.MIN_EXPECTED_HEIGHT}")
-        await publish("events.camera_spec_mismatch", {
+        await self._publish("events.camera_spec_mismatch", {
             "event": "camera_spec_mismatch",
             "camera_id": self.camera_id,
             "enterprise_id": self.enterprise_id,

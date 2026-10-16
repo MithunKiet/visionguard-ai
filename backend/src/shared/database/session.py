@@ -25,7 +25,7 @@ async def init_db() -> None:
         # This just verifies the connection
         from sqlalchemy import text
         version = await conn.scalar(text("SELECT version_num FROM alembic_version"))
-        if version != "0019":
+        if version != "0020":
             raise RuntimeError("Database schema is not current; run alembic upgrade head")
 
 

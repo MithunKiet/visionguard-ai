@@ -61,7 +61,7 @@ async def setup():
             await db.flush()
             db.add(UserRole(user_public_id=user.public_id, role_public_id=role.public_id))
             users[name] = user
-        worker = AIWorker(enterprise_id=enterprise.id, worker_id=uuid4().hex, status="Online",
+        worker = AIWorker(enterprise_id=enterprise.id, worker_id=uuid4().hex, status="Online", last_heartbeat=datetime.now(timezone.utc),
                           factory_id=locations[0].factory.id, max_cameras=1)
         db.add(worker)
         await db.commit()
@@ -162,7 +162,7 @@ async def test_manual_camera_reactivation_survives_stream_updates_and_worker_pol
         await db.execute(update(Camera).where(Camera.id == camera.id).values(worker_id=s.worker.id))
         await db.commit()
     path = f"/api/v1/cameras/{camera.public_id}/status"
-    worker_headers = {"X-Worker-Key": settings.WORKER_API_KEY, "X-Enterprise-Id": s.enterprise.public_id}
+    worker_headers = {"X-Worker-Key": settings.WORKER_API_KEY, "X-Enterprise-Id": s.enterprise.public_id, "X-Worker-Session": str(uuid4())}
     async def persisted_status():
         async with AsyncSessionFactory() as db:
             return await db.scalar(select(Camera.status).where(Camera.id == camera.id))
@@ -180,9 +180,10 @@ async def test_manual_camera_reactivation_survives_stream_updates_and_worker_pol
         assert await persisted_status() == "Active"
         poll = await s.client.get(f"/api/v1/workers/{s.worker.worker_id}/cameras", headers=worker_headers)
         assert poll.status_code == 200 and poll.json()["data"][0]["status"] == "Active"
-        await _route_event("events.camera_offline_detected", event(s))
+        body = {**event(s), "worker_id": s.worker.worker_id, "camera_lease": {**poll.json()["data"][0]["lease"], "observed_at": poll.json()["data"][0]["lease"]["server_time"]}}
+        await _route_event("events.camera_offline_detected", body)
         assert await persisted_status() == "Offline"
-        await _route_event("events.camera_reconnected", event(s))
+        await _route_event("events.camera_reconnected", body)
         assert await persisted_status() == "Active"
         assert broadcast.await_count == 2
 
@@ -234,7 +235,7 @@ async def test_first_login_requires_password_change(setup):
 async def test_worker_wrong_tenant_cannot_read_or_update(setup):
     s = setup
     from src.core.settings import settings
-    h = {"X-Worker-Key": settings.WORKER_API_KEY, "X-Enterprise-Id": s.other.public_id}
+    h = {"X-Worker-Key": settings.WORKER_API_KEY, "X-Enterprise-Id": s.other.public_id, "X-Worker-Session": str(uuid4())}
     assert (await s.client.get(f"/api/v1/workers/{s.worker.worker_id}/cameras", headers=h)).status_code == 404
     response = await s.client.post("/api/v1/workers/heartbeat", headers=h, json={"worker_id": s.worker.worker_id, "gpu_available": False})
     assert response.status_code == 403
@@ -372,7 +373,7 @@ async def test_bound_worker_credential_rejects_different_worker_and_tenant(setup
     s = setup
     from src.core.settings import settings
     monkeypatch.setattr(settings, "WORKER_CREDENTIALS", {s.worker.worker_id: {"key": "test-worker-credential", "enterprise_id": s.enterprise.public_id}})
-    h = {"X-Worker-Key": "test-worker-credential", "X-Enterprise-Id": s.enterprise.public_id}
+    h = {"X-Worker-Key": "test-worker-credential", "X-Enterprise-Id": s.enterprise.public_id, "X-Worker-Session": str(uuid4())}
     assert (await s.client.get(f"/api/v1/workers/{s.worker.worker_id}/cameras", headers=h)).status_code == 200
     assert (await s.client.get("/api/v1/workers/another-worker/cameras", headers=h)).status_code == 403
     h["X-Enterprise-Id"] = s.other.public_id

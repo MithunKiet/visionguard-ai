@@ -7,6 +7,8 @@ import time
 import numpy as np
 import structlog
 
+from src.config.ownership import lease_clock
+
 from src.config.settings import settings
 from src.health.metrics import (
     camera_connected, capture_last_received, capture_restarts, frames_discarded,
@@ -30,14 +32,17 @@ class CapturedFrame:
 class CaptureProcess:
     """One bounded shared slot. Never wait on a lock possibly held by a dead child."""
 
-    def __init__(self, url, sample_fps, *, target=capture_stream):
+    def __init__(self, url, sample_fps, *, target=capture_stream, lease_deadline=None):
         context = multiprocessing.get_context("spawn")
         self.pixels = context.RawArray("B", settings.CAPTURE_MAX_FRAME_BYTES)
         self.metadata = context.RawArray("d", 8)
         self.lock = context.Lock()
         self.sample_fps = context.RawValue("d", sample_fps)
-        self.process = context.Process(target=target, args=(url, settings.RTSP_TRANSPORT,
-            self.pixels, self.metadata, self.lock, self.sample_fps), daemon=True)
+        self.lease_deadline = context.RawValue("d", lease_deadline or 0)
+        args = (url, settings.RTSP_TRANSPORT, self.pixels, self.metadata, self.lock, self.sample_fps)
+        if lease_deadline is not None:
+            args += (self.lease_deadline,)
+        self.process = context.Process(target=target, args=args, daemon=True)
         self.sequence = 0
         self.started_at = time.monotonic()
         self.process.start()
@@ -85,6 +90,7 @@ class FrameReader:
         self.on_status = on_status
         self._process_factory = process_factory
         self._capture = None
+        self._lease_deadline = None
         self._task = None
         self._latest = None
         self._generation = 0
@@ -92,6 +98,11 @@ class FrameReader:
         self._offline = False
         self._failure_count = 0
         self.stream_fps = self.stream_width = self.stream_height = None
+
+    def set_lease_deadline(self, deadline):
+        self._lease_deadline = deadline
+        if self._capture:
+            self._capture.lease_deadline.value = deadline
 
     def set_sample_fps(self, sample_fps):
         self.sample_fps = max(1, int(sample_fps))
@@ -135,11 +146,16 @@ class FrameReader:
     async def _supervise(self):
         try:
             while True:
+                if self._lease_deadline is not None and lease_clock() >= self._lease_deadline:
+                    return
                 self._generation += 1
-                self._capture = self._process_factory(self.rtsp_url, self.sample_fps)
+                options = {"lease_deadline": self._lease_deadline} if self._lease_deadline is not None else {}
+                self._capture = self._process_factory(self.rtsp_url, self.sample_fps, **options)
                 progress = self._capture.started_at
                 reason = "exited"
                 while True:
+                    if self._lease_deadline is not None and lease_clock() >= self._lease_deadline:
+                        return
                     packet, health, error = self._capture.poll(self._generation)
                     if error:
                         reason = "invalid_frame"
