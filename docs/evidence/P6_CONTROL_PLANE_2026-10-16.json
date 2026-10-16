@@ -1,0 +1,209 @@
+{
+  "scope": "synthetic_control_plane_comparison",
+  "production_approved": false,
+  "note": "Development working-tree measurements on the same cloud environment, not a production capacity certification. Source hashes identify the measured backend/tool snapshots. Thresholds and burst workload were unchanged.",
+  "before_poll_optimization": {
+    "scope": "synthetic_control_plane",
+    "status": "fail",
+    "production_approved": false,
+    "camera_detection_capacity_measured": false,
+    "created_at": "2026-10-16T04:21:06.055619+00:00",
+    "git_revision": "3145e41eba91f4fb1040b05295a25ad8f8160ff3",
+    "python": "3.12.14",
+    "runtime": {
+      "backend_source_sha256": "049dfd7d66c9a2b82c3811ce5fbcc50cbad04ab0aa1fbc9a97757deea0fd4e1d",
+      "working_tree_dirty": true,
+      "packages": {
+        "fastapi": "0.143.0",
+        "uvicorn": "0.32.1",
+        "sqlalchemy": "2.0.36",
+        "asyncpg": "0.30.0",
+        "aio-pika": "9.4.3",
+        "httpx": "0.28.1"
+      },
+      "host_logical_cpus": 5,
+      "architecture": "x86_64",
+      "cgroup_cpu_max": "400000 100000",
+      "cgroup_memory_max": "34359738368"
+    },
+    "api_and_generator_peak_rss_kib": 161284,
+    "workload": {
+      "factories": 5,
+      "cameras_per_factory": 200,
+      "workers_per_factory": 4,
+      "seconds": 60,
+      "events_per_second": 20,
+      "reads_per_second": 6,
+      "history_events": 1000,
+      "history_cameras": 100,
+      "p95_ms": 750,
+      "event_p95_ms": 2000,
+      "output": "../capacity-results/p6-burst-1000.json"
+    },
+    "cameras": 1000,
+    "workers": 20,
+    "measurement_seconds": 60,
+    "elapsed_including_drain_seconds": 60.308622160002415,
+    "events_published": 1200,
+    "timed_event_receipts": 1200,
+    "total_persisted_violations": 2200,
+    "total_persisted_alerts": 1000,
+    "timed_alerts_created": 900,
+    "total_outbox_rows": 3000,
+    "api_latency": {
+      "heartbeat": {
+        "count": 40,
+        "p50_ms": 331.09879499534145,
+        "p95_ms": 362.41804800374666,
+        "max_ms": 388.29166300274665
+      },
+      "alerts": {
+        "count": 120,
+        "p50_ms": 18.597678004880436,
+        "p95_ms": 72.20689099631272,
+        "max_ms": 176.8133469959139
+      },
+      "violations": {
+        "count": 120,
+        "p50_ms": 10.185742998146452,
+        "p95_ms": 22.374453001248185,
+        "max_ms": 221.38981100579258
+      },
+      "cameras": {
+        "count": 120,
+        "p50_ms": 27.18204099801369,
+        "p95_ms": 157.69486199860694,
+        "max_ms": 333.14794799662195
+      },
+      "assignments": {
+        "count": 40,
+        "p50_ms": 798.8956660046824,
+        "p95_ms": 1193.4010930053773,
+        "max_ms": 1230.6158380015404
+      }
+    },
+    "publish_to_handler_completion": {
+      "count": 1200,
+      "p50_ms": 19.00415200361749,
+      "p95_ms": 62.15424800029723,
+      "max_ms": 691.3579430038226
+    },
+    "backlog_at_load_end": 0,
+    "failures": {
+      "api_p95_gate": 1
+    },
+    "database_and_broker": {
+      "sql_statements": 47000,
+      "pool_peak_checked_out": 30,
+      "broker_peak_ready": 0,
+      "broker_peak_inflight": 10
+    },
+    "limitations": [
+      "Synthetic metadata; no GPU, RTSP, evidence or notification delivery",
+      "Load generator and API share a process; loopback HTTP excludes production TLS/proxy/network",
+      "Private auto-delete benchmark queue; confirms tested, broker restart durability not tested",
+      "Short synthetic dataset/run; not production capacity or a site soak"
+    ]
+  },
+  "after_poll_optimization": {
+    "scope": "synthetic_control_plane",
+    "status": "pass",
+    "production_approved": false,
+    "camera_detection_capacity_measured": false,
+    "created_at": "2026-10-16T04:24:40.290125+00:00",
+    "git_revision": "3145e41eba91f4fb1040b05295a25ad8f8160ff3",
+    "python": "3.12.14",
+    "runtime": {
+      "backend_source_sha256": "5ed3115c25ac3c3d2324f08d943c2eba03679195a098b8ef4c35892f59ab552b",
+      "working_tree_dirty": true,
+      "packages": {
+        "fastapi": "0.143.0",
+        "uvicorn": "0.32.1",
+        "sqlalchemy": "2.0.36",
+        "asyncpg": "0.30.0",
+        "aio-pika": "9.4.3",
+        "httpx": "0.28.1"
+      },
+      "host_logical_cpus": 5,
+      "architecture": "x86_64",
+      "cgroup_cpu_max": "400000 100000",
+      "cgroup_memory_max": "34359738368"
+    },
+    "api_and_generator_peak_rss_kib": 160760,
+    "workload": {
+      "factories": 5,
+      "cameras_per_factory": 200,
+      "workers_per_factory": 4,
+      "seconds": 60,
+      "events_per_second": 20,
+      "reads_per_second": 6,
+      "history_events": 1000,
+      "history_cameras": 100,
+      "p95_ms": 750,
+      "event_p95_ms": 2000,
+      "output": "../capacity-results/p6-optimized-1000.json"
+    },
+    "cameras": 1000,
+    "workers": 20,
+    "measurement_seconds": 60,
+    "elapsed_including_drain_seconds": 60.26492987999518,
+    "events_published": 1200,
+    "timed_event_receipts": 1200,
+    "total_persisted_violations": 2200,
+    "total_persisted_alerts": 1000,
+    "timed_alerts_created": 900,
+    "total_outbox_rows": 3000,
+    "api_latency": {
+      "alerts": {
+        "count": 120,
+        "p50_ms": 18.260234006447718,
+        "p95_ms": 77.58187199942768,
+        "max_ms": 358.656720003637
+      },
+      "heartbeat": {
+        "count": 40,
+        "p50_ms": 293.8630370044848,
+        "p95_ms": 361.0309950017836,
+        "max_ms": 371.0133519998635
+      },
+      "assignments": {
+        "count": 40,
+        "p50_ms": 479.23689000162994,
+        "p95_ms": 643.5603860008996,
+        "max_ms": 645.5436940013897
+      },
+      "violations": {
+        "count": 120,
+        "p50_ms": 10.60323999990942,
+        "p95_ms": 17.90355100092711,
+        "max_ms": 218.86507399904076
+      },
+      "cameras": {
+        "count": 120,
+        "p50_ms": 26.681420000386424,
+        "p95_ms": 157.3316150024766,
+        "max_ms": 224.78079699794762
+      }
+    },
+    "publish_to_handler_completion": {
+      "count": 1200,
+      "p50_ms": 18.698995001614094,
+      "p95_ms": 54.398820000642445,
+      "max_ms": 700.7477740044123
+    },
+    "backlog_at_load_end": 0,
+    "failures": {},
+    "database_and_broker": {
+      "sql_statements": 46800,
+      "pool_peak_checked_out": 30,
+      "broker_peak_ready": 0,
+      "broker_peak_inflight": 10
+    },
+    "limitations": [
+      "Synthetic metadata; no GPU, RTSP, evidence or notification delivery",
+      "Load generator and API share a process; loopback HTTP excludes production TLS/proxy/network",
+      "Private auto-delete benchmark queue; confirms tested, broker restart durability not tested",
+      "Short synthetic dataset/run; not production capacity or a site soak"
+    ]
+  }
+}

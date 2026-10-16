@@ -1,6 +1,14 @@
 groups:
   - name: visionguard-capacity
     rules:
+      - alert: VisionGuardWorkerIdentityMissing
+        expr: (up{job="visionguard-ai-worker"} == 1) unless on (instance) vg_worker_identity_info{job="visionguard-ai-worker"}
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: A reachable worker does not report its runtime identity
+          description: Check worker version and metrics endpoint mapping, then run the fleet coverage audit.
       - alert: VisionGuardCameraLeaseExpired
         expr: increase(vg_camera_lease_expirations_total[5m]) > 0
         labels:

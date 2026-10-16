@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from src.core.exceptions import VisionGuardException
 from src.modules.worker.infrastructure.scheduling import WorkerSchedulingRepository
@@ -30,13 +30,16 @@ class CameraLeaseRepository(WorkerSchedulingRepository):
         if worker is None:
             await self._db.commit()
             return {}
-        # Lock all relevant camera rows in ID order, shared with event writes.
+        # Lock owned/pending/expired rows in ID order, shared with event writes.
+        # Other live owners cannot be claimed; do not lock or hydrate their rows.
         # Legacy (generation zero) assignments are never automatically stolen.
         rows = (await self._db.execute(select(Camera, CameraLease).outerjoin(CameraLease,
             (CameraLease.camera_id == Camera.id) & (CameraLease.generation == Camera.assignment_generation))
             .join(Zone, Zone.id == Camera.zone_id).where(
                 Camera.enterprise_id == ent_pk, Camera.factory_id == worker.factory_id,
                 Camera.deleted_at.is_(None), Camera.is_active.is_(True),
+                or_(Camera.worker_id == worker.id, Camera.worker_id.is_(None), CameraLease.expires_at <= now,
+                    (Camera.assignment_generation > 0) & CameraLease.token.is_(None)),
                 Zone.enterprise_id == ent_pk, Zone.factory_id == worker.factory_id,
                 Zone.is_active.is_(True), Zone.deleted_at.is_(None), Zone.status == "Active",
             ).order_by(Camera.id).with_for_update(of=Camera)

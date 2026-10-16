@@ -1,0 +1,14 @@
+{
+  "enterprises": [
+    {"enterprise_id": "REPLACE_WITH_ENTERPRISE_UUID", "token_env": "FLEET_ADMIN_TOKEN"}
+  ],
+  "workers": [
+    {
+      "worker_id": "worker-1",
+      "enterprise_id": "REPLACE_WITH_ENTERPRISE_UUID",
+      "factory_id": "REPLACE_WITH_FACTORY_UUID",
+      "target": "ai-worker:8001",
+      "scheme": "http"
+    }
+  ]
+}

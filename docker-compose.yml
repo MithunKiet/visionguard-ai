@@ -266,11 +266,12 @@ services:
   # ─── Observability ────────────────────────────────────────────────────────
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.2.1
     container_name: vg_prometheus
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./infra/prometheus/capacity.rules.yml:/etc/prometheus/capacity.rules.yml:ro
+      - ./infra/prometheus/targets:/etc/prometheus/targets:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"

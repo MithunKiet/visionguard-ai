@@ -280,3 +280,32 @@ async def test_runtime_heartbeat_identity_roundtrips_without_changing_scheduling
     async with AsyncSessionFactory() as db:
         worker = await db.get(AIWorker, s.worker.id)
         assert worker.model_version == model_version and worker.gpu_available is cuda_active
+
+
+async def test_complete_lease_renewal_select_count_is_constant_for_200_cameras(site):
+    own = site.places[0]
+    session_id = str(uuid4())
+    await add_cameras(site, worker=own.worker.id)
+    async def renew_and_count():
+        async with AsyncSessionFactory() as db:
+            # Warm first acquisition; count a steady-state full renewal poll.
+            svc = WorkerService(WorkerRepository(db))
+            await svc.get_worker_cameras_by_business_id(own.worker.worker_id, db, site.enterprise.public_id, session_id)
+            statements = []
+            def capture(_conn, _cursor, statement, _parameters, _context, _executemany):
+                if statement.lstrip().upper().startswith("SELECT"):
+                    statements.append(statement)
+            event.listen(engine.sync_engine, "before_cursor_execute", capture)
+            try:
+                response = await svc.get_worker_cameras_by_business_id(own.worker.worker_id, db, site.enterprise.public_id, session_id)
+            finally:
+                event.remove(engine.sync_engine, "before_cursor_execute", capture)
+        return len(response), len(statements)
+    small_size, small_queries = await renew_and_count()
+    await add_cameras(site, count=199, worker=own.worker.id)
+    async with AsyncSessionFactory() as db:
+        await db.execute(update(AIWorker).where(AIWorker.id == own.worker.id).values(max_cameras=200))
+        await db.commit()
+    large_size, large_queries = await renew_and_count()
+    assert small_size == 1 and large_size == 200
+    assert small_queries == large_queries and large_queries <= 25

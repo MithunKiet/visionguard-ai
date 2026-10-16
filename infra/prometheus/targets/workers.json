@@ -1,0 +1,4 @@
+[
+  {"targets": ["ai-worker:8001"], "labels": {"worker_id": "worker-1"}},
+  {"targets": ["ai-worker-2:8001"], "labels": {"worker_id": "worker-2"}}
+]

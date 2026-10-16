@@ -137,14 +137,22 @@ async def test_event_transaction_holds_fence_until_commit(site):
     camera = (await add_cameras(site, worker=site.places[0].worker.id))[0]
     grant = (await acquire(site))[camera.public_id]
     spare = await standby(site)
-    # A held event row lock must block a scheduler transaction across sessions.
+    # A historical event holds an expired camera row while a takeover waits.
+    # A different LIVE owner's row is no longer a takeover candidate.
+    start = datetime.now(timezone.utc) - timedelta(seconds=100)
     async with AsyncSessionFactory() as db:
-        await fence_camera_event(db, body_for(camera, site.places[0].worker, grant))
+        await db.execute(update(CameraLease).where(CameraLease.token == grant["token"]).values(
+            started_at=start, expires_at=start + timedelta(seconds=90)))
+        await db.commit()
+    grant["server_time"] = (start + timedelta(seconds=10)).isoformat()
+    async with AsyncSessionFactory() as db:
+        await fence_camera_event(db, body_for(camera, site.places[0].worker, grant), historical=True)
         task = asyncio.create_task(acquire(site, spare))
         await asyncio.sleep(.1)
         assert not task.done()
         await db.commit()
-    assert await task == {}
+    result = await task
+    assert result[camera.public_id]["generation"] == 2
 
 
 @pytest.mark.parametrize("parent", [Factory, Zone])
@@ -228,3 +236,16 @@ async def test_missing_current_lease_history_fails_closed(site):
         await db.commit()
     with pytest.raises(VisionGuardException, match="history is missing"):
         await acquire(site, await standby(site))
+
+
+async def test_renewal_does_not_lock_another_workers_live_cameras(site):
+    camera = (await add_cameras(site, worker=site.places[0].worker.id))[0]
+    grant = (await acquire(site))[camera.public_id]
+    spare = await standby(site)
+    other = (await add_cameras(site, worker=spare.id))[0]
+    session = str(uuid4())
+    await acquire(site, spare, session)
+    async with AsyncSessionFactory() as db:
+        await fence_camera_event(db, body_for(camera, site.places[0].worker, grant))
+        result = await asyncio.wait_for(acquire(site, spare, session), 2)
+        assert list(result) == [other.public_id]

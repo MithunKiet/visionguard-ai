@@ -25,7 +25,7 @@ jobs:
           pip install -r requirements.txt
           pip install ruff
       - name: Lint (ruff)
-        run: ruff check src tests ../infra/capacity
+        run: ruff check src tests scripts/measure_fleet.py ../infra/capacity ../infra/monitoring
       - name: Tests
         run: pytest --cov=src --cov-report=term-missing
 
@@ -141,6 +141,33 @@ jobs:
       - run: pip install -r requirements.txt
       - run: alembic upgrade head
       - run: pytest tests/test_review_integration.py tests/test_notification_outbox.py tests/test_live_video.py tests/test_worker_scheduling.py tests/test_worker_failover.py tests/test_edge_replay.py
+      - name: Synthetic fleet workload smoke
+        env:
+          CAPACITY_DATABASE_URL: postgresql+asyncpg://vgtest:test-only@localhost:5432/fleet_capacity_test
+          DATABASE_URL: postgresql+asyncpg://vgtest:test-only@localhost:5432/fleet_capacity_test
+        run: |
+          python - <<'PYCODE'
+          import asyncio, asyncpg
+          async def create():
+              db = await asyncpg.connect("postgresql://vgtest:test-only@localhost:5432/postgres")
+              await db.execute("CREATE DATABASE fleet_capacity_test")
+              await db.close()
+          asyncio.run(create())
+          PYCODE
+          alembic upgrade head
+          python scripts/measure_fleet.py --factories 1 --cameras-per-factory 20 --workers-per-factory 1 --history-events 20 --history-cameras 5 --seconds 5 --events-per-second 2 --reads-per-second 3 --p95-ms 3000 --event-p95-ms 5000 --output ../capacity-results/ci-control-plane.json
+      - name: Fleet discovery with real Prometheus
+        run: |
+          mkdir -p "$RUNNER_TEMP/fleet-targets"
+          chmod 755 "$RUNNER_TEMP/fleet-targets"
+          docker run -d --name fleet-prometheus --network host -v "$GITHUB_WORKSPACE/infra/monitoring/smoke-prometheus.yml:/etc/prometheus/prometheus.yml:ro" -v "$RUNNER_TEMP/fleet-targets:/etc/prometheus/targets:ro" prom/prometheus:v3.2.1 --config.file=/etc/prometheus/prometheus.yml --web.listen-address=127.0.0.1:19091
+          trap 'docker rm -f fleet-prometheus' EXIT
+          TEST_FLEET_PROMETHEUS_URL=http://127.0.0.1:19091 TEST_FLEET_TARGETS_DIR="$RUNNER_TEMP/fleet-targets" pytest tests/test_fleet_monitoring.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-control-plane
+          path: capacity-results/ci-control-plane.json
       - name: Capacity monitoring rules
         run: docker run --rm --entrypoint promtool -v "$GITHUB_WORKSPACE/infra/prometheus:/rules:ro" -w /rules prom/prometheus:v3.2.1 test rules capacity.test.yml
       - name: Production configuration

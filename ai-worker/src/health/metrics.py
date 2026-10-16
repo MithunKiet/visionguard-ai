@@ -52,6 +52,9 @@ violations_detected_total = Counter(
 
 
 def start_metrics_server(port: int) -> None:
+    from src.config.settings import settings
+    worker_identity.labels(reported_worker_id=settings.WORKER_ID,
+        reported_enterprise_id=settings.ENTERPRISE_ID).set(1)
     start_http_server(port)
     log.info("metrics.started", port=port)
 
@@ -85,3 +88,5 @@ model_cuda_active = Gauge("vg_model_cuda_active", "1 when the ready model and pr
 
 camera_lease_remaining = Gauge("vg_camera_lease_remaining_seconds", "Remaining local camera authorization, including stop margin", ["camera_id"])
 camera_lease_expirations = Counter("vg_camera_lease_expirations_total", "Camera pipelines stopped because ownership expired", ["camera_id"])
+
+worker_identity = Gauge("vg_worker_identity_info", "Runtime identity independent of scrape configuration", ["reported_worker_id", "reported_enterprise_id"])

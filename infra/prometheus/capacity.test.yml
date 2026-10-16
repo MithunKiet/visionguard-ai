@@ -113,3 +113,23 @@ tests:
             exp_annotations:
               summary: A camera stopped after its ownership lease expired
               description: Check API connectivity and confirm a factory-local standby recovered the camera within the site RTO.
+
+  - interval: 1m
+    input_series:
+      - series: 'up{job="visionguard-ai-worker",instance="missing"}'
+        values: '1+0x5'
+      - series: 'up{job="visionguard-ai-worker",instance="healthy"}'
+        values: '1+0x5'
+      - series: 'vg_worker_identity_info{job="visionguard-ai-worker",instance="healthy",reported_worker_id="worker-1",reported_enterprise_id="tenant"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: VisionGuardWorkerIdentityMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: visionguard-ai-worker
+              instance: missing
+            exp_annotations:
+              summary: A reachable worker does not report its runtime identity
+              description: Check worker version and metrics endpoint mapping, then run the fleet coverage audit.

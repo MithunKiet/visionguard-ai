@@ -17,6 +17,11 @@ services:
 
   prometheus:
     ports: !reset []
+    volumes: !override
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/capacity.rules.yml:/etc/prometheus/capacity.rules.yml:ro
+      - ${FLEET_TARGETS_DIR:?Generate and audit the private fleet target directory}:/etc/prometheus/targets:ro
+      - prometheus_data:/prometheus
 
   grafana:
     ports: !reset []

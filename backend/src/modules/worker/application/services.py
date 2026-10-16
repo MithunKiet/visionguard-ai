@@ -62,7 +62,10 @@ class WorkerService:
             raise NotFoundException("Worker", worker_id)
         if worker.factory_id is None or worker.max_cameras < 1:
             return []
-        await WorkerSchedulingRepository(db).admit_pending(enterprise_id, worker_public_id=worker.id)
+        if session_id is None:
+            await WorkerSchedulingRepository(db).admit_pending(enterprise_id, worker_public_id=worker.id)
+        # Leased acquisition already admits unowned cameras under the same
+        # policy lock. Avoid a second serialized scheduling pass on every poll.
         worker_db_id = await self._repo.get_internal_id_by_worker_id(worker_id, enterprise_id)
         if not worker_db_id:
             return []

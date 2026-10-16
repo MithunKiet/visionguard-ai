@@ -6,7 +6,7 @@ import subprocess
 
 root = Path(__file__).resolve().parents[1]
 env = {**os.environ, "VITE_WS_URL": "wss://test.invalid", "CAMERA_ALLOWED_HOSTS": '["camera.test.invalid"]',
-       "PPE_MODEL_SHA256": "0" * 64,
+       "PPE_MODEL_SHA256": "0" * 64, "FLEET_TARGETS_DIR": str(root / "capacity-data/prometheus-targets"),
        "WORKER_CREDENTIALS": '{"worker-1":{"key":"test-only","enterprise_id":"test-only"}}',
        "WORKER_1_GPU_DEVICE_ID": "0", "WORKER_2_GPU_DEVICE_ID": "1", "MEDIA_HLS_SECRET": "test-only", "MEDIAMTX_PUBLISH_PASSWORD": "test-only", "WORKER_1_API_KEY": "test-only", "WORKER_2_API_KEY": "test-only"}
 result = subprocess.run(["docker", "compose", "-f", "docker-compose.yml", "-f", "docker-compose.prod.yml",
@@ -45,3 +45,7 @@ for name in ("ai-worker", "ai-worker-2"):
     assert len(devices) == 1 and devices[0]["device_ids"] and "count" not in devices[0]
 assert services["ai-worker"]["volumes"][1]["source"] != services["ai-worker-2"]["volumes"][1]["source"]
 print("Worker checks passed: read-only models, separate persistent journals and explicit GPU allocation.")
+
+monitoring = services["prometheus"]["volumes"]
+assert any(v["target"] == "/etc/prometheus/targets" and v.get("read_only") and v["source"].endswith("capacity-data/prometheus-targets") for v in monitoring)
+print("Fleet monitoring checks passed: explicit private target directory required.")

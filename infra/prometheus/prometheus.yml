@@ -12,6 +12,7 @@ scrape_configs:
     metrics_path: /metrics
 
   - job_name: visionguard-ai-worker
-    static_configs:
-      - targets: ['ai-worker:8001', 'ai-worker-2:8001']
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/*.json"]
+        refresh_interval: 15s
     metrics_path: /metrics
