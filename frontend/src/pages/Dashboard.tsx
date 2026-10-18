@@ -1,5 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
@@ -40,11 +39,9 @@ const FEED_LABELS: Record<string, string> = {
 };
 
 export function Dashboard() {
-  const queryClient = useQueryClient();
-  const { events, connected } = useLiveFeed(50);
+  const { events, connected, latestOccupancy } = useLiveFeed(50);
 
   const feedEvents = events.filter((e) => e.type !== "occupancy.updated").slice(0, 20);
-  const latestOccupancy = events.find((e) => e.type === "occupancy.updated");
 
   const { data: counts } = useQuery({
     queryKey: ["open-alert-counts"],
@@ -58,14 +55,6 @@ export function Dashboard() {
     refetchInterval: 30000,
   });
 
-  // Meaningful live events invalidate the summary queries so counters/lists
-  // stay fresh; occupancy ticks alone shouldn't trigger refetch storms.
-  useEffect(() => {
-    if (feedEvents.length === 0) return;
-    queryClient.invalidateQueries({ queryKey: ["open-alert-counts"] });
-    queryClient.invalidateQueries({ queryKey: ["recent-violations"] });
-  }, [feedEvents[0], queryClient]);
-
   return (
     <Stack spacing={3}>
       <Typography variant="h5" fontWeight={700}>
@@ -78,7 +67,7 @@ export function Dashboard() {
         <StatCard label="High" value={counts?.high ?? "-"} accent="#F59E0B" icon={<WarningAmberIcon />} />
         <StatCard
           label="Latest Camera Count"
-          value={connected ? latestOccupancy?.data?.current_count ?? "-" : "Offline"}
+          value={connected ? latestOccupancy?.data?.current_count ?? "Awaiting update" : "Offline"}
           accent="#2563EB"
           icon={<PeopleAltIcon />}
         />

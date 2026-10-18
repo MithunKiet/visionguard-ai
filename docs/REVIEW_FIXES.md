@@ -8,6 +8,8 @@ The follow-up review reproduced two defects in the initial remediation. Manual c
 
 Regression coverage checks persisted camera state and worker polling after reactivation, ignored transport updates while inactive, logout after expiry/suspension, invalid-signature isolation, refresh-token revocation, cookie deletion, and browser retry after a failed logout. The next operational step is the [2–4 camera pilot plan](PILOT_PLAN.md).
 
+Browser recovery follow-up (18 October 2026): the header/dashboard now share one authenticated WebSocket, reconnect reloads persisted operational views, live-event bursts coalesce HTTP refreshes, and old occupancy expires instead of appearing current after a gap. Session cleanup and a slow-response reconnect race have browser regression coverage. See [LIVE_FEED_RECOVERY.md](LIVE_FEED_RECOVERY.md) for the scope and remaining site tests.
+
 ## Deployment and compatibility
 
 - The subsequent [durable alert delivery change](ALERT_DELIVERY.md) requires migration `0018`. It adds transactional delivery jobs, independent retries and administrator status/replay controls. The validation numbers below describe the earlier review remediation; current delivery-specific validation is recorded in that guide.
@@ -77,7 +79,7 @@ CI now includes the PostgreSQL/Redis integration suite, browser regressions, pro
 | DATA-07 | Partial | Deleted/cross-parent references rejected on guarded paths; explicit config capacity clearing supported. Full lifecycle cascade and setup-wizard replay semantics remain. |
 | DATA-08 | Addressed | Worker cooldown starts after successful snapshot/event publication. Notifications now use persistent per-channel jobs, bounded retries, status monitoring and administrator replay. Validate the actual providers and burst capacity before production; delivery is at least once. |
 | DATA-09 | Partial | Audit failure rolls back its failed transaction; enterprise-wide reads restricted. Durable complete coverage and append-only database permissions remain. |
-| SCALE-01 | Partial | Redis distributes live events to every API replica and scope is checked per socket. Pub/sub is ephemeral; durable replay and recovery/resync testing remain. |
+| SCALE-01 | Partial | Redis distributes live events to every API replica and scope is checked per socket. Browser reconnect now resyncs persisted HTTP views, including a slow-response race. Pub/sub/live-event history remains ephemeral; site ingress/concurrency recovery tests remain. |
 | SCALE-02 | Partial | Report generation/upload runs off the event loop; exports exceeding 5000 rows return an explicit error. Background jobs, user-list pagination/N+1 removal and availability-aware scores remain. |
 | DEPLOY-01 | Addressed | Compose inheritance uses explicit reset/override and is checked in CI. |
 | DEPLOY-02 | Addressed | Frontend Dockerfile uses the correct repository-root paths; production build is included in CI. |
@@ -88,7 +90,7 @@ CI now includes the PostgreSQL/Redis integration suite, browser regressions, pro
 | DEPLOY-07 | Remaining | Define retention/RPO/RTO; implement scheduled offsite backups and run isolated database/object restore drills. |
 | SEC-01 | Partial | Current backend/frontend audits clean after controlled upgrades and JWT-library replacement. Audit the full GPU runtime and continue dependency monitoring. |
 | UI-01 | Partial | Accurate server alert totals, real alert/violation pagination and activity invalidation fixed. Occupancy aggregation/freshness and aggregate review counts remain. |
-| UI-02 | Partial | Reconnect timers cancelled; stale refresh profile corrected. A shared frontend socket and complete role-aware controls/error states remain. |
+| UI-02 | Partial | Shared frontend socket, bounded reconnect/event-refresh timers, session cleanup, immediate HTTP resync and stale-occupancy expiry implemented. Complete role-aware controls/error states remain. |
 | PRODUCT-01 | Remaining | Reporting/analytics/settings UI expansion, generic rules, employee identity, recording and model promotion are separate product capabilities. |
 | QUALITY-01 | Partial | Added meaningful integration/browser/fault/concurrency coverage and CI gates. Real cameras/GPU, load, TLS, media, restore and long-running fault tests remain. |
 

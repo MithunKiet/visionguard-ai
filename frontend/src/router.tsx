@@ -14,6 +14,7 @@ import { Departments } from "./pages/Departments";
 import { Zones } from "./pages/Zones";
 import { Users } from "./pages/Users";
 import { useAuthStore } from "./store/authStore";
+import { LiveFeedProvider } from "./hooks/useWebSocket";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -31,7 +32,7 @@ export const router = createBrowserRouter([
     path: "/",
     element: (
       <ProtectedRoute>
-        <AppShell />
+        <LiveFeedProvider><AppShell /></LiveFeedProvider>
       </ProtectedRoute>
     ),
     children: [
