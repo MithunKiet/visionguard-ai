@@ -1,0 +1,3 @@
+# Standalone CUDA execution probe, installed from the official cu124 index.
+# No checkpoint loading, detector dependencies, cameras or production deployment.
+torch==2.6.0+cu124
