@@ -1,6 +1,6 @@
 # Verified model and GPU startup
 
-P4 removes silent CPU fallback and configuration-derived GPU reporting. A production worker registers, fetches assignments and starts camera tasks only after its local model passes the startup checks below. Schema remains `0019`; the existing heartbeat API is retained.
+P4 removes silent CPU fallback and configuration-derived GPU reporting. A production worker registers, fetches assignments and starts camera tasks only after its local model passes the startup checks below. P4 originally used schema `0019`; the current deployment requires `0020` for P5 ownership fencing. The existing heartbeat API is retained.
 
 ## Startup contract
 
@@ -20,7 +20,7 @@ A model execution exception or observed device mismatch revokes readiness. Furth
 
 Readiness is evaluated at startup, registration, assignment reconciliation and heartbeat cadence, normally every 30 seconds plus API time. It is not instantaneous failure detection or hardware attestation; the backend trusts the authenticated worker's report. A last successful heartbeat remains historical data until the backend's existing timeout. It does not grant new factory/capacity permissions.
 
-Native PyTorch/CUDA initialization or inference can hang beyond Python cancellation. The worker does not safely kill a GPU thread or guarantee process exit in that case; thread cleanup can remain blocked. Use the bounded preflight below and a tested external process/container supervisor for forced recovery. Compose's restart policy alone does not restart a process that stays alive but is hung. Automatic fenced camera takeover remains P5 work.
+Native PyTorch/CUDA initialization or inference can hang beyond Python cancellation. The worker does not safely kill a GPU thread or guarantee process exit in that case; thread cleanup can remain blocked. Use the bounded preflight below and a tested external process/container supervisor for forced recovery. Compose's restart policy alone does not restart a process that stays alive but is hung. P5 implements lease-based camera takeover; see [WORKER_FAILOVER.md](WORKER_FAILOVER.md) for its conditions and the remaining site failure drills.
 
 ## Deploy and run the preflight
 

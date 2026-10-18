@@ -8,9 +8,10 @@
 # Restore with ./infra/backup/restore.sh <timestamp>  (see ./backups/ for
 # available timestamps).
 #
-# Redis and RabbitMQ are intentionally not backed up — cache and in-flight
-# queue state, not durable data; both rebuild themselves from Postgres/live
-# traffic after a restore.
+# Redis and RabbitMQ are not backed up here. Confirmed broker messages not
+# yet persisted by the backend cannot be reconstructed from PostgreSQL.
+# Worker journals, offsite encryption and cross-store consistency also need
+# a separate recovery strategy; see docs/FACTORY_PILOT_ACCEPTANCE.md.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."   # repo root

@@ -2,6 +2,8 @@
 
 Start with 2–4 cameras in one factory, with a named site owner and reviewer. This is a validation plan, not evidence that the system is production-ready. The remaining engineering gaps are tracked in [REVIEW_FIXES.md](REVIEW_FIXES.md).
 
+For the multi-factory P7 program, use [FACTORY_PILOT_ACCEPTANCE.md](FACTORY_PILOT_ACCEPTANCE.md) for the frozen acceptance contract, evidence checker, failure/restore drills and 10–20 → 50–100 → 200 camera stages. The 2–4 camera step here is commissioning before full pilot acceptance.
+
 ## Preparation
 
 Record the camera models, resolution, lens/field of view, mounting height, distance to each observation area, network path, lighting and operating shifts. Select the PPE classes the supplied model actually supports. Define acceptable missed-event and false-alert rates, alert latency, recovery time and data retention with the site owner before testing; no universal accuracy or cameras-per-GPU claim is assumed.

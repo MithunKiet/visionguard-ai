@@ -57,7 +57,7 @@ python -m src.validation.camera evaluate \
   --output ../validation-results/site-a-held-out.json
 ```
 
-Use `--device cuda` on the intended GPU host; the report records the actual device because the existing detector falls back to CPU when CUDA is unavailable. Missing checkpoints/dependencies, incompatible class mappings or inference errors fail the run. No checkpoint is downloaded or promoted by this runner. Keep the dataset and checkpoint immutable while evaluating.
+Use `--device cuda` on the intended GPU host; requested CUDA now fails when unavailable instead of silently falling back to CPU. The report records the actual device. Missing checkpoints/dependencies, incompatible class mappings or inference errors fail the run. No checkpoint is downloaded or promoted by this runner. Keep the dataset and checkpoint immutable while evaluating.
 
 The evaluation uses `PPEDetector.detect`, including runtime CLAHE preprocessing and its existing YOLO inference/NMS defaults. It matches boxes per class, highest confidence first, with one-to-one IoU matching; duplicate predictions count as false positives. Results include TP/FP/FN, precision, recall and label support per class and condition, plus model/manifest/dataset-content SHA-256 hashes, camera/session/frame counts and inference p50/p95. Classes with no ground-truth examples are listed as unobserved, and undefined precision/recall is null. The configurable scoring confidence filters the detector's emitted candidates; it cannot restore candidates already removed by the detector's own confidence/NMS defaults.
 

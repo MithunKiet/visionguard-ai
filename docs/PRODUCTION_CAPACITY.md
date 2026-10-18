@@ -100,6 +100,8 @@ For illustration only: 10 measured stable cameras, 30% headroom and a target of 
 
 ## Production release gates
 
+Collect these measurements in the [P7 factory acceptance bundle](FACTORY_PILOT_ACCEPTANCE.md). Its fail-closed checker combines retained evidence with explicit site review; it does not grant production approval or replace physical testing.
+
 Before enabling unattended operation, retain evidence for:
 
 - Accuracy on independent site labels, camera placement/occlusion tests, and reviewed model/data licensing. Sizing does not establish accuracy.

@@ -1,0 +1,37 @@
+{
+  "stage": "pilot",
+  "enterprise_id": null,
+  "factory_id": null,
+  "site_owner": null,
+  "approved_by": null,
+  "approved_at": null,
+  "camera_ids": [],
+  "required_ppe": [
+    "helmet",
+    "vest"
+  ],
+  "conditions": [
+    "day-clear",
+    "night-dim",
+    "crowded",
+    "partial-occlusion"
+  ],
+  "release": {
+    "git_commit": null,
+    "model_sha256": null,
+    "images_sha256": null,
+    "hardware_sha256": null,
+    "configuration_sha256": null
+  },
+  "policy": {
+    "max_capture_to_alert_p95_seconds": null,
+    "max_failover_seconds": null,
+    "max_false_alerts_per_camera_hour": null,
+    "max_restore_seconds": null,
+    "max_rpo_seconds": null,
+    "min_event_precision": null,
+    "min_event_recall": null,
+    "min_negative_camera_hours_per_cell": null,
+    "min_positive_episodes_per_cell": null
+  }
+}

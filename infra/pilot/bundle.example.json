@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "scope": "real_factory_pilot",
+  "contract": {
+    "path": "contract.json",
+    "sha256": null
+  },
+  "started_at": null,
+  "ended_at": null,
+  "previous_stage_signed_off": false,
+  "previous_stage_decision": null,
+  "gates": {
+    "deployment": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/deployment.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "inventory_verified": false,
+        "licenses_reviewed": false,
+        "production_config_verified": false,
+        "image_scan_reviewed": false
+      },
+      "measurements": {}
+    },
+    "model": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/model.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "target_gpu_image_verified": false
+      },
+      "measurements": {}
+    },
+    "accuracy": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/accuracy.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "independent_labels_reviewed": false,
+        "all_class_condition_cells_reviewed": false,
+        "event_pipeline_evaluated": false
+      },
+      "measurements": {
+        "minimum_event_precision": null,
+        "minimum_event_recall": null,
+        "maximum_false_alerts_per_camera_hour": null,
+        "minimum_positive_episodes_per_cell": null,
+        "minimum_negative_camera_hours_per_cell": null
+      }
+    },
+    "camera_dvr": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/camera_dvr.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "dvr_recording_uninterrupted": false,
+        "source_freshness_measured": false,
+        "placement_verified": false
+      },
+      "measurements": {}
+    },
+    "capacity": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/capacity.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "every_camera_meets_fps": false,
+        "whole_process_tree_measured": false,
+        "spare_capacity_tested": false,
+        "shared_services_measured": false
+      },
+      "measurements": {
+        "capture_to_alert_p95_seconds": null,
+        "peak_cpu_fraction": null,
+        "peak_ram_fraction": null,
+        "peak_gpu_memory_fraction": null
+      }
+    },
+    "soak": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/soak.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "representative_shifts_covered": false,
+        "continuous_observation_verified": false
+      },
+      "measurements": {
+        "continuous_hours": null,
+        "lost_events": null,
+        "stale_frame_events": null,
+        "inference_errors": null,
+        "rejected_edge_events": null,
+        "unexplained_duplicate_events": null
+      }
+    },
+    "failover": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/failover.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "worker_loss_tested": false,
+        "gpu_hang_tested": false,
+        "api_partition_tested": false,
+        "camera_reconnect_tested": false,
+        "fencing_verified": false
+      },
+      "measurements": {
+        "worst_recovery_seconds": null,
+        "overlapping_authorized_owners": null
+      }
+    },
+    "delivery": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/delivery.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "broker_outage_replay_tested": false,
+        "storage_outage_replay_tested": false,
+        "provider_receipts_verified": false
+      },
+      "measurements": {
+        "lost_events": null,
+        "failed_notifications": null,
+        "pending_at_drain_end": null
+      }
+    },
+    "monitoring": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/monitoring.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "coverage_audit_scheduled": false,
+        "operations_page_received": false,
+        "host_gpu_disk_broker_outbox_monitored": false
+      },
+      "measurements": {}
+    },
+    "restore": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/restore.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "isolated_restore_verified": false,
+        "database_objects_reconciled": false,
+        "worker_state_replay_verified": false,
+        "broker_loss_accounted": false,
+        "offsite_backup_verified": false
+      },
+      "measurements": {
+        "recovery_seconds": null,
+        "data_loss_seconds": null,
+        "unaccounted_events": null,
+        "missing_referenced_objects": null
+      }
+    },
+    "security": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/security.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "tenant_isolation_tested": false,
+        "https_media_access_tested": false,
+        "secrets_and_private_network_verified": false
+      },
+      "measurements": {}
+    },
+    "rollback": {
+      "status": "pending",
+      "reviewer": null,
+      "summary": null,
+      "observed_at": null,
+      "contract_sha256": null,
+      "evidence": [
+        {
+          "path": "evidence/rollback.json",
+          "sha256": null
+        }
+      ],
+      "checks": {
+        "rollback_rehearsed": false,
+        "response_owner_assigned": false,
+        "open_blocking_defects_zero": false
+      },
+      "measurements": {}
+    }
+  },
+  "release_evidence": {
+    "images": {
+      "path": "evidence/images-inventory.json",
+      "sha256": null
+    },
+    "hardware": {
+      "path": "evidence/hardware-inventory.json",
+      "sha256": null
+    },
+    "configuration": {
+      "path": "evidence/configuration-inventory.json",
+      "sha256": null
+    }
+  }
+}
