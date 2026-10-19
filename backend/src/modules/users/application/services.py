@@ -61,9 +61,11 @@ class UserManagementService:
                 f"You aren't permitted to assign: {', '.join(sorted(disallowed))}"
             )
 
-    async def list_users(self, enterprise_id: str, scope: ScopeFilter | None = None) -> list[dict]:
-        users = await self._repo.list(enterprise_id, scope)
-        return [self.to_dict(u) for u in users]
+    async def list_users(
+        self, enterprise_id: str, scope: ScopeFilter | None = None, page: int = 1, page_size: int = 20,
+    ) -> tuple[list[dict], int]:
+        users, total = await self._repo.list(enterprise_id, scope, page, page_size)
+        return [self.to_dict(u) for u in users], total
 
     async def get_user(
         self, user_id: str, enterprise_id: str, scope: ScopeFilter | None = None,

@@ -80,7 +80,7 @@ CI now includes the PostgreSQL/Redis integration suite, browser regressions, pro
 | DATA-08 | Addressed | Worker cooldown starts after successful snapshot/event publication. Notifications now use persistent per-channel jobs, bounded retries, status monitoring and administrator replay. Validate the actual providers and burst capacity before production; delivery is at least once. |
 | DATA-09 | Partial | Audit failure rolls back its failed transaction; enterprise-wide reads restricted. Durable complete coverage and append-only database permissions remain. |
 | SCALE-01 | Partial | Redis distributes live events to every API replica and scope is checked per socket. Browser reconnect now resyncs persisted HTTP views, including a slow-response race. Pub/sub/live-event history remains ephemeral; site ingress/concurrency recovery tests remain. |
-| SCALE-02 | Partial | Report generation/upload runs off the event loop; exports exceeding 5000 rows return an explicit error. Background jobs, user-list pagination/N+1 removal and availability-aware scores remain. |
+| SCALE-02 | Partial | Report generation/upload runs off the event loop; exports exceeding 5000 rows return an explicit error. User-list pagination and batch role loading are implemented; see [USER_DIRECTORY_SCALING.md](USER_DIRECTORY_SCALING.md). Background report jobs and availability-aware scores remain. |
 | DEPLOY-01 | Addressed | Compose inheritance uses explicit reset/override and is checked in CI. |
 | DEPLOY-02 | Addressed | Frontend Dockerfile uses the correct repository-root paths; production build is included in CI. |
 | DEPLOY-03 | Addressed | Container startup runs serialized migrations; schema readiness gates traffic. |

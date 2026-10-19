@@ -1,12 +1,12 @@
 from src.shared.security.resource_policy import enforce_resource_scope
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.modules.users.api.schemas import InviteUserRequest, UpdateUserRequest
 from src.modules.users.application.services import UserManagementService
 from src.modules.users.infrastructure.repositories import UserAdminRepository
 from src.shared.database.session import get_db
-from src.shared.responses import ApiResponse
+from src.shared.responses import ApiResponse, MetaResponse
 from src.shared.security.dependencies import AuthUser, require_roles
 from src.shared.security.scope import get_scope
 
@@ -21,10 +21,15 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> UserManagementService:
 
 @router.get("", response_model=ApiResponse[list], summary="List users in your enterprise")
 async def list_users(
+    page: int = Query(1, ge=1, le=1_000_000),
+    page_size: int = Query(20, ge=1, le=100),
     user: AuthUser = Depends(require_roles(*_MANAGE_ROLES)),
     svc: UserManagementService = Depends(_get_service),
 ):
-    return ApiResponse(data=await svc.list_users(user.enterprise_id, get_scope(user)))
+    items, total = await svc.list_users(user.enterprise_id, get_scope(user), page, page_size)
+    return ApiResponse(data=items, meta=MetaResponse(
+        page=page, page_size=page_size, total=total, total_pages=max(1, (total + page_size - 1) // page_size),
+    ))
 
 
 @router.post("", response_model=ApiResponse[dict], summary="Invite a new user")

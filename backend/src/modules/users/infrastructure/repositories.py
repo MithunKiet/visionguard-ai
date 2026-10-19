@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.modules.users.domain.entities import UserAdminEntity
@@ -19,22 +19,29 @@ class UserAdminRepository:
     async def email_exists(self, email: str) -> bool:
         return (await self._db.scalar(select(User.id).where(User.email == email))) is not None
 
-    async def list(self, enterprise_id: str, scope: ScopeFilter | None = None) -> list[UserAdminEntity]:
+    async def list(
+        self, enterprise_id: str, scope: ScopeFilter | None = None, page: int = 1, page_size: int = 20,
+    ) -> tuple[list[UserAdminEntity], int]:
+        if type(page) is not int or not 1 <= page <= 1_000_000 or type(page_size) is not int or not 1 <= page_size <= 100:
+            raise ValueError("Invalid user pagination")
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         q = (
             select(User, Factory.public_id, Factory.name, Department.public_id, Department.name)
             .outerjoin(Factory, Factory.id == User.factory_id)
             .outerjoin(Department, Department.id == User.department_id)
             .where(User.enterprise_id == ent_pk, User.deleted_at.is_(None))
-            .order_by(User.name)
         )
         if scope is not None:
             q = await apply_factory_scope(self._db, q, scope, User.factory_id)
-        rows = (await self._db.execute(q)).all()
+        total = await self._db.scalar(select(func.count()).select_from(q.subquery()))
+        # Internal ID breaks name ties without exposing it in the response.
+        rows = (await self._db.execute(q.order_by(User.name, User.id)
+                                      .offset((page - 1) * page_size).limit(page_size))).all()
+        roles = await self._role_codes([row[0].public_id for row in rows])
         return [
-            await self._to_entity(u, fac_pub, fac_name, dep_pub, dep_name, enterprise_id)
+            self._to_entity(u, fac_pub, fac_name, dep_pub, dep_name, enterprise_id, roles[u.public_id])
             for u, fac_pub, fac_name, dep_pub, dep_name in rows
-        ]
+        ], total
 
     async def get_by_id(
         self, user_id: str, enterprise_id: str, scope: ScopeFilter | None = None,
@@ -56,7 +63,8 @@ class UserAdminRepository:
         if not row:
             return None
         u, fac_pub, fac_name, dep_pub, dep_name = row
-        return await self._to_entity(u, fac_pub, fac_name, dep_pub, dep_name, enterprise_id)
+        roles = await self._role_codes([u.public_id])
+        return self._to_entity(u, fac_pub, fac_name, dep_pub, dep_name, enterprise_id, roles[u.public_id])
 
     async def create(
         self, entity: UserAdminEntity, password_hash: str, invited_by_public_id: str,
@@ -132,16 +140,25 @@ class UserAdminRepository:
         )
         await self._db.commit()
 
-    async def _to_entity(
-        self, u: User, factory_public_id: str | None, factory_name: str | None,
-        department_public_id: str | None, department_name: str | None, enterprise_id: str,
-    ) -> UserAdminEntity:
-        roles_result = await self._db.execute(
-            select(Role.code)
-            .join(UserRole, UserRole.role_public_id == Role.public_id)
-            .where(UserRole.user_public_id == u.public_id)
+    async def _role_codes(self, user_ids: list[str]) -> dict[str, list[str]]:
+        roles = {user_id: [] for user_id in user_ids}
+        if not user_ids:
+            return roles
+        result = await self._db.execute(
+            select(UserRole.user_public_id, Role.code)
+            .join(Role, Role.public_id == UserRole.role_public_id)
+            .where(UserRole.user_public_id.in_(user_ids))
+            .order_by(Role.code)
         )
-        roles = [r[0] for r in roles_result.all()]
+        for user_id, code in result.all():
+            roles[user_id].append(code)
+        return roles
+
+    @staticmethod
+    def _to_entity(
+        u: User, factory_public_id: str | None, factory_name: str | None,
+        department_public_id: str | None, department_name: str | None, enterprise_id: str, roles: list[str],
+    ) -> UserAdminEntity:
         return UserAdminEntity(
             id=u.public_id,
             enterprise_id=enterprise_id,

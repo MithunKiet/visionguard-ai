@@ -340,3 +340,86 @@ test("incident filters use server-side severity and status", async ({ page }) =>
   await expect(page.getByText("No alerts for this filter.")).toBeVisible();
   expect(state.lists.some(url => url.searchParams.get("severity") === "Low" && url.searchParams.get("status") === "Open" && url.searchParams.get("page") === "1")).toBe(true);
 });
+
+test("user administration requests bounded pages and exposes users beyond page one", async ({ page }) => {
+  await mockApi(page);
+  const pages: number[] = [];
+  await page.route("**/api/v1/users?**", async route => {
+    const url = new URL(route.request().url());
+    const current = Number(url.searchParams.get("page"));
+    pages.push(current);
+    expect(url.searchParams.get("page_size")).toBe("20");
+    await route.fulfill({ json: { success: true,
+      data: [{ id: `user-${current}`, name: `User from page ${current}`, email: `page-${current}@example.com`,
+        roles: ["VIEWER"], status: "Active" }], meta: { total: 41, page: current, page_size: 20, total_pages: 3 } } });
+  });
+  await page.goto("/login");
+  await signIn(page);
+  await page.getByRole("link", { name: "Users", exact: true }).click();
+  await expect(page.getByText("User from page 1", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Go to next page" }).click();
+  await expect(page.getByText("User from page 2", { exact: true })).toBeVisible();
+  expect(pages).toEqual([1, 2]);
+  await expect(page.getByText("21–40 of 41", { exact: true })).toBeVisible();
+});
+
+test("deactivating the last user on a page returns to the preceding valid page", async ({ page }) => {
+  await mockApi(page);
+  let removed = false;
+  const pages: number[] = [];
+  await page.route("**/api/v1/users**", async route => {
+    if (route.request().method() === "DELETE") {
+      expect(new URL(route.request().url()).pathname).toBe("/api/v1/users/last-user");
+      removed = true;
+      return route.fulfill({ json: { success: true, data: null } });
+    }
+    const current = Number(new URL(route.request().url()).searchParams.get("page"));
+    pages.push(current);
+    const items = current === 1 ? [{ id: "first-user", name: "First user" }]
+      : removed ? [] : [{ id: "last-user", name: "Last user" }];
+    await route.fulfill({ json: { success: true,
+      data: items.map(user => ({ ...user, email: `${user.id}@example.com`, roles: ["VIEWER"], status: "Active" })),
+      meta: { total: removed ? 20 : 21, page: current, page_size: 20, total_pages: removed ? 1 : 2 } } });
+  });
+  await page.goto("/login");
+  await signIn(page);
+  await page.getByRole("link", { name: "Users", exact: true }).click();
+  await expect(page.getByText("First user", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Go to next page" }).click();
+  await expect(page.getByText("Last user", { exact: true })).toBeVisible();
+  await page.getByTitle("Deactivate user", { exact: true }).click();
+  await expect(page.getByText("First user", { exact: true })).toBeVisible();
+  await expect(page.getByText("1–20 of 20", { exact: true })).toBeVisible();
+  expect(removed).toBe(true);
+  expect(pages.slice(-2)).toEqual([2, 1]);
+});
+
+test("failed user loads show an error and can be retried without claiming an empty directory", async ({ page }) => {
+  await mockApi(page);
+  let fail = true;
+  await page.route("**/api/v1/users?**", route => route.fulfill(fail
+    ? { status: 503, json: { success: false } }
+    : { json: { success: true, data: [{ id: "recovered", name: "Recovered user", email: "user@example.com",
+      roles: [], status: "Active" }], meta: { total: 1, page: 1, page_size: 20, total_pages: 1 } } }));
+  await page.goto("/login");
+  await signIn(page);
+  await page.getByRole("link", { name: "Users", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Users could not be loaded.");
+  await expect(page.getByText("No users yet.", { exact: true })).toHaveCount(0);
+  fail = false;
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(page.getByText("Recovered user", { exact: true })).toBeVisible();
+});
+
+test("viewers cannot request user administration data through direct navigation", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.route("**/api/v1/auth/login", route => route.fulfill({ json: { success: true, data: {
+    access_token: "viewer-token", is_master_session: false,
+    user: { id: "viewer", enterprise_id: "A", name: "Viewer", roles: ["VIEWER"], is_first_login: false },
+  } } }));
+  await page.goto("/login");
+  await signIn(page);
+  await page.evaluate(() => { window.history.pushState({}, "", "/users"); window.dispatchEvent(new PopStateEvent("popstate")); });
+  await expect(page.getByText("User administration access is required.")).toBeVisible();
+  expect(calls.filter(path => path.startsWith("/api/v1/users"))).toHaveLength(0);
+});
