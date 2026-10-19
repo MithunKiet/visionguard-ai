@@ -288,8 +288,7 @@ async def test_config_updates_have_distinct_versions(setup):
             result = await ConfigService(db).update_zone_config(s.places[0].zone.public_id, s.enterprise.public_id,
                 {"helmet_threshold": threshold}, s.users["admin"].public_id)
             return result["version"]
-    with patch("src.modules.config.application.services.publish_config_event", new=AsyncMock()):
-        assert sorted(await asyncio.gather(save(0.8), save(0.9))) == [2, 3]
+    assert sorted(await asyncio.gather(save(0.8), save(0.9))) == [2, 3]
 
 
 async def test_alert_numbers_unique_across_tenants_and_false_positive_propagates(setup):

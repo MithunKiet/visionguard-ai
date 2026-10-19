@@ -8,6 +8,7 @@ import httpx
 from src.config.settings import settings
 from src.config.zone_sync import ZoneConfigSync
 from src.config.assignment_cache import refresh_assignments
+from src.config.application_reporter import report_applications
 from src.config.ownership import SESSION_ID, bind_assignments, lease_valid, lease_clock
 from src.events.publisher import get_journal, init_publisher, close_publisher, publish
 from src.health.metrics import camera_target_fps, start_metrics_server, model_ready, model_cuda_active
@@ -96,7 +97,9 @@ async def reconcile_cameras(workers: list, tasks: dict, detector, cameras: list)
     for worker in list(workers):
         camera = assigned.get(worker.camera_id)
         task = tasks[worker.camera_id]
-        if camera is None or camera["rtsp_url"] != worker.rtsp_url or task.done() or camera["lease"]["token"] != worker.lease["token"]:
+        if (camera is None or camera["rtsp_url"] != worker.rtsp_url or task.done()
+                or camera["lease"]["token"] != worker.lease["token"]
+                or camera["zone_id"] != worker.zone_id):
             camera_target_fps.labels(camera_id=worker.camera_id).set(0)
             task.cancel()
             removed.append(task)
@@ -113,7 +116,10 @@ async def reconcile_cameras(workers: list, tasks: dict, detector, cameras: list)
             worker = existing[camera_id]
             worker.update_lease(camera["lease"])
             normalized = worker._normalize_config(config)
-            if normalized != worker.zone_config or overrides != worker.ppe_overrides:
+            # An HTTP response started before a hot push can arrive afterwards.
+            # Never roll that newer policy back to the older snapshot.
+            if normalized["version"] >= worker.zone_config["version"] and (
+                    normalized != worker.zone_config or overrides != worker.ppe_overrides):
                 worker.ppe_overrides = overrides
                 worker.apply_zone_config(config)
             worker.set_active(camera.get("status") != "Inactive")
@@ -135,7 +141,8 @@ async def main() -> None:
     detector = None
     tasks = {}
     workers = []
-    config_sync = ZoneConfigSync(workers, invalidate_cache=lambda: asyncio.to_thread(get_journal().clear_cache))
+    config_sync = ZoneConfigSync(workers, invalidate_cache=lambda: asyncio.to_thread(get_journal().clear_cache),
+                                 report_applications=report_applications)
     heartbeat = None
     try:
         detector = BatchDetector()
@@ -153,6 +160,7 @@ async def main() -> None:
                 cameras = []  # Corrupt/unreadable state cannot extend old authorization.
             runtime_fields(detector)
             await reconcile_cameras(workers, tasks, detector, cameras)
+            await report_applications([worker for worker in workers if not tasks[worker.camera_id].done()])
             await asyncio.sleep(30)
     finally:
         model_ready.set(0)

@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.modules.worker.api.schemas import HeartbeatRequest, WorkerResponse, WorkerSchedulingRequest
+from src.modules.worker.api.schemas import ConfigApplicationsRequest, HeartbeatRequest, WorkerResponse, WorkerSchedulingRequest
 from src.modules.worker.application.services import WorkerService
 from src.modules.worker.infrastructure.repositories import WorkerRepository
 from src.modules.worker.infrastructure.scheduling import WorkerSchedulingRepository
@@ -88,6 +88,23 @@ async def get_worker_cameras(
         raise ForbiddenException("Worker identity mismatch")
     cameras = await svc.get_worker_cameras_by_business_id(worker_id, db, ctx.enterprise_id, session_id=str(x_worker_session))
     return ApiResponse(data=cameras)
+
+
+@router.post("/{worker_id}/config-applied", response_model=ApiResponse[dict],
+             summary="Confirm installed zone policy under current camera ownership")
+async def acknowledge_config_application(
+    worker_id: str,
+    body: ConfigApplicationsRequest,
+    x_worker_session: UUID = Header(...),
+    ctx: WorkerContext = Depends(get_worker_context),
+    db: AsyncSession = Depends(get_db),
+):
+    from src.core.exceptions import ForbiddenException
+    from src.modules.config.application.application_status import acknowledge_configs
+    if ctx.worker_id and ctx.worker_id != worker_id:
+        raise ForbiddenException("Worker identity mismatch")
+    return ApiResponse(data=await acknowledge_configs(
+        db, ctx.enterprise_id, worker_id, str(x_worker_session), body.applications))
 
 
 def _to_response(w) -> dict:

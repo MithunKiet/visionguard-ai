@@ -217,6 +217,39 @@ class ZoneConfig(BaseEntity):
     version             = Column(Integer, default=1, nullable=False)
 
 
+class ConfigDelivery(Base):
+    """Transactional protocol outbox; the UUID is the stable broker event ID."""
+    __tablename__ = "deliveries"
+    __table_args__ = (
+        UniqueConstraint("zone_id", "version", name="uq_config_delivery_version"),
+        Index("ix_config_deliveries_due", "status", "next_attempt_at"),
+        {"schema": "config"},
+    )
+    event_id = Column(String(36), primary_key=True)
+    enterprise_id = Column(BigInteger, ForeignKey("enterprises.id"), nullable=False)
+    zone_id = Column(BigInteger, ForeignKey("zones.id"), nullable=False)
+    version = Column(Integer, nullable=False)
+    payload = Column(JSONB, nullable=False)
+    status = Column(String(20), nullable=False, default="Pending")
+    attempts = Column(Integer, nullable=False, default=0)
+    next_attempt_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    published_at = Column(DateTime(timezone=True))
+    last_error = Column(String(100))
+
+
+class CameraConfigApplication(Base):
+    """Latest worker confirmation, valid only for the same zone and live lease."""
+    __tablename__ = "camera_applications"
+    __table_args__ = {"schema": "config"}
+    camera_id = Column(BigInteger, ForeignKey("cameras.id"), primary_key=True)
+    zone_id = Column(BigInteger, ForeignKey("zones.id"), nullable=False)
+    version = Column(Integer, nullable=False)
+    lease_token = Column(String(36), ForeignKey("worker.camera_leases.token"), nullable=False)
+    applied_at = Column(DateTime(timezone=True), nullable=False)
+    confirmed_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class PpeType(BaseEntity):
     """Enterprise-defined catalog of PPE items — lets an enterprise add its
     own mandatory-PPE categories at runtime instead of being limited to a

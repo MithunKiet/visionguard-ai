@@ -3,15 +3,15 @@ ConfigService — zone detection config read/update with version increment,
 history trail, and hot-push to AI workers via RabbitMQ (rule #8).
 """
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import NotFoundException
-from src.shared.database.models import ConfigHistory, Enterprise, Zone, ZoneConfig
+from src.shared.database.models import ConfigDelivery, ConfigHistory, Enterprise, Zone, ZoneConfig
 from src.shared.database.pid import to_pk, to_public_id
-from src.shared.messaging.publisher import publish_config_event
 
 log = structlog.get_logger()
 
@@ -63,6 +63,13 @@ class ConfigService:
             new_config=new,
             change_reason=change_reason,
         ))
+        event_id = str(uuid4())
+        self._db.add(ConfigDelivery(
+            event_id=event_id, enterprise_id=ent_pk, zone_id=config.zone_id, version=config.version,
+            payload={"event_id": event_id, "timestamp": config.updated_at.isoformat(),
+                "event": "zone_config_updated", "enterprise_id": str(enterprise_id),
+                "zone_id": str(zone_id), "config": new},
+        ))
         await self._db.commit()
 
         from src.modules.audit.application.services import AuditService
@@ -76,13 +83,8 @@ class ConfigService:
             new_value=new,
         )
 
-        # Hot-push to AI workers — no restart needed (rule #8)
-        await publish_config_event("config.zone_config_updated", {
-            "event": "zone_config_updated",
-            "enterprise_id": str(enterprise_id),
-            "zone_id": str(zone_id),
-            "config": new,
-        })
+        # The dispatcher publishes the committed outbox. Saving never depends
+        # on broker availability and a process crash cannot lose the intent.
         log.info("config.zone_updated", zone_id=str(zone_id), version=new["version"],
                  fields=list(applied))
         return new

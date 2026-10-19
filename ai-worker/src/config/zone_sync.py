@@ -16,6 +16,7 @@ import aio_pika
 import structlog
 
 from src.config.settings import settings
+from src.config.ownership import lease_valid
 
 log = structlog.get_logger()
 
@@ -23,12 +24,13 @@ CONFIG_EXCHANGE = "config_events"
 
 class ZoneConfigSync:
 
-    def __init__(self, camera_workers: list, invalidate_cache=None):
+    def __init__(self, camera_workers: list, invalidate_cache=None, report_applications=None):
         # CameraWorker instances, matched by zone_id on each event
         self._workers = camera_workers
         self._connection = None
         self._task = None
         self._invalidate_cache = invalidate_cache
+        self._report_applications = report_applications
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._run())
@@ -90,6 +92,8 @@ class ZoneConfigSync:
                 await self._invalidate_cache()
             if message.routing_key == "config.zone_config_updated":
                 self._apply_zone_config(body)
+                if self._report_applications:
+                    await self._report_applications(self._workers)
             elif message.routing_key == "config.camera_status_changed":
                 self._apply_camera_status(body)
             else:
@@ -102,6 +106,8 @@ class ZoneConfigSync:
 
         for worker in self._workers:
             if worker.zone_id != zone_id or body.get("enterprise_id") != worker.enterprise_id:
+                continue
+            if not lease_valid(worker.lease):
                 continue
             local_version = int(worker.zone_config.get("version", 1))
             if new_version <= local_version:

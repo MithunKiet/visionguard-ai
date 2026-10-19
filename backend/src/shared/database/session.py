@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from src.core.settings import settings
 from src.shared.database.base import Base as Base  # re-exported — models.py imports Base from here
 
+SCHEMA_VERSION = "0021"
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
@@ -25,7 +27,7 @@ async def init_db() -> None:
         # This just verifies the connection
         from sqlalchemy import text
         version = await conn.scalar(text("SELECT version_num FROM alembic_version"))
-        if version != "0020":
+        if version != SCHEMA_VERSION:
             raise RuntimeError("Database schema is not current; run alembic upgrade head")
 
 

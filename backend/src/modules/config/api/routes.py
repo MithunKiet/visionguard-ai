@@ -52,6 +52,16 @@ async def zone_config_history(
     return ApiResponse(data=await svc.get_history(zone_id, user.enterprise_id, limit))
 
 
+@router.get("/zone/{zone_id}/delivery", response_model=ApiResponse[dict], summary="Current configuration application status")
+async def zone_config_delivery(
+    zone_id: str,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from src.modules.config.application.application_status import config_application_status
+    return ApiResponse(data=await config_application_status(db, zone_id, user.enterprise_id))
+
+
 @router.post("/zone/{zone_id}/restore/{history_id}", response_model=ApiResponse[dict], summary="Restore config from a history entry")
 async def restore_zone_config(
     zone_id: str,

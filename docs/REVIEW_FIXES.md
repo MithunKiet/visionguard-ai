@@ -71,8 +71,8 @@ CI now includes the PostgreSQL/Redis integration suite, browser regressions, pro
 | AI-11 | Remaining | Supply representative labeled data and establish held-out site/person metrics and model promotion gates. Code changes cannot establish detection accuracy. |
 | AI-12 | Partial | CPU fallback added; production documentation uses actual settings. GPU image reproducibility and capacity/freshness benchmarks remain. |
 | DATA-01 | Addressed | PostgreSQL allocates alert numbers atomically across tenants; camera-level locks serialize cooldown decisions. |
-| DATA-02 | Partial | PPE, overcrowding and camera-quality alert events now commit receipts, alerts and delivery jobs atomically; replay and rollback tested. Non-alert event idempotency and durable config publication remain. |
-| DATA-03 | Partial | Config updates lock the row and produce distinct versions; workers reconcile missed pushes. A transactional config outbox remains. |
+| DATA-02 | Partial | PPE, overcrowding and camera-quality alert events commit receipts, alerts and delivery jobs atomically; replay and rollback tested. Zone config saves/restores now include a transactional delivery outbox. Broader non-alert event idempotency remains. |
+| DATA-03 | Addressed | Zone config row locking, atomic history/outbox, confirmed publication with restart-safe retry, monotonic worker reconciliation and lease-bound application status are implemented. See CONFIG_DELIVERY.md; real site rollout validation remains. |
 | DATA-04 | Addressed | Conditional state transitions prevent stale updates; false-positive state propagates to the violation; responses include transition timestamps. |
 | DATA-05 | Partial | PPE records and shift lookup use the supplied event timestamp. Factory timezone configuration remains. |
 | DATA-06 | Partial | Integer/FK widths and known nullability differences aligned; Alembic includes all schemas. Existing identity/default/index naming differences still make `alembic check` non-clean; do not apply generated changes blindly. |

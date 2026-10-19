@@ -17,6 +17,19 @@ class HeartbeatRequest(BaseModel):
     gpu_available: bool = False
 
 
+class ConfigApplication(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    camera_id: UUID
+    zone_id: UUID
+    lease_token: UUID
+    version: int = Field(ge=1, strict=True)
+
+
+class ConfigApplicationsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    applications: list[ConfigApplication] = Field(min_length=1, max_length=200)
+
+
 class WorkerResponse(BaseModel):
     id: str
     enterprise_id: str

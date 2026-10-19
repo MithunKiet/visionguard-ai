@@ -25,7 +25,7 @@ _exchange = None
 async def init_config_publisher() -> None:
     global _connection, _exchange
     _connection = await aio_pika.connect_robust(settings.RABBITMQ_URL)
-    channel = await _connection.channel()
+    channel = await _connection.channel(publisher_confirms=True)
     _exchange = await channel.declare_exchange(
         CONFIG_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True
     )
@@ -33,12 +33,17 @@ async def init_config_publisher() -> None:
 
 
 async def close_config_publisher() -> None:
+    global _connection, _exchange
     if _connection:
         await _connection.close()
+    _connection = None
+    _exchange = None
 
 
-async def publish_config_event(routing_key: str, payload: dict) -> None:
+async def publish_config_event(routing_key: str, payload: dict, *, require_confirm: bool = False) -> None:
     if _exchange is None:
+        if require_confirm:
+            raise RuntimeError("Config publisher unavailable")
         log.warning("config_publisher.not_initialized", routing_key=routing_key)
         return
 
@@ -49,6 +54,12 @@ async def publish_config_event(routing_key: str, payload: dict) -> None:
         body=json.dumps(payload).encode(),
         delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
         content_type="application/json",
+        message_id=payload["event_id"],
     )
-    await _exchange.publish(message, routing_key=routing_key)
+    # Workers use ephemeral fanout queues; no current subscriber is legitimate.
+    # Confirmation proves broker acceptance only. HTTP reconciliation repairs
+    # missed pushes and separate lease-bound reports prove application.
+    confirmation = await _exchange.publish(message, routing_key=routing_key, mandatory=not require_confirm)
+    if require_confirm and (confirmation is None or confirmation is False):
+        raise RuntimeError("Config publication was not confirmed")
     log.info("config_publisher.sent", routing_key=routing_key, event_id=payload["event_id"])
