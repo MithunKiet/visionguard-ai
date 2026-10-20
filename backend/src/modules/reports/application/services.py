@@ -1,32 +1,20 @@
 """
-ReportService — generate violation/alert summary reports as PDF or Excel,
-store them in the MinIO reports bucket, and serve pre-signed download URLs
+ReportService — queue durable PDF/Excel jobs and serve scoped progress/downloads
 (master context rule #10: never expose direct MinIO URLs).
 """
 from __future__ import annotations
 
-import asyncio
-import io
-import uuid
 from datetime import datetime, timezone
 
-import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.exceptions import NotFoundException
+from src.core.exceptions import NotFoundException, VisionGuardException
 from src.core.settings import settings
-from src.modules.reports.infrastructure.generators import build_pdf, build_xlsx
+from src.modules.reports.application.jobs import ACTIVE_STATUSES, FAILURES
 from src.shared.database.models import Alert, Camera, Enterprise, PPEViolation, Report, User, Zone
-from src.shared.database.pid import to_pk, to_public_id
-from src.shared.storage.minio_client import get_minio, get_presigned_url
-
-log = structlog.get_logger()
-
-_CONTENT_TYPES = {
-    "pdf": "application/pdf",
-    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-}
+from src.shared.database.pid import to_pk
+from src.shared.storage.minio_client import get_presigned_url
 
 
 class ReportService:
@@ -34,153 +22,154 @@ class ReportService:
     def __init__(self, db: AsyncSession):
         self._db = db
 
-    async def generate(
-        self,
-        enterprise_id: str,
-        generated_by: str,
-        report_type: str,
-        fmt: str,
-        from_date: datetime,
-        to_date: datetime,
-    ) -> dict:
-        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        enterprise = (await self._db.execute(
-            select(Enterprise).where(Enterprise.id == ent_pk)
-        )).scalar_one_or_none()
-        enterprise_name = enterprise.name if enterprise else "VisionGuard AI"
-        enterprise_code = enterprise.code if enterprise else "VG"
-
-        if report_type == "violations_summary":
-            title = "PPE Violations Report"
-            headers, rows = await self._violation_rows(ent_pk, from_date, to_date)
-        else:
-            title = "Alerts Report"
-            headers, rows = await self._alert_rows(ent_pk, from_date, to_date)
-
-        period = f"{from_date.date().isoformat()} to {to_date.date().isoformat()}"
-        if fmt == "pdf":
-            content = await asyncio.to_thread(build_pdf, title, enterprise_name, period, headers, rows)
-        else:
-            content = await asyncio.to_thread(build_xlsx, title, enterprise_name, period, headers, rows)
-
-        report_id = uuid.uuid4()
-        month = datetime.now(timezone.utc).strftime("%Y-%m")
-        object_key = f"{enterprise_id}/{month}/{enterprise_code}_{report_type}_{report_id}.{fmt}"
-
-        await asyncio.to_thread(get_minio().put_object,
-            settings.MINIO_BUCKET_REPORTS,
-            object_key,
-            data=io.BytesIO(content),
-            length=len(content),
-            content_type=_CONTENT_TYPES[fmt],
-        )
-
-        row = Report(
-            enterprise_id=ent_pk,
-            report_type=report_type,
-            format=fmt,
-            from_date=from_date,
-            to_date=to_date,
-            object_key=object_key,
-            status="Completed",
-            generated_by=await to_pk(self._db, User, generated_by),
-        )
+    async def generate(self, enterprise_id, generated_by, report_type, fmt, from_date, to_date, request_key=None):
+        # Serialize admission and duplicate keys within an enterprise. No file
+        # generation, broker or storage operation is performed in this request.
+        enterprise = await self._db.scalar(select(Enterprise).where(
+            Enterprise.public_id == enterprise_id).with_for_update())
+        if enterprise is None:
+            raise NotFoundException("Enterprise", enterprise_id)
+        user_pk = await to_pk(self._db, User, generated_by)
+        if request_key:
+            existing = await self._db.scalar(select(Report).where(
+                Report.enterprise_id == enterprise.id, Report.request_key == request_key))
+            if existing:
+                if (existing.generated_by != user_pk or existing.report_type != report_type or existing.format != fmt
+                        or existing.from_date != from_date or existing.to_date != to_date):
+                    raise VisionGuardException("REPORT_KEY_CONFLICT", "This request key was used for another report", 409)
+                return self.to_dict(existing, generated_by)
+        await self._check_capacity(enterprise.id)
+        row = Report(enterprise_id=enterprise.id, generated_by=user_pk, report_type=report_type, format=fmt,
+            from_date=from_date, to_date=to_date, status="Queued", stage="Queued", request_key=request_key)
         self._db.add(row)
         await self._db.commit()
+        return self.to_dict(row, generated_by)
+
+    async def _check_capacity(self, enterprise_pk):
+        count = await self._db.scalar(select(func.count()).select_from(Report).where(
+            Report.enterprise_id == enterprise_pk, Report.status.in_(ACTIVE_STATUSES), Report.deleted_at.is_(None)))
+        if count >= 10:
+            raise VisionGuardException("REPORT_QUEUE_FULL", "Ten reports are already active. Wait for one to finish.", 429)
+
+    async def list(self, enterprise_id, page=1, page_size=20):
+        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
+        filters = (Report.enterprise_id == ent_pk, Report.deleted_at.is_(None))
+        total = await self._db.scalar(select(func.count()).select_from(Report).where(*filters))
+        rows = (await self._db.execute(select(Report, User.public_id).outerjoin(User, User.id == Report.generated_by)
+            .where(*filters).order_by(Report.created_at.desc(), Report.id.desc())
+            .offset((page - 1) * page_size).limit(page_size))).all()
+        return [self.to_dict(row, user_id) for row, user_id in rows], total
+
+    async def _row(self, report_id, enterprise_id, lock=False):
+        query = select(Report, User.public_id).join(Enterprise, Enterprise.id == Report.enterprise_id).outerjoin(
+            User, User.id == Report.generated_by).where(Report.public_id == report_id,
+                Enterprise.public_id == enterprise_id, Report.deleted_at.is_(None))
+        if lock:
+            query = query.with_for_update(of=Report)
+        result = (await self._db.execute(query)).one_or_none()
+        if result is None:
+            raise NotFoundException("Report", report_id)
+        return result
+
+    async def get(self, report_id, enterprise_id):
+        row, user_id = await self._row(report_id, enterprise_id)
+        return self.to_dict(row, user_id)
+
+    async def retry(self, report_id, enterprise_id, actor):
+        enterprise_pk = await self._db.scalar(select(Enterprise.id).where(
+            Enterprise.public_id == enterprise_id).with_for_update())
+        row, user_id = await self._row(report_id, enterprise_id, lock=True)
+        if row.status in ACTIVE_STATUSES:
+            return self.to_dict(row, user_id)  # Lost retry response cannot schedule duplicate work.
+        if row.status != "Failed":
+            raise VisionGuardException("REPORT_NOT_FAILED", "Only failed reports can be retried", 409)
+        await self._check_capacity(enterprise_pk)
+        row.status = row.stage = "Queued"
+        row.attempt_limit = row.attempts + 3
+        row.failure_code = None
+        row.started_at = row.completed_at = None
+        row.row_count = None
+        row.next_attempt_at = func.clock_timestamp()
+        row.updated_by = actor
+        await self._db.commit()
         await self._db.refresh(row)
-        log.info("report.generated", report_id=str(row.public_id), type=report_type, format=fmt)
-        return await self.to_dict(self._db, row)
+        return self.to_dict(row, user_id)
 
-    async def list(self, enterprise_id: str, limit: int = 50) -> list[dict]:
-        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        rows = (await self._db.execute(
-            select(Report)
-            .where(Report.enterprise_id == ent_pk)
-            .order_by(Report.created_at.desc())
-            .limit(limit)
-        )).scalars()
-        return [await self.to_dict(self._db, r) for r in rows]
-
-    async def download_url(self, report_id: str, enterprise_id: str) -> dict:
-        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        row = (await self._db.execute(
-            select(Report).where(Report.public_id == report_id, Report.enterprise_id == ent_pk)
-        )).scalar_one_or_none()
-        if not row or not row.object_key:
-            raise NotFoundException("Report", str(report_id))
-        return {
-            "report_id": report_id,
-            "download_url": get_presigned_url(settings.MINIO_BUCKET_REPORTS, row.object_key, expires_hours=1),
-        }
+    async def download_url(self, report_id, enterprise_id):
+        row, _ = await self._row(report_id, enterprise_id)
+        if row.status != "Completed" or not row.object_key:
+            raise VisionGuardException("REPORT_NOT_READY", "The report is not ready to download", 409)
+        return {"report_id": report_id,
+            "download_url": get_presigned_url(settings.MINIO_BUCKET_REPORTS, row.object_key, expires_hours=1)}
 
     # ── Data extraction ─────────────────────────────────────────────────────
 
     async def _violation_rows(
-        self, ent_pk: int, from_date: datetime, to_date: datetime
+        self, ent_pk: int, from_date: datetime, to_date: datetime, limit: int = 5000
     ) -> tuple[list[str], list[list]]:
         q = (
-            select(PPEViolation, Zone.name, Camera.code)
+            select(PPEViolation.created_at, PPEViolation.violation_type, PPEViolation.confidence,
+                   PPEViolation.is_false_positive, Zone.name, Camera.code)
             .join(Zone, Zone.id == PPEViolation.zone_id)
             .join(Camera, Camera.id == PPEViolation.camera_id)
             .where(
-                PPEViolation.enterprise_id == ent_pk,
+                PPEViolation.enterprise_id == ent_pk, Zone.enterprise_id == ent_pk, Camera.enterprise_id == ent_pk,
                 PPEViolation.created_at >= from_date,
                 PPEViolation.created_at <= to_date,
             )
-            .order_by(PPEViolation.created_at.desc())
-            .limit(5001)
+            .order_by(PPEViolation.created_at.desc(), PPEViolation.id.desc())
+            .limit(limit + 1)
         )
         rows = (await self._db.execute(q)).all()
-        if len(rows) > 5000:
-            from src.core.exceptions import VisionGuardException
-            raise VisionGuardException(code="REPORT_TOO_LARGE", message="Report exceeds 5000 rows; choose a shorter date range", status_code=422)
+        if len(rows) > limit:
+            raise VisionGuardException(code="REPORT_TOO_LARGE", message="Report exceeds its row limit; choose a shorter date range", status_code=422)
         headers = ["Date/Time (UTC)", "Zone", "Camera", "Violation", "Confidence", "False Positive"]
         return headers, [
             [
-                v.created_at.strftime("%Y-%m-%d %H:%M"),
+                created_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M"),
                 zone_name,
                 camera_code,
-                v.violation_type.replace("_", " ").title(),
-                f"{v.confidence:.2f}",
-                "Yes" if v.is_false_positive else "No",
+                violation_type.replace("_", " ").title(),
+                f"{confidence:.2f}",
+                "Yes" if is_false_positive else "No",
             ]
-            for v, zone_name, camera_code in rows
+            for created_at, violation_type, confidence, is_false_positive, zone_name, camera_code in rows
         ]
 
     async def _alert_rows(
-        self, ent_pk: int, from_date: datetime, to_date: datetime
+        self, ent_pk: int, from_date: datetime, to_date: datetime, limit: int = 5000
     ) -> tuple[list[str], list[list]]:
         q = (
-            select(Alert, Zone.name)
+            select(Alert.alert_number, Alert.created_at, Alert.alert_type, Alert.severity,
+                   Alert.status, Alert.resolved_on, Zone.name)
             .join(Zone, Zone.id == Alert.zone_id)
             .where(
-                Alert.enterprise_id == ent_pk,
+                Alert.enterprise_id == ent_pk, Zone.enterprise_id == ent_pk,
                 Alert.created_at >= from_date,
                 Alert.created_at <= to_date,
             )
-            .order_by(Alert.created_at.desc())
-            .limit(5001)
+            .order_by(Alert.created_at.desc(), Alert.id.desc())
+            .limit(limit + 1)
         )
         rows = (await self._db.execute(q)).all()
-        if len(rows) > 5000:
-            from src.core.exceptions import VisionGuardException
-            raise VisionGuardException(code="REPORT_TOO_LARGE", message="Report exceeds 5000 rows; choose a shorter date range", status_code=422)
+        if len(rows) > limit:
+            raise VisionGuardException(code="REPORT_TOO_LARGE", message="Report exceeds its row limit; choose a shorter date range", status_code=422)
         headers = ["Alert #", "Date/Time (UTC)", "Zone", "Type", "Severity", "Status", "Resolved At"]
         return headers, [
             [
-                a.alert_number,
-                a.created_at.strftime("%Y-%m-%d %H:%M"),
+                alert_number,
+                created_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M"),
                 zone_name,
-                a.alert_type,
-                a.severity,
-                a.status,
-                a.resolved_on.strftime("%Y-%m-%d %H:%M") if a.resolved_on else "—",
+                alert_type,
+                severity,
+                status,
+                resolved_on.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M") if resolved_on else "—",
             ]
-            for a, zone_name in rows
+            for alert_number, created_at, alert_type, severity, status, resolved_on, zone_name in rows
         ]
 
     @staticmethod
-    async def to_dict(db: AsyncSession, r: Report) -> dict:
+    def to_dict(r: Report, generated_by: str | None) -> dict:
         return {
             "id": r.public_id,
             "report_type": r.report_type,
@@ -188,6 +177,11 @@ class ReportService:
             "from_date": r.from_date.isoformat(),
             "to_date": r.to_date.isoformat(),
             "status": r.status,
-            "generated_by": await to_public_id(db, User, r.generated_by),
+            "generated_by": generated_by,
+            "stage": r.stage, "attempts": r.attempts, "row_count": r.row_count,
+            "failure_code": r.failure_code, "failure_message": FAILURES.get(r.failure_code),
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "next_attempt_at": r.next_attempt_at.isoformat() if r.status == "Retrying" else None,
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }

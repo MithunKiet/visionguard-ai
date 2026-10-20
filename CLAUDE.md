@@ -42,7 +42,7 @@ Every table follows the BaseEntity pattern:
 - All foreign keys use internal integer ids for performance; only repository code at the literal SQL boundary translates a `public_id` to/from the internal integer (helpers in `backend/src/shared/database/pid.py`: `to_pk`, `to_public_id`, `to_pks`).
 - Exception: `identity.user_roles` is a pure link table, not a BaseEntity — composite PK of `user_public_id`/`role_public_id` directly (no surrogate id, no audit columns). Protocol tables such as event receipts and `worker.camera_leases` also use explicit keys; lease tokens/generations are retained ownership history, not user-managed entities.
 
-Current migration head: **0021**.
+Current migration head: **0022**.
 
 ## Multi-tenancy
 
@@ -77,5 +77,7 @@ The owner deferred the laptop test and requested independent pending fixes. Brow
 User administration now uses bounded server pagination (20 default, 100 maximum), scoped counts and one role query per page. The frontend follows the new metadata; API consumers must paginate to retrieve the full directory. See [docs/USER_DIRECTORY_SCALING.md](docs/USER_DIRECTORY_SCALING.md). Preserve the four-SELECT one-versus-100-row regression and role completeness on detail/invite/update paths.
 
 Flow 1 adds transactional zone configuration delivery and current-lease application confirmations in migration 0021. See [docs/CONFIG_DELIVERY.md](docs/CONFIG_DELIVERY.md). Saves and restores commit policy/history/outbox atomically, publication retries across process failures, and worker HTTP reconciliation repairs missed pushes. Broker acceptance must never be presented as application. Keep the monotonic HTTP-versus-push regression, scoped status, lease/session/zone/version validation, confirmation expiry and constant-query batch acknowledgement. The zone PPE dialog tracks application while open. Per-camera overrides/activation and model/site validation retain their separate contracts. Both startup and readiness use the shared schema-head constant.
+
+Flow 2 adds durable report jobs and the Reports page in migration 0022. See [docs/REPORT_JOBS.md](docs/REPORT_JOBS.md). Generate returns 202 with a queued job; consumers must follow status and paginate history. Preserve tenant/admin boundaries, idempotent request admission, attempt fencing, subprocess deadlines/reaping, bounded automatic retries and download gating. PDF caps at 5,000 rows and write-only Excel at 50,000; excess fails explicitly. The real subprocess/MinIO-SDK smoke uses a local S3 protocol fixture; real MinIO/TLS/provider validation remains separate. Startup/readiness now require 0022 and the report dispatcher.
 
 Automated unit/integration/browser checks and a synthetic event/report smoke validate the implemented paths. Alert delivery now uses a transactional PostgreSQL outbox with bounded retries and administrator replay; see `docs/ALERT_DELIVERY.md`. Live video uses a per-asset authenticated HLS gateway; see `docs/SECURE_LIVE_VIDEO.md` for required private relays and camera mappings. Real-camera model accuracy, GPU capacity, real-camera media/TLS validation, provider/load validation, production TLS and backup/restore validation remain required. See `docs/REVIEW_FIXES.md` for evidence and per-finding status.

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from src.core.settings import settings
 from src.shared.database.base import Base as Base  # re-exported — models.py imports Base from here
 
-SCHEMA_VERSION = "0021"
+SCHEMA_VERSION = "0022"
 
 engine = create_async_engine(
     settings.DATABASE_URL,

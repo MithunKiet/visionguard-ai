@@ -302,6 +302,8 @@ class Report(BaseEntity):
     __tablename__ = "reports"
     __table_args__ = (
         Index("ix_reports_enterprise", "enterprise_id", "created_at"),
+        Index("ix_reports_due", "status", "next_attempt_at"),
+        UniqueConstraint("enterprise_id", "request_key", name="uq_report_request_key"),
         {"schema": "reports"},
     )
 
@@ -313,6 +315,17 @@ class Report(BaseEntity):
     object_key      = Column(String(500), nullable=True)
     status          = Column(String(20), default="Completed", nullable=False)
     generated_by    = Column(BigInteger, ForeignKey("identity.users.id"), nullable=True)
+    request_key     = Column(String(36), nullable=True)
+    stage           = Column(String(30), nullable=False, default="Completed", server_default="Completed")
+    attempts        = Column(Integer, nullable=False, default=0, server_default="0")
+    attempt_limit   = Column(Integer, nullable=False, default=3, server_default="3")
+    next_attempt_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    lease_token     = Column(String(36), nullable=True)
+    lease_expires_at = Column(DateTime(timezone=True), nullable=True)
+    started_at      = Column(DateTime(timezone=True), nullable=True)
+    completed_at    = Column(DateTime(timezone=True), nullable=True)
+    failure_code    = Column(String(60), nullable=True)
+    row_count       = Column(Integer, nullable=True)
 
 
 # ─── Shifts ───────────────────────────────────────────────────────────────────

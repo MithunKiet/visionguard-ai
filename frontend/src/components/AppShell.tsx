@@ -25,6 +25,7 @@ import GridViewIcon from "@mui/icons-material/GridView";
 import WarningIcon from "@mui/icons-material/WarningAmber";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
+import AssessmentIcon from "@mui/icons-material/Assessment";
 import LogoutIcon from "@mui/icons-material/Logout";
 import CircleIcon from "@mui/icons-material/Circle";
 import { api } from "../api/client";
@@ -49,6 +50,7 @@ const NAV = [
   { to: "/live", label: "Live Grid", icon: <GridViewIcon /> },
   { to: "/violations", label: "Violations", icon: <WarningIcon /> },
   { to: "/alerts", label: "Alerts", icon: <NotificationsActiveIcon /> },
+  { to: "/reports", label: "Reports", icon: <AssessmentIcon />, roles: ["SYSTEM_ADMIN", "ENTERPRISE_ADMIN"] },
   { to: "/notification-deliveries", label: "Notification delivery", icon: <NotificationsActiveIcon />, roles: ["SYSTEM_ADMIN", "ENTERPRISE_ADMIN"] },
   {
     to: "/users",

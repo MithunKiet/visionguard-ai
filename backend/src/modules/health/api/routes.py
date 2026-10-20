@@ -47,6 +47,11 @@ async def readiness():
         if config_delivery_worker.task is None or config_delivery_worker.task.done():
             raise RuntimeError("Configuration delivery worker unavailable")
 
+    async def reports():
+        from src.modules.reports.application.jobs import report_worker
+        if report_worker.task is None or report_worker.task.done():
+            raise RuntimeError("Report worker unavailable")
+
     async def check(name, operation):
         try:
             await asyncio.wait_for(operation(), timeout=3)
@@ -56,7 +61,7 @@ async def readiness():
 
     checks = dict(await asyncio.gather(*(check(name, operation) for name, operation in
         [("postgres", database), ("redis", cache), ("rabbitmq", broker), ("storage", storage),
-         ("notifications", notifications), ("config_delivery", config_delivery)])))
+         ("notifications", notifications), ("config_delivery", config_delivery), ("reports", reports)])))
     ready = all(value == "ok" for value in checks.values())
     return JSONResponse(status_code=200 if ready else 503, content=ApiResponse.ok(
         {"status": "ready" if ready else "degraded", "checks": checks}).model_dump(mode="json"))

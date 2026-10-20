@@ -4,7 +4,8 @@ functions: rows in, file bytes out. Branding (enterprise name) is passed in
 by the caller — never hardcoded (master context rule #1).
 """
 import io
-from datetime import datetime
+from html import escape
+from datetime import datetime, timezone
 
 
 def build_pdf(title: str, enterprise_name: str, period: str, headers: list[str], rows: list[list]) -> bytes:
@@ -20,9 +21,9 @@ def build_pdf(title: str, enterprise_name: str, period: str, headers: list[str],
     styles = getSampleStyleSheet()
 
     elements = [
-        Paragraph(f"{enterprise_name} — {title}", styles["Title"]),
-        Paragraph(f"Period: {period}", styles["Normal"]),
-        Paragraph(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}", styles["Normal"]),
+        Paragraph(escape(f"{enterprise_name} — {title}"), styles["Title"]),
+        Paragraph(escape(f"Period: {period}"), styles["Normal"]),
+        Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}", styles["Normal"]),
         Spacer(1, 12),
     ]
 
@@ -44,28 +45,38 @@ def build_pdf(title: str, enterprise_name: str, period: str, headers: list[str],
 
 def build_xlsx(title: str, enterprise_name: str, period: str, headers: list[str], rows: list[list]) -> bytes:
     from openpyxl import Workbook
+    from openpyxl.cell import WriteOnlyCell
     from openpyxl.styles import Font, PatternFill
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = title[:31]  # Excel sheet name limit
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet(title[:31])
+    from openpyxl.utils import get_column_letter
+    for col_idx, header in enumerate(headers, start=1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = max(14, len(header) + 4)
 
-    ws.append([f"{enterprise_name} — {title}"])
-    ws.append([f"Period: {period}"])
+    def cells(values):
+        # Labels can contain user-controlled text. Never turn them into Excel
+        # formulas or external links when the workbook is opened.
+        result = []
+        for value in values:
+            cell = WriteOnlyCell(ws, value=value)
+            if isinstance(value, str):
+                cell.data_type = "s"
+            result.append(cell)
+        return result
+
+    ws.append(cells([f"{enterprise_name} — {title}"]))
+    ws.append(cells([f"Period: {period}"]))
     ws.append([])
-    ws.append(headers)
-
-    header_row = ws.max_row
     fill = PatternFill(start_color="1565C0", end_color="1565C0", fill_type="solid")
-    for cell in ws[header_row]:
+    header_cells = cells(headers)
+    for cell in header_cells:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = fill
+    ws.append(header_cells)
 
     for row in rows:
-        ws.append(row)
-
-    for col_idx, header in enumerate(headers, start=1):
-        ws.column_dimensions[ws.cell(row=header_row, column=col_idx).column_letter].width = max(14, len(header) + 4)
+        ws.append(cells(row))
 
     buf = io.BytesIO()
     wb.save(buf)
