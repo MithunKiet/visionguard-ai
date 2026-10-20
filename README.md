@@ -555,12 +555,14 @@ Add more dashboards by dropping additional JSON exports into `infra/grafana/prov
 
 PostgreSQL and MinIO retain application data and evidence. RabbitMQ also holds confirmed events awaiting backend consumption, and each worker state volume holds pending incidents/evidence. Those pending events are not recoverable from a PostgreSQL/MinIO backup alone. Preserve worker volumes and plan broker durability, draining and recovery; see [durable edge recovery](docs/DURABLE_EDGE_EVENTS.md). Redis cache can be rebuilt.
 
+Configure the separate backup/restore environment variables and compatible PostgreSQL clients described in [Backup and recovery](docs/BACKUP_RECOVERY.md), then run:
+
 ```bash
-./infra/backup/backup.sh              # -> ./backups/<timestamp>/{postgres.dump, minio/}
-./infra/backup/restore.sh <timestamp> # DESTRUCTIVE — overwrites current data, asks for confirmation
+./infra/backup/backup.sh --output backups/pilot-backup-001
+./infra/backup/restore.sh --bundle backups/pilot-backup-001 --manifest-sha256 '<retained checksum>' --report backups/drill-reports/pilot-001.json
 ```
 
-Backups are written to `./backups/` (git-ignored). Schedule `backup.sh` via cron/Task Scheduler for automated retention; it's a plain script, not a docker-compose service, so it runs on whatever cadence the host schedules it.
+Backups are private, checksum-verified bundles in git-ignored storage. Restore now creates a fresh disposable database and fresh buckets, checks source snapshot counts/references and reads back every object. The old destructive timestamp-only interface is removed. Example systemd units are provided but are not enabled. Offsite encryption, retention, scheduling, broker/worker-state recovery and measured service RTO/RPO still require deployment acceptance.
 
 ---
 

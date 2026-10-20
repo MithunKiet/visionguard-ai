@@ -1,6 +1,7 @@
 # ruff: noqa: F811
 """MFA acceptance against disposable PostgreSQL and Redis."""
 import time
+import os
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -12,6 +13,8 @@ from tests.test_review_integration import setup, headers  # noqa: F401
 from src.modules.identity.application.mfa import cipher
 from src.shared.database.models import AuditLog, User
 from src.shared.database.session import AsyncSessionFactory
+
+pytestmark = pytest.mark.skipif(not os.environ.get("TEST_DATABASE_URL"), reason="Requires disposable PostgreSQL and Redis")
 
 
 @pytest.mark.asyncio

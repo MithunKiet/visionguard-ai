@@ -87,7 +87,7 @@ CI now includes the PostgreSQL/Redis integration suite, browser regressions, pro
 | DEPLOY-04 | Partial | Public storage TLS is configurable and production requires HTTPS; ingress is private by default. Certificates, real public URLs, private camera relays and real-domain playback validation remain deployment work. HLS avoids ICE/TURN. |
 | DEPLOY-05 | Remaining | Choose and provision a maintained S3-compatible storage service and verify backup compatibility. The development MinIO source build is not a support policy. |
 | DEPLOY-06 | Partial | Readiness checks PostgreSQL/schema, Redis, RabbitMQ and storage and returns HTTP 503 when degraded. Worker freshness alerting/runbooks remain. |
-| DEPLOY-07 | Remaining | Define retention/RPO/RTO; implement scheduled offsite backups and run isolated database/object restore drills. |
+| DEPLOY-07 | Partial | Verified bundles and isolated PostgreSQL/object restore drills implemented and locally tested; see `docs/BACKUP_RECOVERY.md`. Company RPO/RTO, offsite encryption/retrieval, enabled scheduling, retention and actual provider/site recovery remain. |
 | SEC-01 | Partial | Current backend/frontend audits clean after controlled upgrades and JWT-library replacement. Audit the full GPU runtime and continue dependency monitoring. |
 | UI-01 | Partial | Accurate server alert totals, real alert/violation pagination and activity invalidation fixed. Occupancy aggregation/freshness and aggregate review counts remain. |
 | UI-02 | Partial | Shared frontend socket, bounded reconnect/event-refresh timers, session cleanup, immediate HTTP resync and stale-occupancy expiry implemented. Complete role-aware controls/error states remain. |

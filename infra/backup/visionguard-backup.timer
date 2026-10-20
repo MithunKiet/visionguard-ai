@@ -1,0 +1,12 @@
+# Illustrative daily cadence only; replace with the company's approved RPO policy.
+[Unit]
+Description=Schedule VisionGuard verified backups
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=5m
+Persistent=true
+Unit=visionguard-backup.service
+
+[Install]
+WantedBy=timers.target
