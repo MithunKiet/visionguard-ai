@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter, useLocation } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { ChangePassword } from "./pages/ChangePassword";
+import { AccountSecurity } from "./pages/AccountSecurity";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { Cameras } from "./pages/Cameras";
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
       { path: "departments", element: <Departments /> },
       { path: "zones", element: <Zones /> },
       { path: "cameras", element: <Cameras /> },
+      { path: "account-security", element: <AccountSecurity /> },
       { path: "users", element: <Users /> },
       { path: "reports", element: <Reports /> },
       { path: "detection-health", element: <DetectionHealth /> },

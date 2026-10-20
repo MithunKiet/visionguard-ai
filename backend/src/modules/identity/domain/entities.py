@@ -13,6 +13,7 @@ class UserEntity:
     password_hash: str
     is_first_login: bool = True
     totp_enabled: bool = False
+    auth_version: str = ""
     last_login_at: datetime | None = None
     deleted_at: datetime | None = None
     # Data-visibility scope — which factory/department/zones this user is

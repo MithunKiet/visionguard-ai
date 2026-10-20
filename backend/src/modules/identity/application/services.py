@@ -37,7 +37,7 @@ class AuthService:
 
     # ── Login ──────────────────────────────────────────────────────────────
 
-    async def login(self, email: str, password: str) -> dict:
+    async def login(self, email: str, password: str, otp_code: str | None = None) -> dict:
         redis = await get_redis()
         attempt_key = "login-attempts:" + _sha256(email.strip().lower())
         attempts = await redis.eval(
@@ -61,7 +61,8 @@ class AuthService:
             raise ForbiddenException("Account is inactive or suspended")
 
         if user.totp_enabled:
-            raise ForbiddenException("MFA verification is not supported by this deployment")
+            from src.modules.identity.application.mfa import MfaService
+            await MfaService(self._db).verify_login(user.id, otp_code)
         await redis.delete(attempt_key)
         access_token = self._make_access_token(user, is_master=is_master)
         refresh_token, _ = await self._create_refresh_token(user)
@@ -119,11 +120,13 @@ class AuthService:
             raise UnauthorizedException("Refresh token revoked or not found")
 
         user = await self._users.get_by_id(payload["sub"])
-        if not user or not user.is_active or user.totp_enabled:
+        if not user or not user.is_active:
             raise UnauthorizedException("User not found or inactive")
 
-        if not hmac.compare_digest(payload.get("session_version", ""), session_fingerprint(user.password_hash)):
+        if not hmac.compare_digest(payload.get("session_version", ""), session_fingerprint(user.password_hash + user.auth_version)):
             raise UnauthorizedException("Session expired; sign in again")
+        if user.totp_enabled and payload.get("mfa_verified") is not True:
+            raise UnauthorizedException("MFA verification required")
         # Hold the row lock until revocation and replacement commit together.
         stored.revoked = True
         new_access = self._make_access_token(user)
@@ -191,7 +194,8 @@ class AuthService:
             "enterprise_id": str(user.enterprise_id),
             "roles": user.roles,
             "email": user.email,
-            "session_version": session_fingerprint(user.password_hash),
+            "session_version": session_fingerprint(user.password_hash + user.auth_version),
+            "mfa_verified": user.totp_enabled,
             "factory_id": str(user.factory_id) if user.factory_id else None,
             "department_id": str(user.department_id) if user.department_id else None,
             "assigned_zone_ids": user.assigned_zone_ids,
@@ -212,7 +216,8 @@ class AuthService:
         token, jti = create_refresh_token({
             "sub": str(user.id),
             "enterprise_id": str(user.enterprise_id),
-            "session_version": session_fingerprint(user.password_hash),
+            "session_version": session_fingerprint(user.password_hash + user.auth_version),
+            "mfa_verified": user.totp_enabled,
         })
         expires_at = datetime.now(timezone.utc) + timedelta(
             days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS

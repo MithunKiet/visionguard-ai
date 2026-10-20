@@ -1,9 +1,10 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    otp_code: str | None = Field(default=None, pattern=r"^[0-9]{6}$")
 
 
 class RefreshRequest(BaseModel):
@@ -51,3 +52,8 @@ class RefreshedTokenResponse(BaseModel):
     refresh_token: str
     token_type: str
     expires_in: int
+
+
+class MfaRequest(BaseModel):
+    password: str
+    otp_code: str | None = Field(default=None, pattern=r"^[0-9]{6}$")

@@ -41,10 +41,12 @@ async def authenticate_token(token: str, db: AsyncSession) -> AuthUser:
     if await redis.exists(f"blacklist:{payload['jti']}"):
         raise UnauthorizedException("Session revoked")
     current = await UserRepository(db).get_by_id(payload["sub"])
-    if not current or not current.is_active or current.totp_enabled:
+    if not current or not current.is_active:
         raise UnauthorizedException("User not found or inactive")
-    if not hmac.compare_digest(payload.get("session_version", ""), session_fingerprint(current.password_hash)):
+    if not hmac.compare_digest(payload.get("session_version", ""), session_fingerprint(current.password_hash + current.auth_version)):
         raise UnauthorizedException("Session expired; sign in again")
+    if current.totp_enabled and payload.get("mfa_verified") is not True:
+        raise UnauthorizedException("MFA verification required")
     if payload.get("enterprise_id") != current.enterprise_id:
         raise UnauthorizedException("Session tenant changed")
     # Authorization always uses the current account, never stale JWT permissions.

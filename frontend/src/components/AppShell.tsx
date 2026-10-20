@@ -40,6 +40,7 @@ async function fetchBranding() {
 }
 
 const NAV = [
+  { to: "/account-security", label: "Account security", icon: <PeopleAltIcon /> },
   { to: "/", label: "Dashboard", icon: <DashboardIcon /> },
   // Platform-wide, cross-tenant master — only System Admins manage other enterprises.
   { to: "/enterprises", label: "Enterprises", icon: <CorporateFareIcon />, roles: ["SYSTEM_ADMIN"] },

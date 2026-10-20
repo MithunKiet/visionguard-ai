@@ -56,3 +56,6 @@ prometheus-fastapi-instrumentator==8.1.0
 # RTSP connection testing (camera module's test-connection/health-check
 # endpoints) — same version as ai-worker for consistency.
 opencv-python-headless==4.10.0.84
+
+# Authenticator secrets at rest.
+cryptography==50.0.2

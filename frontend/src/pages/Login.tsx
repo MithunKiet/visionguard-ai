@@ -15,6 +15,7 @@ export function Login() {
   const setSession = useAuthStore((s) => s.setSession);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +24,7 @@ export function Login() {
     setError(null);
     setLoading(true);
     try {
-      const resp = await api.post("/auth/login", { email, password });
+      const resp = await api.post("/auth/login", { email, password, ...(otpCode ? { otp_code: otpCode } : {}) });
       const data = resp.data.data;
       setSession({
         access_token: data.access_token,
@@ -78,6 +79,8 @@ export function Login() {
             required
             fullWidth
           />
+
+          <TextField label="Authenticator code (if enabled)" value={otpCode} onChange={(e) => setOtpCode(e.target.value)} inputProps={{ inputMode: "numeric", pattern: "[0-9]{6}", maxLength: 6, autoComplete: "one-time-code" }} fullWidth />
 
           <Button type="submit" variant="contained" size="large" disabled={loading}>
             {loading ? "Signing in..." : "Sign in"}

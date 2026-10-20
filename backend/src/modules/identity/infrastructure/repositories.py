@@ -84,6 +84,7 @@ class UserRepository(IUserRepository):
             password_hash=row.password_hash,
             is_first_login=row.is_first_login,
             totp_enabled=row.totp_enabled,
+            auth_version=row.auth_version,
             last_login_at=row.last_login_at,
             deleted_at=row.deleted_at,
             factory_id=factory_public_id,

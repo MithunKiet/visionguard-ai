@@ -357,7 +357,7 @@ async def test_redis_fanout_reaches_both_replicas_and_enforces_scope(setup):
         await second.stop()
 
 
-async def test_mfa_enabled_account_cannot_bypass_unimplemented_challenge(setup):
+async def test_mfa_enabled_account_without_secret_fails_closed(setup):
     s = setup
     async with AsyncSessionFactory() as db:
         result = await AuthService(db).login(s.users["admin"].email, "Test-password-391")
@@ -365,7 +365,7 @@ async def test_mfa_enabled_account_cannot_bypass_unimplemented_challenge(setup):
         await db.commit()
     assert (await s.client.get("/api/v1/auth/me", headers=headers(s))).status_code == 401
     assert (await s.client.post("/api/v1/auth/refresh", json={"refresh_token": result["refresh_token"]})).status_code == 401
-    assert (await s.client.post("/api/v1/auth/login", json={"email": s.users["admin"].email, "password": "Test-password-391"})).status_code == 403
+    assert (await s.client.post("/api/v1/auth/login", json={"email": s.users["admin"].email, "password": "Test-password-391"})).status_code == 401
 
 
 async def test_bound_worker_credential_rejects_different_worker_and_tenant(setup, monkeypatch):

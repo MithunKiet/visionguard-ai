@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.modules.identity.api.schemas import (
     ChangePasswordRequest,
     LoginRequest,
+    MfaRequest,
     LogoutRequest,
     RefreshRequest,
     RefreshedTokenResponse,
@@ -34,7 +35,7 @@ async def login(
     svc: AuthService = Depends(_get_auth_service),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await svc.login(body.email, body.password)
+    result = await svc.login(body.email, body.password, body.otp_code)
     from src.modules.audit.application.services import AuditService
     await AuditService(db).record(
         enterprise_id=result["user"]["enterprise_id"],
@@ -142,3 +143,30 @@ async def me(current_user: AuthUser = Depends(get_current_user)):
         "roles": current_user.roles,
         "email": current_user.email,
     })
+
+
+@router.get("/mfa", response_model=ApiResponse[dict])
+async def mfa_status(current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import select
+    from src.shared.database.models import User
+    enabled = await db.scalar(select(User.totp_enabled).where(User.public_id == current_user.user_id))
+    return ApiResponse(data={"enabled": bool(enabled)})
+
+
+@router.post("/mfa/{operation}", response_model=ApiResponse[dict | None])
+async def manage_mfa(
+    operation: str,
+    body: MfaRequest,
+    response: Response,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from src.core.exceptions import NotFoundException
+    from src.modules.identity.application.mfa import MfaService
+    if operation not in {"setup", "enable", "disable"}:
+        raise NotFoundException("MFA operation", operation)
+    response.headers["Cache-Control"] = "no-store"
+    result = await MfaService(db).manage(current_user.user_id, body.password, body.otp_code, operation)
+    if operation != "setup":
+        response.delete_cookie(_REFRESH_COOKIE, path="/api/v1/auth")
+    return ApiResponse(data=result)
