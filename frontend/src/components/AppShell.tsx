@@ -51,6 +51,7 @@ const NAV = [
   { to: "/violations", label: "Violations", icon: <WarningIcon /> },
   { to: "/alerts", label: "Alerts", icon: <NotificationsActiveIcon /> },
   { to: "/reports", label: "Reports", icon: <AssessmentIcon />, roles: ["SYSTEM_ADMIN", "ENTERPRISE_ADMIN"] },
+  { to: "/detection-health", label: "Detection health", icon: <VideocamIcon /> },
   { to: "/notification-deliveries", label: "Notification delivery", icon: <NotificationsActiveIcon />, roles: ["SYSTEM_ADMIN", "ENTERPRISE_ADMIN"] },
   {
     to: "/users",

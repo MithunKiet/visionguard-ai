@@ -14,10 +14,13 @@ import ListItemText from "@mui/material/ListItemText";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import Alert from "@mui/material/Alert";
 import { api } from "../api/client";
 import { StatCard } from "../components/StatCard";
 import { SeverityChip } from "../components/SeverityChip";
 import { useLiveFeed } from "../hooks/useWebSocket";
+import { useDetectionHealth } from "../hooks/useDetectionHealth";
+import { DetectionHealthNotice } from "../components/DetectionHealthNotice";
 
 async function fetchOpenAlertCounts() {
   const responses = await Promise.all([undefined, "Critical", "High"].map(severity =>
@@ -39,17 +42,18 @@ const FEED_LABELS: Record<string, string> = {
 };
 
 export function Dashboard() {
+  const health = useDetectionHealth();
   const { events, connected, latestOccupancy } = useLiveFeed(50);
 
   const feedEvents = events.filter((e) => e.type !== "occupancy.updated").slice(0, 20);
 
-  const { data: counts } = useQuery({
+  const { data: counts, isError: countsFailed } = useQuery({
     queryKey: ["open-alert-counts"],
     queryFn: fetchOpenAlertCounts,
     refetchInterval: 30000,
   });
 
-  const { data: violations } = useQuery({
+  const { data: violations, isError: violationsFailed, isLoading: violationsLoading } = useQuery({
     queryKey: ["recent-violations"],
     queryFn: fetchRecentViolations,
     refetchInterval: 30000,
@@ -61,10 +65,13 @@ export function Dashboard() {
         Dashboard
       </Typography>
 
+      <DetectionHealthNotice data={health.current?.data} />
+      {countsFailed && <Alert severity="warning">Alert counts are unavailable. Previous totals are hidden.</Alert>}
+
       <Stack direction="row" spacing={2} flexWrap="wrap">
-        <StatCard label="Open Alerts" value={counts?.total ?? "-"} accent="#0F5C4A" icon={<NotificationsActiveIcon />} />
-        <StatCard label="Critical" value={counts?.critical ?? "-"} accent="#DC2626" icon={<ErrorOutlineIcon />} />
-        <StatCard label="High" value={counts?.high ?? "-"} accent="#F59E0B" icon={<WarningAmberIcon />} />
+        <StatCard label="Open Alerts" value={countsFailed ? "-" : counts?.total ?? "-"} accent="#0F5C4A" icon={<NotificationsActiveIcon />} />
+        <StatCard label="Critical" value={countsFailed ? "-" : counts?.critical ?? "-"} accent="#DC2626" icon={<ErrorOutlineIcon />} />
+        <StatCard label="High" value={countsFailed ? "-" : counts?.high ?? "-"} accent="#F59E0B" icon={<WarningAmberIcon />} />
         <StatCard
           label="Latest Camera Count"
           value={connected ? latestOccupancy?.data?.current_count ?? "Awaiting update" : "Offline"}
@@ -86,7 +93,7 @@ export function Dashboard() {
               Recent Violations
             </Typography>
             <Grid container spacing={2}>
-              {(violations ?? []).map((v) => (
+              {(violationsFailed ? [] : violations ?? []).map((v) => (
                 <Grid item xs={6} sm={4} md={3} key={v.id}>
                   <Card variant="outlined">
                     {v.snapshot_url ? (
@@ -105,7 +112,8 @@ export function Dashboard() {
                   </Card>
                 </Grid>
               ))}
-              {(violations ?? []).length === 0 && (
+              {violationsFailed && <Grid item xs={12}><Alert severity="warning">Recent violations could not be loaded.</Alert></Grid>}
+              {!violationsLoading && !violationsFailed && (violations ?? []).length === 0 && (
                 <Grid item xs={12}>
                   <Typography variant="body2" color="text.secondary">
                     No violations recorded yet.

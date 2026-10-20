@@ -51,6 +51,7 @@ class CameraWorker:
         # The RTSP connection stays open and frames keep being read even when
         # off, so turning back on is instant — no reconnect needed.
         self._active = active
+        self._last_successful_inference = None
         self._policy_revision = 0
         camera_target_fps.labels(camera_id=self.camera_id).set(self.zone_config.get("frame_sample_fps", 2) if active else 0)
 
@@ -109,6 +110,7 @@ class CameraWorker:
             await asyncio.gather(task, return_exceptions=True)
 
     async def _on_stream_status(self, offline: bool) -> None:
+        self._last_successful_inference = None
         self._validator.mark_gap()
         self._policy_revision += 1
         self._last_spec_check = 0
@@ -120,6 +122,7 @@ class CameraWorker:
         if self._active == active:
             return
         self._active = active
+        self._last_successful_inference = None
         self._policy_revision += 1
         self._validator.mark_gap()
         camera_target_fps.labels(camera_id=self.camera_id).set(self.zone_config.get("frame_sample_fps", 2) if active else 0)
@@ -137,12 +140,17 @@ class CameraWorker:
         """Hot-swap zone config (rule #8) — takes effect on the next frame.
         Frame sampling rate is pushed down into the reader immediately."""
         self.zone_config = self._normalize_config(new_config)
+        self._last_successful_inference = None
         self._policy_revision += 1
         self._validator = PPEValidator()
         fps = new_config.get("frame_sample_fps")
         if fps:
             self._reader.set_sample_fps(fps)
         camera_target_fps.labels(camera_id=self.camera_id).set(self._reader.sample_fps if self._active else 0)
+
+    def detection_health(self):
+        age = lease_clock() - self._last_successful_inference if self._last_successful_inference is not None else None
+        return {"inference_age_seconds": age if self._active and age is not None and 0 <= age <= 30 else None}
 
     async def _run(self) -> None:
         if self._isolated:
@@ -230,10 +238,12 @@ class CameraWorker:
             detections = await self._detector.detect(frame, camera_id=self.camera_id,
                 deadline=received_at + settings.FRAME_MAX_AGE_SECONDS)
         except DetectionExpired:
+            self._last_successful_inference = None
             validator.mark_gap()
             frames_discarded.labels(camera_id=self.camera_id, reason="stale_inference").inc()
             return
         except Exception:
+            self._last_successful_inference = None
             validator.mark_gap()
             raise
         frame_local_age.labels(camera_id=self.camera_id).observe(max(0, time.monotonic() - received_at))
@@ -242,6 +252,7 @@ class CameraWorker:
         frames_processed_total.labels(camera_id=self.camera_id).inc()
         camera_last_processed_timestamp.labels(camera_id=self.camera_id).set(time.time())
         violations = validator.evaluate(detections, self.zone_config, auto_mark=False)
+        self._last_successful_inference = lease_clock()
         observed_at = datetime.fromtimestamp(wall_time, timezone.utc).isoformat()
 
         for v in violations:

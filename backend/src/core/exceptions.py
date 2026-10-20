@@ -1,5 +1,8 @@
 import structlog
+import math
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 log = structlog.get_logger()
@@ -32,6 +35,14 @@ class ForbiddenException(VisionGuardException):
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Python's JSON decoder accepts NaN/Infinity. Pydantic rejects them,
+        # but echoing that input through the default renderer itself raises
+        # a 500. Keep the normal 422 shape with JSON-safe invalid floats.
+        errors = jsonable_encoder(exc.errors(), custom_encoder={float: lambda value: value if math.isfinite(value) else None})
+        return JSONResponse(status_code=422, content={"detail": errors})
 
     @app.exception_handler(VisionGuardException)
     async def visionguard_exception_handler(

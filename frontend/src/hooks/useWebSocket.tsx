@@ -23,11 +23,12 @@ const LiveContext = createContext<LiveState | null>(null);
 const RESYNC_KEYS = new Set([
   "open-alert-counts", "recent-violations", "alerts", "alert-detail", "incident-evidence",
   "violations", "cameras", "cameras-live-grid", "notification-deliveries", "notification-delivery-summary",
+  "detection-health",
 ]);
 const EVENT_KEYS: Record<LiveEvent["type"], string[]> = {
   "alert.created": ["open-alert-counts", "alerts", "notification-deliveries", "notification-delivery-summary"],
   "violation.created": ["recent-violations", "violations"],
-  "camera.status_changed": ["cameras", "cameras-live-grid"],
+  "camera.status_changed": ["cameras", "cameras-live-grid", "detection-health"],
   "occupancy.updated": [],
 };
 

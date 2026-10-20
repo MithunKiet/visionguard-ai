@@ -1,5 +1,6 @@
 """Current policy application is distinct from broker acceptance."""
 from datetime import timedelta
+from time import monotonic
 
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -11,6 +12,7 @@ from src.shared.database.models import (
 
 
 async def acknowledge_configs(db, enterprise_id, worker_id, session_id, applications):
+    received = monotonic()
     # Lock in camera order, as assignment acquisition does. The lock spans
     # validation and upsert so an old owner cannot confirm after takeover.
     rows = (await db.execute(select(Camera, CameraLease, ZoneConfig.version, Zone.public_id).join(
@@ -25,6 +27,9 @@ async def acknowledge_configs(db, enterprise_id, worker_id, session_id, applicat
         Camera.deleted_at.is_(None), Camera.is_active.is_(True),
     ).order_by(Camera.id).with_for_update(of=Camera))).all()
     now = await db.scalar(select(func.clock_timestamp()))
+    # Database/pool/ownership lock waits must not rejuvenate a sample that
+    # arrived earlier. Network transit remains an estimate, not camera time.
+    sample_at = now - timedelta(seconds=max(0, monotonic() - received))
     by_camera = {str(item.camera_id): item for item in applications}
     values = []
     for camera, lease, version, zone_id in rows:
@@ -34,7 +39,10 @@ async def acknowledge_configs(db, enterprise_id, worker_id, session_id, applicat
                 or str(item.zone_id) != zone_id):
             continue
         values.append(dict(camera_id=camera.id, zone_id=camera.zone_id, version=version,
-                           lease_token=lease.token, applied_at=now, confirmed_at=now))
+            lease_token=lease.token, applied_at=now, confirmed_at=now,
+            health_reported_at=sample_at if item.detection_health is not None else None,
+            last_inference_at=sample_at - timedelta(seconds=item.detection_health.inference_age_seconds)
+                if item.detection_health is not None and item.detection_health.inference_age_seconds is not None else None))
     if values:
         statement = insert(CameraConfigApplication).values(values)
         incoming = statement.excluded
@@ -42,7 +50,11 @@ async def acknowledge_configs(db, enterprise_id, worker_id, session_id, applicat
             CameraConfigApplication.version == incoming.version, CameraConfigApplication.lease_token == incoming.lease_token)
         await db.execute(statement.on_conflict_do_update(index_elements=[CameraConfigApplication.camera_id],
             set_={"zone_id": incoming.zone_id, "version": incoming.version, "lease_token": incoming.lease_token,
-                "confirmed_at": now, "applied_at": case((same_application, CameraConfigApplication.applied_at), else_=now)}))
+                "confirmed_at": now, "applied_at": case((same_application, CameraConfigApplication.applied_at), else_=now),
+                "health_reported_at": case((incoming.health_reported_at.is_not(None), incoming.health_reported_at),
+                    (same_application, CameraConfigApplication.health_reported_at), else_=None),
+                "last_inference_at": case((incoming.health_reported_at.is_not(None), incoming.last_inference_at),
+                    (same_application, CameraConfigApplication.last_inference_at), else_=None)}))
     await db.commit()
     return {"accepted": len(values), "rejected": len(applications) - len(values)}
 

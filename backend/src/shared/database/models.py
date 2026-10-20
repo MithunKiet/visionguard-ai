@@ -248,6 +248,8 @@ class CameraConfigApplication(Base):
     lease_token = Column(String(36), ForeignKey("worker.camera_leases.token"), nullable=False)
     applied_at = Column(DateTime(timezone=True), nullable=False)
     confirmed_at = Column(DateTime(timezone=True), nullable=False)
+    health_reported_at = Column(DateTime(timezone=True))
+    last_inference_at = Column(DateTime(timezone=True))
 
 
 class PpeType(BaseEntity):

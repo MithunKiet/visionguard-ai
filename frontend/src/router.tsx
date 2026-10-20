@@ -14,6 +14,7 @@ import { Departments } from "./pages/Departments";
 import { Zones } from "./pages/Zones";
 import { Users } from "./pages/Users";
 import { Reports } from "./pages/Reports";
+import { DetectionHealth } from "./pages/DetectionHealth";
 import { useAuthStore } from "./store/authStore";
 import { LiveFeedProvider } from "./hooks/useWebSocket";
 
@@ -45,6 +46,7 @@ export const router = createBrowserRouter([
       { path: "cameras", element: <Cameras /> },
       { path: "users", element: <Users /> },
       { path: "reports", element: <Reports /> },
+      { path: "detection-health", element: <DetectionHealth /> },
       { path: "live", element: <LiveGrid /> },
       { path: "violations", element: <Violations /> },
       { path: "alerts", element: <Alerts /> },

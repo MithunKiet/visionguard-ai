@@ -95,7 +95,7 @@ async def test_report_failure_is_retried_and_expired_workers_are_excluded(monkey
     await report_applications([w, expired])
     assert post.await_count == 2
     assert post.await_args.kwargs["json"] == {"applications": [{"camera_id": w.camera_id, "zone_id": w.zone_id,
-        "lease_token": w.lease["token"], "version": 2}]}
+        "lease_token": w.lease["token"], "version": 2, "detection_health": {"inference_age_seconds": None}}]}
     await report_applications([expired])
     assert post.await_count == 2
 

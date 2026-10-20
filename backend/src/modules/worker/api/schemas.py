@@ -17,12 +17,18 @@ class HeartbeatRequest(BaseModel):
     gpu_available: bool = False
 
 
+class DetectionHealth(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    inference_age_seconds: float | None = Field(..., ge=0, le=30, allow_inf_nan=False, strict=True)
+
+
 class ConfigApplication(BaseModel):
     model_config = ConfigDict(extra="forbid")
     camera_id: UUID
     zone_id: UUID
     lease_token: UUID
     version: int = Field(ge=1, strict=True)
+    detection_health: DetectionHealth | None = None
 
 
 class ConfigApplicationsRequest(BaseModel):

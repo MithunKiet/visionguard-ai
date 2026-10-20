@@ -12,10 +12,6 @@ from src.shared.database.pid import to_pk
 from src.shared.security.resource_policy import scoped_query
 from src.shared.security.scope import ScopeFilter
 
-# Weight of each severity when computing the safety score penalty
-_SEVERITY_WEIGHTS = {"Critical": 10, "High": 5, "Medium": 2, "Low": 1}
-
-
 def _default_range(from_dt: datetime | None, to_dt: datetime | None) -> tuple[datetime, datetime]:
     to_dt = to_dt or datetime.now(timezone.utc)
     from_dt = from_dt or (to_dt - timedelta(days=30))
@@ -154,9 +150,9 @@ class AnalyticsService:
             "to": to_dt.isoformat(),
             "total_alerts": total,
             "resolved": resolved,
-            "resolution_rate_pct": round(100 * resolved / total, 1) if total else 100.0,
+            "resolution_rate_pct": round(100 * resolved / total, 1) if total else None,
             "within_sla": within_sla,
-            "sla_compliance_pct": round(100 * within_sla / resolved, 1) if resolved else 100.0,
+            "sla_compliance_pct": round(100 * within_sla / resolved, 1) if resolved else None,
         }
 
     async def safety_score(
@@ -166,8 +162,7 @@ class AnalyticsService:
         to_dt: datetime | None = None,
         scope: ScopeFilter | None = None,
     ) -> dict:
-        """0–100 score: starts at 100 and subtracts severity-weighted alert
-        counts normalized per day (min 0). A quiet factory scores 100."""
+        """Counts are observable; a historical safety score needs coverage evidence."""
         from_dt, to_dt = _default_range(from_dt, to_dt)
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         query = await scoped_query(self._db, select(Alert.severity, func.count())
@@ -180,12 +175,11 @@ class AnalyticsService:
             .group_by(Alert.severity), Alert, scope=scope)
         rows = (await self._db.execute(query)).all()
 
-        days = max(1, (to_dt - from_dt).days)
-        penalty = sum(_SEVERITY_WEIGHTS.get(sev, 1) * count for sev, count in rows) / days
-        score = max(0.0, round(100.0 - penalty, 1))
         return {
             "from": from_dt.isoformat(),
             "to": to_dt.isoformat(),
-            "score": score,
+            "score": None,
+            "status": "Unavailable",
+            "reason": "historical_monitoring_coverage_not_measured",
             "alerts_by_severity": {sev: count for sev, count in rows},
         }

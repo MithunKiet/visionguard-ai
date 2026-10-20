@@ -14,7 +14,7 @@ async def report_applications(workers):
     # Snapshot synchronously before network awaits. A concurrent hot update may
     # make this version stale; the backend rejects it and the next poll repairs it.
     applications = [{"camera_id": worker.camera_id, "zone_id": worker.zone_id, "lease_token": worker.lease["token"],
-                     "version": worker.zone_config["version"]}
+                     "version": worker.zone_config["version"], "detection_health": worker.detection_health()}
                     for worker in workers if lease_valid(worker.lease)]
     if not applications:
         return
