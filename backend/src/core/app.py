@@ -53,6 +53,7 @@ def _register_routers(app: FastAPI) -> None:
     from src.modules.worker.api.routes import router as worker_router
     from src.modules.ppe.api.routes import router as ppe_router
     from src.modules.alerts.api.routes import router as alerts_router
+    from src.modules.alerts.api.corrective_routes import router as corrective_router
     from src.modules.realtime.routes import router as realtime_router
     from src.modules.notifications.api.routes import router as notifications_router
     from src.modules.notifications.api.delivery_routes import router as delivery_router
@@ -69,6 +70,7 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(worker_router, prefix="/api/v1")
     app.include_router(ppe_router, prefix="/api/v1")
     app.include_router(alerts_router, prefix="/api/v1")
+    app.include_router(corrective_router, prefix="/api/v1")
     app.include_router(realtime_router, prefix="/api/v1")
     app.include_router(notifications_router, prefix="/api/v1")
     app.include_router(delivery_router, prefix="/api/v1")

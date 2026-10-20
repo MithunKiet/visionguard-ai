@@ -22,3 +22,6 @@ class AlertEntity:
     acknowledged_on: datetime | None = None
     resolved_on: datetime | None = None
     created_by: str = "system"
+    action_due_at: datetime | None = None
+    action_completed_at: datetime | None = None
+    action_planned: bool = False

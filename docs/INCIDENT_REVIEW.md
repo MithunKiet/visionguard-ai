@@ -7,7 +7,7 @@ An authorized reviewer can acknowledge an open incident or save a final decision
 - **Resolve incident:** enter what you checked and the corrective action/outcome. The dashboard requires a nonblank note, up to 2,000 characters.
 - **Mark as false positive:** explain why the detection was incorrect. The reason must be nonblank and at most 200 characters, matching the existing violation storage limit.
 
-The API trims submitted notes/reasons and rejects blank or oversized values. For compatibility, existing API callers may still omit a resolution note. Acknowledgment does not clear a violation's pending review flag. Resolution and false-positive decisions clear that flag; false-positive decisions also persist the reason and false-positive marker. The linked violation update and status history use the existing transaction. No schema migration is required.
+The API trims submitted notes/reasons and rejects blank or oversized values. For compatibility, existing API callers may still omit a resolution note when there is no corrective plan. Planned actions require completion and a closure note before resolution. Acknowledgment does not clear a violation's pending review flag. Resolution and false-positive decisions clear that flag; false-positive decisions also persist the reason and false-positive marker. The linked violation update and status history use the existing transaction. The corrective-action follow-up requires migration 0024; see [CORRECTIVE_ACTIONS.md](CORRECTIVE_ACTIONS.md).
 
 ## Permissions and evidence
 
@@ -15,7 +15,7 @@ System administrators, enterprise administrators, factory managers and safety of
 
 Snapshots use the existing scoped violation endpoint and expiring storage URLs. No snapshot is created by opening a review. Missing, expired or inaccessible evidence is shown explicitly. **Refresh evidence** requests fresh incident details and evidence. If incident access is rejected, the panel removes cached details, the image and decision controls. A previously issued presigned image URL retains its existing expiry behavior; this change does not add immediate revocation to object storage.
 
-The panel refreshes incident status every 15 seconds. Save failures retain draft text while the current status is reloaded; a concurrent final decision is shown instead of silently overwriting it. Status transitions keep the existing optimistic concurrency protection. Completed decisions cannot be reopened or edited through this panel. Review history covers status changes; assignment edits are not included.
+The panel refreshes incident status every 15 seconds. Save failures retain draft text while the current status is reloaded; a concurrent final decision is shown instead of silently overwriting it. Status transitions serialize with corrective-plan changes and retain transition checks. Completed incident decisions cannot be reopened or edited through this panel. Review history now also includes assignment, corrective plans, photo attachments and action-completion notes.
 
 ## Scope and validation
 

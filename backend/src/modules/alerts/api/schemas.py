@@ -1,6 +1,7 @@
 from typing import Annotated
+from uuid import UUID
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
 
 class AlertOut(BaseModel):
@@ -36,3 +37,17 @@ class FalsePositiveRequest(BaseModel):
 
 class AssignRequest(BaseModel):
     user_id: str
+
+
+class CorrectivePlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    assigned_to: UUID
+    due_at: AwareDatetime
+    description: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    expected_revision: int = Field(ge=0, strict=True)
+
+
+class CompleteActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    expected_revision: int = Field(ge=0, strict=True)

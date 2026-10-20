@@ -5,6 +5,7 @@ import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, 
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
 import { SeverityChip, StatusChip } from "./SeverityChip";
+import { CorrectiveAction } from "./CorrectiveAction";
 
 export interface Incident {
   id: string;
@@ -16,11 +17,13 @@ export interface Incident {
   sla_due_at: string | null;
   acknowledged_on: string | null;
   resolved_on: string | null;
+  action_due_at?: string | null;
+  action_completed_at?: string | null;
   violation_id: string | null;
   factory_name?: string | null;
   zone_name?: string | null;
   camera_name?: string | null;
-  review_history?: { id: string; from_status: string; to_status: string; comment: string | null; reviewer_name: string | null; created_on: string | null }[];
+  review_history?: { id: string; from_status: string; to_status: string; comment: string | null; reviewer_name: string | null; created_on: string | null; event_type?: string; details?: { description?: string } }[];
 }
 
 interface Evidence {
@@ -42,6 +45,7 @@ export function IncidentReview({ id, onClose }: { id: string; onClose: () => voi
   const [note, setNote] = useState("");
   const [saved, setSaved] = useState("");
   const [failedImage, setFailedImage] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState(false);
   const detail = useQuery({
     queryKey: ["alert-detail", id], retry: false, refetchInterval: 15000,
     queryFn: async () => (await api.get(`/alerts/${id}`)).data.data as Incident,
@@ -59,6 +63,7 @@ export function IncidentReview({ id, onClose }: { id: string; onClose: () => voi
       client.invalidateQueries({ queryKey: ["violations"] }),
       client.invalidateQueries({ queryKey: ["open-alert-counts"] }),
       client.invalidateQueries({ queryKey: ["recent-violations"] }),
+      client.invalidateQueries({ queryKey: ["corrective-action", id] }),
     ]);
   };
   const review = useMutation({
@@ -108,17 +113,22 @@ export function IncidentReview({ id, onClose }: { id: string; onClose: () => voi
               : <Alert severity="info">{snapshot ? "Snapshot unavailable or expired. Refresh evidence to request it again." : "No snapshot was recorded for this incident."}</Alert>}
           </>}
           <Divider />
+          <CorrectiveAction id={id} active={!!active} canReview={!!canReview} onPendingChange={setActionPending} refreshIncident={refresh} />
+          <Divider />
           <Typography variant="h6">Review history</Typography>
           <Typography variant="body2">Created · {date(incident.created_on)}</Typography>
           {(incident.review_history ?? []).map(entry => <Box key={entry.id} sx={{ borderLeft: "3px solid", borderColor: "divider", pl: 2 }}>
-            <Typography variant="body2" fontWeight={600}>{label(entry.from_status)} → {label(entry.to_status)}</Typography>
+            <Typography variant="body2" fontWeight={600}>{entry.event_type && entry.event_type !== "STATUS_CHANGED"
+              ? entry.event_type.replace(/_/g, " ").toLowerCase() : `${label(entry.from_status)} → ${label(entry.to_status)}`}</Typography>
             <Typography variant="caption" color="text.secondary">{entry.reviewer_name || "Reviewer unavailable"} · {date(entry.created_on)}</Typography>
             {entry.comment && <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{entry.comment}</Typography>}
+            {entry.details?.description && <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>{entry.details.description}</Typography>}
           </Box>)}
           {!incident.review_history?.length && <Typography variant="body2" color="text.secondary">No status changes recorded.</Typography>}
           {!canReview && <Alert severity="info">You have read-only access to incident reviews.</Alert>}
           {canReview && active && <>
             <Divider />
+            {actionPending && <Alert severity="info">Save or discard plan edits and complete any planned corrective action before resolving this incident.</Alert>}
             <TextField select label="Review decision" value={decision} disabled={review.isPending}
               onChange={event => { setDecision(event.target.value); review.reset(); setSaved(""); }}>
               <MenuItem value="resolve">Resolve incident</MenuItem><MenuItem value="false-positive">Mark as false positive</MenuItem>
@@ -128,7 +138,7 @@ export function IncidentReview({ id, onClose }: { id: string; onClose: () => voi
               error={note.trim().length > maxLength} helperText={`${note.trim().length}/${maxLength} characters. Describe what you checked and why you chose this outcome.`} />
             <Stack direction="row" spacing={1}>
               {incident.status === "Open" && <Button disabled={busy} onClick={() => review.mutate({ action: "acknowledge", comment: "" })}>Acknowledge</Button>}
-              <Button variant="contained" disabled={busy || !note.trim() || note.trim().length > maxLength}
+              <Button variant="contained" disabled={busy || !note.trim() || note.trim().length > maxLength || (decision === "resolve" && actionPending)}
                 onClick={() => review.mutate({ action: decision, comment: note.trim() })}>{review.isPending ? "Saving…" : "Save review"}</Button>
             </Stack>
           </>}

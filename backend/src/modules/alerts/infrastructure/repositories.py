@@ -106,6 +106,7 @@ class AlertRepository:
                 "id": history.public_id, "from_status": history.from_status,
                 "to_status": history.to_status, "comment": history.comment,
                 "reviewer_name": name,
+                "event_type": history.event_type, "details": history.details,
                 "created_on": history.created_at.isoformat() if history.created_at else None,
             } for history, name in rows],
         }
@@ -120,6 +121,7 @@ class AlertRepository:
         page: int = 1,
         page_size: int = 20,
         scope: ScopeFilter | None = None,
+        corrective_overdue: bool = False,
     ) -> tuple[list[AlertEntity], int]:
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         q = (
@@ -141,6 +143,9 @@ class AlertRepository:
             q = q.where(Alert.zone_id == await to_pk(self._db, Zone, zone_id))
         if assigned_to:
             q = q.where(Alert.assigned_to == await to_pk(self._db, User, assigned_to))
+        if corrective_overdue:
+            q = q.where(Alert.action_description.is_not(None), Alert.action_completed_at.is_(None),
+                Alert.action_due_at < func.now(), Alert.status.in_(["Open", "Acknowledged"]))
         if scope is not None:
             q = await apply_zone_scope(self._db, q, scope, Alert.factory_id, Alert.zone_id)
 
@@ -180,11 +185,19 @@ class AlertRepository:
         comment: str | None = None,
         scope: ScopeFilter | None = None,
     ) -> AlertEntity:
+        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
+        row = await self._db.scalar(select(Alert).where(Alert.public_id == alert_id, Alert.enterprise_id == ent_pk)
+            .with_for_update().execution_options(populate_existing=True))
         alert = await self.get_by_id(alert_id, enterprise_id, scope)
         from src.modules.alerts.application.services import _ALLOWED_TRANSITIONS
         from src.core.exceptions import VisionGuardException
         if not alert or to_status not in _ALLOWED_TRANSITIONS.get(alert.status, set()):
             raise VisionGuardException(code="INVALID_TRANSITION", message="Alert state changed", status_code=409)
+        if to_status == "Resolved" and row.action_description:
+            if row.action_completed_at is None:
+                raise VisionGuardException("ACTION_INCOMPLETE", "Complete the corrective action before resolving this incident", 409)
+            if not comment or not comment.strip():
+                raise VisionGuardException("CLOSURE_NOTE_REQUIRED", "A closure note is required for a planned corrective action", 422)
         now = datetime.now(timezone.utc)
         values: dict = {"status": to_status}
 
@@ -222,18 +235,32 @@ class AlertRepository:
             setattr(alert, key, value)
         return alert
 
-    async def assign(self, alert_id: str, enterprise_id: str, user_id: str) -> None:
+    async def assign(self, alert_id: str, enterprise_id: str, user_id: str, actor: str | None = None) -> None:
         # The caller (AlertService.assign) already verified via a scoped
         # get_by_id that this alert is visible before calling this — the
         # public_id/enterprise_id match here is what it actually needs
         # (the row was already confirmed to exist and be in scope).
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        user_pk = await to_pk(self._db, User, user_id)
-        await self._db.execute(
-            update(Alert)
-            .where(Alert.public_id == alert_id, Alert.enterprise_id == ent_pk)
-            .values(assigned_to=user_pk)
-        )
+        row = await self._db.scalar(select(Alert).where(Alert.public_id == alert_id, Alert.enterprise_id == ent_pk)
+            .with_for_update().execution_options(populate_existing=True))
+        from src.modules.alerts.application.corrective import validate_assignee, history, ensure_photo_capacity
+        from src.core.exceptions import VisionGuardException
+        if row is None or row.status not in {"Open", "Acknowledged"}:
+            raise VisionGuardException("INCIDENT_CLOSED", "Closed incidents cannot be assigned", 409)
+        assignee = await validate_assignee(self._db, row, user_id)
+        if row.assigned_to == assignee.id:
+            await commit_or_flush(self._db)
+            return
+        if row.action_description:
+            await ensure_photo_capacity(self._db, row)
+        previous_id = await to_public_id(self._db, User, row.assigned_to)
+        row.assigned_to = assignee.id
+        row.action_revision += 1
+        if row.action_description:
+            row.action_plan_version += 1
+            row.action_completed_at = None
+        history(self._db, row, actor, "ASSIGNED", f"Incident assigned to {assignee.name}",
+            {"previous_assignee": previous_id, "assigned_to": user_id, "plan_version": row.action_plan_version})
         await commit_or_flush(self._db)
 
     async def next_sequence(self, enterprise_id: str) -> int:
@@ -262,6 +289,8 @@ class AlertRepository:
             acknowledged_on=row.acknowledged_on,
             resolved_on=row.resolved_on,
             created_by=row.created_source,
+            action_due_at=row.action_due_at, action_completed_at=row.action_completed_at,
+            action_planned=row.action_description is not None,
         )
 
     @staticmethod
@@ -290,4 +319,6 @@ class AlertRepository:
             acknowledged_on=a.acknowledged_on,
             resolved_on=a.resolved_on,
             created_by=a.created_source,
+            action_due_at=a.action_due_at, action_completed_at=a.action_completed_at,
+            action_planned=a.action_description is not None,
         )

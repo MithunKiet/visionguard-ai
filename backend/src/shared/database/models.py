@@ -416,6 +416,11 @@ class Alert(BaseEntity):
     # 'system' (AI-worker-generated) or a user's public_id — distinct from
     # BaseEntity.created_by, which records the acting *API caller* if any.
     created_source  = Column(String(100), default="system")
+    action_description = Column(Text)
+    action_due_at = Column(DateTime(timezone=True))
+    action_completed_at = Column(DateTime(timezone=True))
+    action_revision = Column(Integer, nullable=False, default=0, server_default="0")
+    action_plan_version = Column(Integer, nullable=False, default=0, server_default="0")
 
 
 class AlertHistory(BaseEntity):
@@ -426,6 +431,21 @@ class AlertHistory(BaseEntity):
     from_status = Column(String(30))
     to_status   = Column(String(30))
     comment     = Column(Text)
+    event_type  = Column(String(40), nullable=False, default="STATUS_CHANGED", server_default="STATUS_CHANGED")
+    details     = Column(JSONB)
+
+
+class CorrectiveEvidence(BaseEntity):
+    __tablename__ = "corrective_evidence"
+    __table_args__ = (Index("ix_corrective_evidence_alert", "alert_id", "plan_version"), {"schema": "alerts"})
+    enterprise_id = Column(BigInteger, ForeignKey("enterprises.id"), nullable=False)
+    alert_id = Column(BigInteger, ForeignKey("alerts.alerts.id"), nullable=False)
+    plan_version = Column(Integer, nullable=False)
+    object_key = Column(String(500), nullable=False)
+    filename = Column(String(200), nullable=False)
+    content_type = Column(String(30), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    sha256 = Column(String(64), nullable=False)
 
 
 # ─── Notifications ────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TextField, Typography } from "@mui/material";
+import { Alert, Button, Checkbox, FormControlLabel, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TextField, Typography } from "@mui/material";
 import { api } from "../api/client";
 import { SeverityChip, StatusChip } from "../components/SeverityChip";
 import { IncidentReview, type Incident } from "../components/IncidentReview";
@@ -13,10 +13,11 @@ export function Alerts() {
   const [status, setStatus] = useState("Open");
   const [severity, setSeverity] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [overdue, setOverdue] = useState(false);
   const result = useQuery({
-    queryKey: ["alerts", status, severity, page], refetchInterval: 15000,
+    queryKey: ["alerts", status, severity, page, overdue], refetchInterval: 15000,
     queryFn: async () => {
-      const response = await api.get("/alerts", { params: { status: status || undefined, severity: severity || undefined, page: page + 1, page_size: 50 } });
+      const response = await api.get("/alerts", { params: { status: status || undefined, severity: severity || undefined, page: page + 1, page_size: 50, corrective_overdue: overdue || undefined } });
       return { items: response.data.data as Incident[], total: response.data.meta.total as number };
     },
   });
@@ -39,10 +40,11 @@ export function Alerts() {
         {SEVERITY_OPTIONS.map(value => <MenuItem key={value || "all"} value={value}>{value || "All"}</MenuItem>)}
       </TextField>
     </Stack>
+    <FormControlLabel label="Overdue corrective actions only" control={<Checkbox checked={overdue} onChange={event => { setOverdue(event.target.checked); if (event.target.checked) setStatus(""); setPage(0); }} />} />
     {result.isError && <Alert severity="error" action={<Button color="inherit" onClick={() => void result.refetch()}>Retry</Button>}>Alerts could not be loaded.</Alert>}
     <Paper variant="outlined" sx={{ overflowX: "auto" }}>
       <Table size="small">
-        <TableHead><TableRow>{["Alert #", "Type", "Severity", "Status", "Created", "SLA deadline", "Review"].map(title => <TableCell key={title}>{title}</TableCell>)}</TableRow></TableHead>
+        <TableHead><TableRow>{["Alert #", "Type", "Severity", "Status", "Created", "SLA deadline", "Corrective due", "Review"].map(title => <TableCell key={title}>{title}</TableCell>)}</TableRow></TableHead>
         <TableBody>
           {!result.isError && (result.data?.items ?? []).map(incident => <TableRow key={incident.id} hover>
             <TableCell sx={{ fontFamily: "monospace" }}>{incident.alert_number}</TableCell>
@@ -51,9 +53,10 @@ export function Alerts() {
             <TableCell><StatusChip status={incident.status} /></TableCell>
             <TableCell>{new Date(incident.created_on).toLocaleString()}</TableCell>
             <TableCell>{incident.sla_due_at ? new Date(incident.sla_due_at).toLocaleString() : "—"}</TableCell>
+            <TableCell>{incident.action_completed_at ? "Action completed" : incident.action_due_at ? new Date(incident.action_due_at).toLocaleString() : "—"}</TableCell>
             <TableCell><Button onClick={() => setSelected(incident.id)} aria-label={`Review ${incident.alert_number}`}>Review</Button></TableCell>
           </TableRow>)}
-          {(result.isError || !result.data?.items.length) && <TableRow><TableCell colSpan={7}>
+          {(result.isError || !result.data?.items.length) && <TableRow><TableCell colSpan={8}>
             {result.isLoading ? "Loading alerts…" : result.isError ? "Alert list unavailable." : "No alerts for this filter."}
           </TableCell></TableRow>}
         </TableBody>

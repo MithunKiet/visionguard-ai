@@ -65,7 +65,7 @@ async def enforce_resource_scope(
     values = dict(request.query_params)
     values.update(request.path_params)
     body = {}
-    if request.method in {"POST", "PUT", "PATCH"}:
+    if request.method in {"POST", "PUT", "PATCH"} and not request.headers.get("content-type", "").startswith("multipart/form-data"):
         try:
             body = await request.json()
         except ValueError:

@@ -42,13 +42,14 @@ async def list_alerts(
     severity: str | None = None,
     zone_id: str | None = None,
     assigned_to: str | None = None,
+    corrective_overdue: bool = False,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     user: AuthUser = Depends(get_current_user),
     svc: AlertService = Depends(_get_service),
 ):
     items, total = await svc.list_alerts(
-        user.enterprise_id, status, severity, zone_id, assigned_to, page, page_size, get_scope(user)
+        user.enterprise_id, status, severity, zone_id, assigned_to, page, page_size, get_scope(user), corrective_overdue
     )
     return ApiResponse(
         data=items,
@@ -119,6 +120,6 @@ async def assign_alert(
     svc: AlertService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
-    data = await svc.assign(alert_id, user.enterprise_id, body.user_id, get_scope(user))
+    data = await svc.assign(alert_id, user.enterprise_id, body.user_id, get_scope(user), user.user_id)
     await _audit(db, user, "ALERT_ASSIGNED", alert_id, {"assigned_to": body.user_id})
     return ApiResponse(data=data)

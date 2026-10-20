@@ -142,9 +142,10 @@ class AlertService:
         page: int = 1,
         page_size: int = 20,
         scope: ScopeFilter | None = None,
+        corrective_overdue: bool = False,
     ) -> tuple[list[dict], int]:
         items, total = await self._repo.list(
-            enterprise_id, status, severity, zone_id, assigned_to, page, page_size, scope
+            enterprise_id, status, severity, zone_id, assigned_to, page, page_size, scope, corrective_overdue
         )
         return [self.to_dict(a) for a in items], total
 
@@ -179,13 +180,16 @@ class AlertService:
 
     async def assign(
         self, alert_id: str, enterprise_id: str, assign_to: str, scope: ScopeFilter | None = None,
+        actor: str | None = None,
     ) -> dict:
         alert = await self._repo.get_by_id(alert_id, enterprise_id, scope)
         if not alert:
             raise NotFoundException("Alert", str(alert_id))
-        await self._repo.assign(alert_id, enterprise_id, assign_to)
-        alert.assigned_to = assign_to
-        return self.to_dict(alert)
+        await self._repo.assign(alert_id, enterprise_id, assign_to, actor)
+        current = await self._repo.get_by_id(alert_id, enterprise_id, scope)
+        if current is None:
+            raise NotFoundException("Alert", str(alert_id))
+        return self.to_dict(current)
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -229,4 +233,7 @@ class AlertService:
             "created_on": a.created_at.isoformat(),
             "acknowledged_on": a.acknowledged_on.isoformat() if a.acknowledged_on else None,
             "resolved_on": a.resolved_on.isoformat() if a.resolved_on else None,
+            "action_due_at": a.action_due_at.isoformat() if a.action_due_at else None,
+            "action_completed_at": a.action_completed_at.isoformat() if a.action_completed_at else None,
+            "action_planned": a.action_planned,
         }
