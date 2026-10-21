@@ -44,6 +44,9 @@ class CameraService:
     ) -> list[CameraEntity]:
         return await self._cameras.list(enterprise_id, factory_id, zone_id, scope)
 
+    async def list_camera_page(self, enterprise_id, factory_id, zone_id, scope, **pagination):
+        return await self._cameras.list_page(enterprise_id, factory_id, zone_id, scope, **pagination)
+
     async def get_camera(
         self, camera_id: str, enterprise_id: str, scope: ScopeFilter | None = None,
     ) -> CameraEntity:

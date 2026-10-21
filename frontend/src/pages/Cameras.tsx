@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AddIcon from "@mui/icons-material/Add";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import { Alert, TablePagination } from "@mui/material";
+import { Alert, TablePagination, TextField } from "@mui/material";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { CameraImportDialog } from "../components/CameraImportDialog";
@@ -22,9 +22,9 @@ import { api } from "../api/client";
 import { AddCameraDialog } from "../components/AddCameraDialog";
 import { formatEnforcedPpe, usePpeTypes } from "../components/ppeItems";
 
-async function fetchCameras() {
-  const resp = await api.get("/cameras");
-  return resp.data.data as any[];
+async function fetchCameras(page: number, search: string) {
+  const resp = await api.get("/cameras", { params: { page: page + 1, page_size: 50, search } });
+  return { cameras: resp.data.data as any[], total: resp.data.meta?.total ?? resp.data.data.length };
 }
 
 async function testConnection(camera_id: string) {
@@ -44,16 +44,22 @@ export function Cameras() {
   const canManage = useAuthStore(s => s.user?.roles.some(role => ["SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER"].includes(role)));
   const [importOpen, setImportOpen] = useState(false);
   const [page, setPage] = useState(0);
+  const [search, setSearch] = useState("");
+  const [draftSearch, setDraftSearch] = useState("");
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [editCamera, setEditCamera] = useState<any | null>(null);
-  const { data: cameras, isLoading, isError, refetch } = useQuery({
-    queryKey: ["cameras"],
-    queryFn: fetchCameras,
+  const { data: inventory, isLoading, isError, refetch } = useQuery({
+    queryKey: ["cameras", page, search],
+    queryFn: () => fetchCameras(page, search),
     refetchInterval: 15000,
   });
-  const visiblePage = Math.min(page, Math.max(0, Math.ceil((isError ? 0 : cameras?.length ?? 0) / 50) - 1));
+  const cameras = inventory?.cameras;
+  const total = isError ? 0 : inventory?.total ?? 0;
+  useEffect(() => {
+    if (inventory && !isError && page > 0 && page * 50 >= inventory.total) setPage(Math.max(0, Math.ceil(inventory.total / 50) - 1));
+  }, [inventory, isError, page]);
   const { data: ppeTypes } = usePpeTypes();
 
   const testMutation = useMutation({
@@ -82,6 +88,10 @@ export function Cameras() {
         </Stack>}
       </Stack>
 
+      <Stack component="form" direction="row" spacing={1} onSubmit={event => { event.preventDefault(); setPage(0); setSearch(draftSearch.trim()); }}>
+        <TextField size="small" label="Search camera name or code" value={draftSearch} inputProps={{ maxLength: 100 }} onChange={event => setDraftSearch(event.target.value)} />
+        <Button type="submit">Search</Button>
+      </Stack>
       {importOpen && canManage && <CameraImportDialog onClose={() => setImportOpen(false)} />}
       {isError && <Alert severity="error" action={<Button onClick={() => refetch()}>Retry</Button>}>Camera inventory unavailable. Previous results are hidden.</Alert>}
       {actionError && <Alert severity="error">{actionError}</Alert>}
@@ -103,7 +113,7 @@ export function Cameras() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {(!isError ? cameras ?? [] : []).slice(visiblePage * 50, visiblePage * 50 + 50).map((cam) => (
+            {(!isError ? cameras ?? [] : []).map((cam) => (
               <TableRow key={cam.id} hover>
                 <TableCell>{cam.name}</TableCell>
                 <TableCell>{cam.code}</TableCell>
@@ -136,14 +146,14 @@ export function Cameras() {
               <TableRow>
                 <TableCell colSpan={7}>
                   <Typography variant="body2" color="text.secondary">
-                    No cameras registered yet.
+                    No cameras match this view.
                   </Typography>
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
-        <TablePagination component="div" count={isError ? 0 : cameras?.length ?? 0} page={visiblePage} rowsPerPage={50} rowsPerPageOptions={[50]} onPageChange={(_, next) => setPage(next)} />
+        <TablePagination component="div" count={total} page={Math.min(page, Math.max(0, Math.ceil(total / 50) - 1))} rowsPerPage={50} rowsPerPageOptions={[50]} onPageChange={(_, next) => setPage(next)} />
       </Paper>
     </Stack>
   );

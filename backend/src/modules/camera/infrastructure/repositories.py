@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.modules.camera.domain.entities import CameraEntity
@@ -22,13 +22,13 @@ class CameraRepository(ICameraRepository):
     def __init__(self, db: AsyncSession):
         self._db = db
 
-    async def list(
+    async def _list_query(
         self,
         enterprise_id: str,
         factory_id: str | None = None,
         zone_id: str | None = None,
         scope: ScopeFilter | None = None,
-    ) -> list[CameraEntity]:
+    ):
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
         q = (
             select(*_JOINED_COLUMNS)
@@ -46,8 +46,21 @@ class CameraRepository(ICameraRepository):
             q = q.where(Camera.zone_id == await to_pk(self._db, Zone, zone_id))
         if scope is not None:
             q = await apply_zone_scope(self._db, q, scope, Camera.factory_id, Camera.zone_id)
-        rows = (await self._db.execute(q.order_by(Camera.name))).all()
+        return q
+
+    async def list(self, enterprise_id, factory_id=None, zone_id=None, scope=None):
+        q = await self._list_query(enterprise_id, factory_id, zone_id, scope)
+        rows = (await self._db.execute(q.order_by(Camera.name, Camera.id))).all()
         return [self._to_entity_from_row(*row, enterprise_id) for row in rows]
+
+    async def list_page(self, enterprise_id, factory_id=None, zone_id=None, scope=None, *, page=1, page_size=50, search=""):
+        q = await self._list_query(enterprise_id, factory_id, zone_id, scope)
+        if search.strip():
+            term = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            q = q.where(or_(Camera.name.ilike(f"%{term}%", escape="\\"), Camera.code.ilike(f"%{term}%", escape="\\")))
+        total = await self._db.scalar(select(func.count()).select_from(q.subquery()))
+        rows = (await self._db.execute(q.order_by(Camera.name, Camera.id).offset((page - 1) * page_size).limit(page_size))).all()
+        return [self._to_entity_from_row(*row, enterprise_id) for row in rows], total
 
     async def get_by_id(
         self, camera_id: str, enterprise_id: str, scope: ScopeFilter | None = None,

@@ -59,3 +59,25 @@ test("stored connection check uses camera ID and does not submit the redacted UR
   await expect.poll(() => checks).toBe(2);
   await expect(page.getByText("Stream reachable (30 ms)")).toBeVisible();
 });
+
+test("camera inventory requests bounded pages and search resets to page one", async ({ page }) => {
+  await openCameras(page);
+  const requests: URLSearchParams[] = [];
+  await page.route("**/api/v1/cameras?*", async route => {
+    const params = new URL(route.request().url()).searchParams;
+    requests.push(params);
+    const index = Number(params.get('page'));
+    const searched = params.get('search') === 'Door';
+    await route.fulfill({ json: { data: [{ id: 'camera', name: searched ? 'Door result' : `Inventory page ${index}`, code: 'TEST', status: 'Inactive', enforces: [] }], meta: { total: searched ? 1 : 51 } } });
+  });
+  await page.getByLabel('Search camera name or code').fill('All');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByText('Inventory page 1')).toBeVisible();
+  await page.getByRole('button', { name: 'Go to next page' }).click();
+  await expect(page.getByText('Inventory page 2')).toBeVisible();
+  await page.getByLabel('Search camera name or code').fill('Door');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByText('Door result')).toBeVisible();
+  expect(requests.at(-1)?.get('page')).toBe('1');
+  expect(requests.every(params => params.get('page_size') === '50')).toBe(true);
+});

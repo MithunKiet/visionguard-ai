@@ -1,5 +1,5 @@
 from src.shared.security.resource_policy import enforce_resource_scope
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from src.shared.security.camera_url import redact_rtsp_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +16,7 @@ from src.modules.camera.application.services import CameraService
 from src.modules.camera.infrastructure.repositories import CameraRepository
 from src.modules.worker.infrastructure.repositories import WorkerRepository
 from src.shared.database.session import get_db
-from src.shared.responses import ApiResponse
+from src.shared.responses import ApiResponse, MetaResponse
 from src.shared.security.dependencies import AuthUser, get_current_user, require_roles
 from src.shared.security.scope import get_scope
 
@@ -31,17 +31,25 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> CameraService:
 async def list_cameras(
     factory_id: str | None = None,
     zone_id: str | None = None,
+    page: int | None = Query(None, ge=1, le=1000000),
+    page_size: int | None = Query(None, ge=1, le=100),
+    search: str = Query("", max_length=100),
     user: AuthUser = Depends(get_current_user),
     svc: CameraService = Depends(_get_service),
     db: AsyncSession = Depends(get_db),
 ):
-    cameras = await svc.list_cameras(
-        user.enterprise_id, factory_id, zone_id, get_scope(user)
-    )
+    meta = None
+    if page is not None or page_size is not None or search:
+        page_size = page_size or 50
+        cameras, total = await svc.list_camera_page(user.enterprise_id, factory_id, zone_id, get_scope(user),
+            page=page or 1, page_size=page_size, search=search)
+        meta = MetaResponse(page=page or 1, page_size=page_size, total=total, total_pages=(total + page_size - 1) // page_size)
+    else:
+        cameras = await svc.list_cameras(user.enterprise_id, factory_id, zone_id, get_scope(user))
     # Batched — one pair of queries for every camera's zone config instead
     # of resolve_enforced_ppe's own 2 queries called once per camera.
     enforced_by_camera = await svc.resolve_enforced_ppe_batch(cameras, db)
-    return ApiResponse(data=[_to_response_precomputed(c, enforced_by_camera[c.id]) for c in cameras])
+    return ApiResponse(data=[_to_response_precomputed(c, enforced_by_camera[c.id]) for c in cameras], meta=meta)
 
 
 @router.post("", response_model=ApiResponse[CameraResponse], summary="Add camera")

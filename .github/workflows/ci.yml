@@ -141,7 +141,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: alembic upgrade head
-      - run: TEST_CONFIG_BROKER=1 pytest tests/test_review_integration.py tests/test_notification_outbox.py tests/test_live_video.py tests/test_worker_scheduling.py tests/test_worker_failover.py tests/test_edge_replay.py tests/test_user_pagination.py tests/test_config_delivery.py tests/test_report_jobs.py tests/test_detection_health.py tests/test_corrective_actions.py tests/test_mfa.py tests/test_backup_recovery.py tests/test_camera_import.py tests/test_camera_probe.py
+      - run: TEST_CONFIG_BROKER=1 pytest tests/test_review_integration.py tests/test_notification_outbox.py tests/test_live_video.py tests/test_worker_scheduling.py tests/test_worker_failover.py tests/test_edge_replay.py tests/test_user_pagination.py tests/test_config_delivery.py tests/test_report_jobs.py tests/test_detection_health.py tests/test_corrective_actions.py tests/test_mfa.py tests/test_backup_recovery.py tests/test_camera_import.py tests/test_camera_probe.py tests/test_camera_pagination.py
       - name: Synthetic fleet workload smoke
         env:
           CAPACITY_DATABASE_URL: postgresql+asyncpg://vgtest:test-only@localhost:5432/fleet_capacity_test
