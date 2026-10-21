@@ -83,6 +83,25 @@ def load_images(manifest_path):
     return frames, hashes
 
 
+def summarize_levels(levels):
+    ordered = sorted(levels, key=lambda row: row["camera_equivalents"])
+    passing = [row["camera_equivalents"] for row in ordered if row["inference_targets_met"]]
+    prefix = 0
+    for row in ordered:
+        if not row["inference_targets_met"]:
+            break
+        prefix = row["camera_equivalents"]
+    return {
+        "highest_tested_passing_camera_equivalents": max(passing, default=0),
+        "highest_passing_tested_prefix": prefix,
+        "all_tested_levels_passed": bool(ordered) and all(row["inference_targets_met"] for row in ordered),
+        "nonmonotonic_results": any(row["camera_equivalents"] < max(passing, default=0)
+                                    and not row["inference_targets_met"] for row in ordered),
+        "deployment_camera_budget": None,
+        "camera_capacity_measured": False,
+    }
+
+
 async def run(config):
     # Set the actual production detector's settings before importing it.
     from src.config.settings import settings
@@ -113,10 +132,14 @@ async def run(config):
                 torch.cuda.reset_peak_memory_stats()
             level = await measure(detector, frames, cameras, config["fps"], config["seconds"], config["p95_ms"], config["min_fps_ratio"])
             level["gpu_peak_allocated_bytes"] = torch.cuda.max_memory_allocated() if settings.USE_GPU else None
+            level["gpu_peak_reserved_bytes"] = torch.cuda.max_memory_reserved() if settings.USE_GPU else None
+            if settings.USE_GPU:
+                free_bytes, total_bytes = torch.cuda.mem_get_info()
+                level["gpu_free_bytes_after_level"] = free_bytes
+                level["gpu_total_bytes"] = total_bytes
             levels.append(level)
     finally:
         await detector.stop()
-    passing = [level["camera_equivalents"] for level in levels if level["inference_targets_met"]]
     return {
         "status": "inference_benchmark_completed", "scope": "inference_only", "production_approved": False,
         "actual_device": str(model._model.device),
@@ -127,7 +150,7 @@ async def run(config):
         "model_sha256": digest, "images": image_hashes,
         "queue_size": settings.DETECTION_QUEUE_SIZE, "request_timeout_seconds": settings.DETECTION_TIMEOUT_SECONDS,
         "p95_limit_ms": config["p95_ms"], "min_fps_ratio": config["min_fps_ratio"], "levels": levels,
-        "highest_tested_passing_camera_equivalents": max(passing, default=0),
+        **summarize_levels(levels),
         "excluded": ["camera_decode", "capture_freshness", "tracking_and_voting", "snapshot_upload",
                      "broker", "database", "notifications", "live_video", "accuracy"],
     }
@@ -174,6 +197,11 @@ def main():
         with args.output.open("x") as file:
             json.dump(report, file, indent=2, allow_nan=False)
         print(report["status"])
+        if report["status"] == "inference_benchmark_completed":
+            for level in report["levels"]:
+                result_label = "PASS" if level["inference_targets_met"] else "FAIL"
+                print(f"{level['camera_equivalents']} camera equivalents: {result_label}; total FPS={level['total_achieved_fps']:.2f}")
+            print("Inference-only measurement. No deployment camera budget is approved.")
         if report["status"] != "inference_benchmark_completed":
             raise SystemExit(2)
     except Exception as error:

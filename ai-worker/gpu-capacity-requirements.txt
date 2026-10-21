@@ -1,0 +1,11 @@
+# Install torch==2.6.0+cu124 and torchvision==0.21.0+cu124 first from the official CUDA index.
+# Local inference benchmark only; not the complete production worker environment.
+torch==2.6.0+cu124
+torchvision==0.21.0+cu124
+ultralytics==8.3.50
+opencv-python==4.10.0.84
+numpy==1.26.4
+pydantic-settings==2.6.1
+structlog==24.4.0
+httpx==0.28.1
+prometheus-client==0.21.1

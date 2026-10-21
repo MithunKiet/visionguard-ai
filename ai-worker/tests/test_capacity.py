@@ -170,3 +170,39 @@ def test_inference_gap_breaks_voting_without_removing_delivery_cooldown():
     validator.mark_gap()
     for _ in range(4):
         assert validator.evaluate(detections, config) == []
+
+
+@pytest.mark.parametrize('outcomes,highest,prefix,nonmonotonic', [
+    ([True, True, True], 4, 4, False),
+    ([True, False, True], 4, 1, True),
+    ([False, False, False], 0, 0, False),
+    ([True, True, False], 2, 2, False),
+])
+def test_sweep_summary_never_turns_inference_levels_into_deployment_budget(outcomes, highest, prefix, nonmonotonic):
+    from src.capacity.benchmark import summarize_levels
+    levels = [{'camera_equivalents': n, 'inference_targets_met': passed} for n, passed in zip([1, 2, 4], outcomes)]
+    summary = summarize_levels(list(reversed(levels)))
+    assert summary['highest_tested_passing_camera_equivalents'] == highest
+    assert summary['highest_passing_tested_prefix'] == prefix
+    assert summary['nonmonotonic_results'] is nonmonotonic
+    assert summary['all_tested_levels_passed'] is all(outcomes)
+    assert summary['deployment_camera_budget'] is None
+    assert summary['camera_capacity_measured'] is False
+
+
+def test_completed_benchmark_prints_failed_levels_without_approving_capacity(tmp_path, monkeypatch, capsys):
+    import json
+    import subprocess
+    import sys
+    from src.capacity.benchmark import main
+    weights, manifest, output = tmp_path / 'trusted.pt', tmp_path / 'frames.json', tmp_path / 'result.json'
+    weights.touch()
+    manifest.write_text('{}')
+    report = {'status': 'inference_benchmark_completed', 'production_approved': False,
+              'levels': [{'camera_equivalents': 4, 'inference_targets_met': False, 'total_achieved_fps': 3.5}]}
+    monkeypatch.setattr(subprocess, 'run', Mock(return_value=Mock(returncode=0, stdout=json.dumps(report))))
+    monkeypatch.setattr(sys, 'argv', ['benchmark', '--weights', str(weights), '--model-sha256', '0' * 64,
+        '--manifest', str(manifest), '--device', 'cuda', '--output', str(output)])
+    main()
+    assert '4 camera equivalents: FAIL' in capsys.readouterr().out
+    assert json.loads(output.read_text())['production_approved'] is False
