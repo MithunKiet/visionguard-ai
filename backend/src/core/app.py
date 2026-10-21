@@ -65,6 +65,8 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(identity_router, prefix="/api/v1")
     app.include_router(users_router, prefix="/api/v1")
     app.include_router(roles_router, prefix="/api/v1")
+    from src.modules.camera.api.imports import router as camera_import_router
+    app.include_router(camera_import_router, prefix="/api/v1")
     app.include_router(camera_router, prefix="/api/v1")
     app.include_router(live_router, prefix="/api/v1")
     app.include_router(worker_router, prefix="/api/v1")

@@ -176,7 +176,7 @@ async def test_new_camera_service_returns_the_persisted_assignment(site):
                                          "New camera", uuid4().hex, "rtsp://camera.example.invalid/feed", db)
         assert cam.worker_id == site.places[0].worker.public_id
         overflow = await service.create_camera(site.enterprise.public_id, site.places[0].zone.public_id,
-                                              "Pending camera", uuid4().hex, "rtsp://camera.example.invalid/feed", db)
+                                              "Pending camera", uuid4().hex, "rtsp://camera.example.invalid/second-feed", db)
         assert overflow.worker_id is None
 
 

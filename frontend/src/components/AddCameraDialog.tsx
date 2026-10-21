@@ -93,8 +93,13 @@ export function AddCameraDialog({ open, onClose, camera }: AddCameraDialogProps)
   });
 
   const testMutation = useMutation({
-    mutationFn: async (rtsp_url: string) =>
-      (await api.post("/cameras/test-connection", { rtsp_url })).data.data,
+    mutationFn: async (rtsp_url: string) => {
+      if (camera && rtsp_url.trim() === camera.rtsp_url) {
+        const data = (await api.get(`/cameras/${camera.id}/health`)).data.data;
+        return { reachable: data.rtsp_reachable, latency_ms: data.rtsp_latency_ms };
+      }
+      return (await api.post("/cameras/test-connection", { rtsp_url })).data.data;
+    },
     onSuccess: (data) => setTestResult(data),
     onError: () => setTestResult({ reachable: false, latency_ms: 0 }),
   });
@@ -107,7 +112,7 @@ export function AddCameraDialog({ open, onClose, camera }: AddCameraDialogProps)
         // the backend merges this into the camera's existing overrides.
         const payload = {
           name: form.name.trim(),
-          rtsp_url: form.rtsp_url.trim(),
+          ...(form.rtsp_url.trim() !== camera!.rtsp_url ? { rtsp_url: form.rtsp_url.trim() } : {}),
           camera_type: form.camera_type,
           position_desc: form.position_desc.trim() || null,
           ppe_overrides: form.ppeOverrides,

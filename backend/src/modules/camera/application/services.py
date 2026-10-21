@@ -2,9 +2,8 @@
 CameraService — CRUD, RTSP health check, worker assignment.
 """
 import os
-import cv2
 import structlog
-from src.shared.security.camera_url import redact_rtsp_url, validate_rtsp_url
+from src.shared.security.camera_url import validate_rtsp_url
 
 from src.core.exceptions import NotFoundException
 from src.modules.camera.domain.entities import CameraEntity
@@ -146,7 +145,7 @@ class CameraService:
         applied live via config_events, no worker restart needed."""
         camera = await self.get_camera(camera_id, enterprise_id, scope)
         new_status = "Active" if active else "Inactive"
-        await self._cameras.set_status(camera_id, new_status)
+        await self._cameras.set_status(camera_id, new_status, enable_admission=active)
         camera.status = new_status
 
         from src.shared.messaging.publisher import publish_config_event
@@ -228,34 +227,8 @@ class CameraService:
     # ── RTSP Health Check ──────────────────────────────────────────────────
 
     async def test_rtsp_connection(self, rtsp_url: str) -> dict:
-        """
-        Attempt to open the RTSP stream with OpenCV and read one frame.
-        Returns status + latency_ms.
-        """
-        import asyncio
-        import time
-
-        validate_rtsp_url(rtsp_url)
-
-        def _probe():
-            try:
-                start = time.monotonic()
-                cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG, [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000])
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                ok, _ = cap.read()
-                latency_ms = int((time.monotonic() - start) * 1000)
-                cap.release()
-                return ok, latency_ms
-            except Exception:
-                return False, 0
-
-        ok, latency_ms = await asyncio.get_event_loop().run_in_executor(None, _probe)
-        return {
-            "reachable": ok,
-            "latency_ms": latency_ms,
-            "rtsp_url": redact_rtsp_url(rtsp_url),
-            "status": "Online" if ok else "Offline",
-        }
+        from src.modules.camera.application.probe import probe_url
+        return await probe_url(rtsp_url)
 
     # ── Health ─────────────────────────────────────────────────────────────
 

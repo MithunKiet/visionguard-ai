@@ -197,6 +197,16 @@ class Camera(BaseEntity):
     version             = Column(Integer, default=1)
 
 
+class CameraImport(BaseEntity):
+    __tablename__ = "camera_imports"
+    __table_args__ = (UniqueConstraint("enterprise_id", "request_key", name="uq_camera_import_request"),)
+    enterprise_id = Column(BigInteger, ForeignKey("enterprises.id"), nullable=False)
+    actor_id = Column(String(36), nullable=False)
+    request_key = Column(String(36), nullable=False)
+    payload_hash = Column(String(64), nullable=False)
+    result = Column(JSONB, nullable=False)
+
+
 # ─── Config ───────────────────────────────────────────────────────────────────
 
 class ZoneConfig(BaseEntity):

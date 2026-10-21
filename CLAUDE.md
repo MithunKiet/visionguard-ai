@@ -42,7 +42,7 @@ Every table follows the BaseEntity pattern:
 - All foreign keys use internal integer ids for performance; only repository code at the literal SQL boundary translates a `public_id` to/from the internal integer (helpers in `backend/src/shared/database/pid.py`: `to_pk`, `to_public_id`, `to_pks`).
 - Exception: `identity.user_roles` is a pure link table, not a BaseEntity — composite PK of `user_public_id`/`role_public_id` directly (no surrogate id, no audit columns). Protocol tables such as event receipts and `worker.camera_leases` also use explicit keys; lease tokens/generations are retained ownership history, not user-managed entities.
 
-Current migration head: **0025**.
+Current migration head: **0026**.
 
 ## Multi-tenancy
 
@@ -89,3 +89,5 @@ Automated unit/integration/browser checks and a synthetic event/report smoke val
 Flow 5 adds opt-in encrypted TOTP enrollment, password/code-confirmed disable, replay protection, MFA refresh/session checks and a database append-only audit trigger in migration 0025. See [docs/ACCOUNT_SECURITY.md](docs/ACCOUNT_SECURITY.md). Preserve existing factory/tenant authorization, initial-password restrictions, transactional MFA audit inserts and security-version session invalidation. MFA remains opt-in; self-service recovery, separate encryption-key rotation and complete durable audit coverage remain pending. JWT secret rotation requires planned authenticator recovery/re-enrollment. Upgrade API replicas together before enrollment.
 
 Flow 6 adds verified PostgreSQL/object bundles and isolated restore drills; see [docs/BACKUP_RECOVERY.md](docs/BACKUP_RECOVERY.md). No schema migration is added (head 0025). Preserve exported-snapshot counts/references, private opaque artifact paths, completion-only manifests, independent manifest checksum checks, new-only restore destinations, native error-stopping transaction restore and object read-back verification. The old destructive timestamp-only restore interface is removed. Never start application dispatchers or factory connections as part of this drill, and never infer service RPO/RTO from file restore duration. Broker/worker state, deployment secrets, offsite encryption, enabled schedules and actual provider/site acceptance remain separate.
+
+Flow 7 adds bounded CSV camera preview/import and durable replay receipts (migration 0026); see [docs/CAMERA_ONBOARDING.md](docs/CAMERA_ONBOARDING.md). Preserve scoped validation, per-enterprise inventory serialization, atomic audit/receipt/camera writes and explicit activation: imported cameras have is_active=false and no worker until activation opens admission. Credentials must not enter preview, receipts, logs or process arguments. Connection probes use disposable children with a 12-second timeout and two concurrent probes per API event loop. This does not validate PPE accuracy or production camera capacity.

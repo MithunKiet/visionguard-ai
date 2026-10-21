@@ -65,8 +65,13 @@ class CameraRepository(ICameraRepository):
         return await self._to_entity(row) if row else None
 
     async def create(self, entity: CameraEntity) -> CameraEntity:
+        from src.modules.camera.application.imports import lock_inventory, registered, stream_identity, fail
+        enterprise_pk = await lock_inventory(self._db, entity.enterprise_id)
+        codes, streams = await registered(self._db, enterprise_pk)
+        if entity.code.casefold() in codes or stream_identity(entity.rtsp_url) in streams:
+            fail("Camera code or stream already registered in this enterprise", 409)
         row = Camera(
-            enterprise_id=await to_pk(self._db, Enterprise, entity.enterprise_id),
+            enterprise_id=enterprise_pk,
             factory_id=await to_pk(self._db, Factory, entity.factory_id),
             zone_id=await to_pk(self._db, Zone, entity.zone_id),
             name=entity.name,
@@ -84,6 +89,12 @@ class CameraRepository(ICameraRepository):
         return await self._to_entity(row)
 
     async def update(self, entity: CameraEntity) -> CameraEntity:
+        from src.modules.camera.application.imports import lock_inventory, registered, stream_identity, fail
+        enterprise_pk = await lock_inventory(self._db, entity.enterprise_id)
+        _, streams = await registered(self._db, enterprise_pk, entity.id)
+        original_url = await self._db.scalar(select(Camera.rtsp_url).where(Camera.public_id == entity.id))
+        if original_url != entity.rtsp_url and stream_identity(entity.rtsp_url) in streams:
+            fail("Camera stream already registered in this enterprise", 409)
         await self._db.execute(
             update(Camera).where(Camera.public_id == entity.id).values(
                 name=entity.name,
@@ -102,16 +113,14 @@ class CameraRepository(ICameraRepository):
         await self._db.commit()
         return entity
 
-    async def set_status(self, camera_id: str, status: str, *, preserve_inactive: bool = False) -> bool:
+    async def set_status(self, camera_id: str, status: str, *, preserve_inactive: bool = False, enable_admission: bool = False) -> bool:
         query = update(Camera).where(Camera.public_id == camera_id, Camera.deleted_at.is_(None))
         if preserve_inactive:
             query = query.where(Camera.status != "Inactive")
-        result = await self._db.execute(
-            query.values(
-                status=status,
-                last_seen_at=datetime.now(timezone.utc),
-            )
-        )
+        values = {"status": status, "last_seen_at": datetime.now(timezone.utc)}
+        if enable_admission:
+            values["is_active"] = True
+        result = await self._db.execute(query.values(**values))
         await self._db.commit()
         return result.rowcount > 0
 

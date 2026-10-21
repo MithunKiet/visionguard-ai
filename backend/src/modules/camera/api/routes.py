@@ -150,7 +150,7 @@ async def test_connection(
 )
 async def camera_health(
     camera_id: str,
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(require_roles("SYSTEM_ADMIN", "ENTERPRISE_ADMIN", "FACTORY_MANAGER")),
     svc: CameraService = Depends(_get_service),
 ):
     health = await svc.get_camera_health(camera_id, user.enterprise_id, get_scope(user))
