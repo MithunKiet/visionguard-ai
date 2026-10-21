@@ -56,7 +56,7 @@ def test_evaluation_counts_wrong_classes_negative_frames_and_condition_coverage(
     assert missed["classes"]["helmet"]["recall"] == 0
 
 
-@pytest.mark.parametrize("case", ["class_order", "missing_label", "duplicate_bytes", "corrupt_image", "bad_label", "path_escape"])
+@pytest.mark.parametrize("case", ["class_order", "missing_label", "duplicate_bytes", "corrupt_image", "bad_label", "duplicate_label", "path_escape"])
 def test_bad_dataset_never_produces_metrics(tmp_path, monkeypatch, case):
     path, manifest = dataset(tmp_path)
     monkeypatch.setattr(evaluator, "TrialDetector", lambda: Mock(detect=Mock(return_value=[])))
@@ -68,6 +68,8 @@ def test_bad_dataset_never_produces_metrics(tmp_path, monkeypatch, case):
         (tmp_path / "frame-1.png").write_bytes((tmp_path / "frame-0.png").read_bytes())
     elif case == "corrupt_image":
         (tmp_path / "frame-0.png").write_bytes(b"not an image")
+    elif case == "duplicate_label":
+        (tmp_path / "frame-0.txt").write_text("1 0.5 0.5 1 1\n1 0.5 0.5 1 1\n")
     elif case == "bad_label":
         (tmp_path / "frame-0.txt").write_text("6 0.5 0.5 1 1")
     else:

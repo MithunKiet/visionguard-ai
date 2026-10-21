@@ -53,3 +53,31 @@ Thresholds must be above zero and at most one. Fix thresholds before the held-ou
 - Model, manifest and image/label-content hashes identify the evaluated inputs. Held-out status is user-declared; hashing cannot establish independence or label correctness.
 
 Share the report and the collection/labeling method when ready. Even high scores on a small set do not establish deployment readiness. The report always retains `production_approved=false`, `label_quality_verified=false` and `temporal_alert_pipeline_validated=false`. Repeated frames are not independent samples, and inference timings are not capture-to-alert latency. Factory validation additionally needs site cameras, sufficiently varied labeled examples, event-level tests, agreed acceptance targets and a reviewed model/license choice. See [REAL_CAMERA_VALIDATION.md](REAL_CAMERA_VALIDATION.md).
+
+## Start here when no labeled dataset exists
+
+1. Define the pilot's required PPE classes and intended camera views. The bundled evaluator uses only the six-class trial model above; it does not certify a different production checkpoint.
+2. Collect a small **debugging** set first to learn the annotation workflow. Include helmet present/absent and vest present/absent examples, ordinary clothing that could resemble PPE, empty scenes, multiple people and relevant lighting/viewing distances. Do not deliberately remove required PPE on an active factory floor; use a safe staged area or authorized existing examples. Webcam examples help debug labels but do not represent factory CCTV.
+3. Keep training, threshold-tuning and final held-out camera/session groups separate. Avoid adjacent video frames spread across splits. Record camera/session/condition metadata during collection. No audio or continuous recording is needed for this frame evaluation.
+4. Annotate with a local YOLO TXT tool using the exact class order above. Label all visible supported objects, not only helmets. Review a sample with a second reviewer and resolve the box conventions before labeling the rest. Record ambiguous/excluded examples outside the scored manifest. Do not copy the model's predictions into ground truth.
+5. Build the manifest using the existing example. Run the dataset check below before inference. Collect missing class/condition coverage, then review labels. An empty label file is a deliberate all-class negative, not a placeholder for unlabeled images.
+6. Agree on precision/recall targets, critical missed-violation cases and required independent site/session coverage **before** inspecting held-out predictions. There is no universal image count or passing threshold that establishes readiness; correlated frames and rare failures matter. Reserve a new held-out set if you tune the model using evaluation failures.
+7. Run the existing evaluator and inspect TP/FP/FN per class and condition. Review failed frame indices against the manifest locally. Keep production approval pending until site-specific label review and temporal alert tests are complete.
+
+### Check labels and coverage without model weights
+
+After installing the existing webcam Python dependencies, run from the project folder:
+
+```bat
+evaluate-ppe-windows.cmd "validation-data\webcam-held-out\manifest.json" --check-dataset
+```
+
+This mode does not require the ONNX weights and does not perform inference. It reports per-class object counts, positive/negative frame counts, empty-label frames and camera/session/condition coverage. It rejects missing/corrupt images, missing or invalid labels, exact duplicate image bytes, repeated identical labels and incorrect class order. The scoring label parser also rejects repeated identical labels. Input files are never changed. The normal report location remains `validation-results/ppe-accuracy-*.json`, but its status is explicitly `dataset_checked_not_accuracy_measured` and `accuracy_validated=false`.
+
+Class-negative means no annotation for that class; it does not establish that an annotator correctly labeled the image. Coverage warnings describe missing evidence and are not an acceptance gate. The checker cannot detect all near-duplicates, incorrect annotations, train/test leakage or misleading camera/condition names. It never claims accuracy or production approval even with no warnings. It reads one image at a time; use trusted local files and sufficient memory for the source image resolution. Reports include declared dataset/camera/session/condition identifiers and hashes, but no image paths, pixels or raw labels; review identifiers before sharing reports.
+
+Developer equivalent from `ai-worker/`:
+
+```sh
+python -m src.validation.ppe_evaluate --manifest ../validation-data/webcam-held-out/manifest.json --check-dataset --output ../validation-results/dataset-check.json
+```

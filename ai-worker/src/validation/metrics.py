@@ -53,6 +53,7 @@ def summarize(counts):
 def read_yolo_labels(path, width, height, classes):
     """An explicit empty label file is a negative frame; missing is an error."""
     truth = []
+    seen = set()
     for line in path.read_text().splitlines():
         if not line.strip():
             continue
@@ -64,6 +65,10 @@ def read_yolo_labels(path, width, height, classes):
         if (not 0 <= class_id < len(classes) or not all(math.isfinite(v) and 0 <= v <= 1 for v in (x, y, w, h))
                 or w <= 0 or h <= 0 or min(x-w/2, y-h/2) < -1e-6 or max(x+w/2, y+h/2) > 1+1e-6):
             raise ValueError("Invalid normalized label coordinates")
+        annotation = (class_id, x, y, w, h)
+        if annotation in seen:
+            raise ValueError("Repeated identical labels would inflate support")
+        seen.add(annotation)
         truth.append({"class_name": classes[class_id], "bbox": [max(0, (x-w/2)*width), max(0, (y-h/2)*height),
                                                                   min(width, (x+w/2)*width), min(height, (y+h/2)*height)]})
     return truth

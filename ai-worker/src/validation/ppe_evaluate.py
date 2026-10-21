@@ -81,6 +81,7 @@ def evaluate(manifest_path, confidence=0.5, iou_threshold=0.5):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--check-dataset", action="store_true", help="Check labels and coverage without loading the model")
     parser.add_argument("--confidence", type=float, default=0.5)
     parser.add_argument("--iou", type=float, default=0.5)
     parser.add_argument("--output", type=Path, required=True)
@@ -88,13 +89,25 @@ def main():
     try:
         if args.output.exists():
             raise ValueError("Choose a new report path; existing evidence is never overwritten")
-        if not MODEL_PATH.is_file():
-            raise ValueError("Run the trial model download first")
-        report = evaluate(args.manifest, args.confidence, args.iou)
+        if args.check_dataset:
+            from src.validation.ppe_dataset import inspect_dataset
+            report = inspect_dataset(args.manifest)
+        else:
+            if not MODEL_PATH.is_file():
+                raise ValueError("Run the trial model download first")
+            report = evaluate(args.manifest, args.confidence, args.iou)
         report["created_at"] = datetime.now(timezone.utc).isoformat()
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as file:
             json.dump(report, file, indent=2, allow_nan=False)
+        if args.check_dataset:
+            print(f"Dataset checked: {report['frame_count']} frames, {report['camera_count']} cameras, {report['session_count']} sessions.")
+            for name, values in report['classes'].items():
+                print(f"{name}: objects={values['objects']} positive_frames={values['positive_frames']} negative_frames={values['negative_frames']}")
+            for warning in report['coverage_warnings']:
+                print(warning)
+            print("Accuracy has not been measured. Labels and independence still require human review.")
+            return
         print("Frame metrics measured. Label quality and production suitability are not verified.")
         for name, values in report["classes"].items():
             precision = f"{values['precision']:.1%}" if values["precision"] is not None else "unmeasured"
