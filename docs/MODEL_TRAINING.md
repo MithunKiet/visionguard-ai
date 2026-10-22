@@ -1,13 +1,8 @@
 # PPE Model Training Guide
 
-The AI worker requires a **fine-tuned PPE detection model** at
-`ai-worker/models/yolov8s-ppe.pt`. Until one is present, the worker runs in
-**demo mode**: a generic COCO YOLOv8 model detects people (so occupancy
-counting works) and reports every person as a synthetic `helmet_missing`
-violation so the full pipeline can be exercised end-to-end.
+The production AI worker requires a trusted, fine-tuned PPE checkpoint, its reviewed SHA-256 and CUDA. Missing production weights fail startup; demo/remote fallback is forbidden in production.
 
-> Master context rule #15: **never use COCO-pretrained weights in
-> production.** Demo mode is for pipeline validation only.
+Read [PPE_MODEL_SELECTION.md](PPE_MODEL_SELECTION.md) before using this legacy training workflow. Its random image split is not an independent factory evaluation split, and `train.py` automatically copies weights into the runtime path. Run training only in an isolated checkout until explicit candidate promotion is implemented. A completed training run does not approve deployment.
 
 ## 1. Collect footage
 
@@ -19,7 +14,7 @@ uniforms. Cover:
 - Occlusion: workers behind machines, partial views, crowds
 - All PPE states: worn correctly, missing, worn incorrectly
 
-**Minimum: 500–2,000 labeled images per class** (Risk 1, BRD).
+The historical planning estimate was 500–2,000 labeled images per class; this is not a statistical sufficiency or production acceptance guarantee. Coverage and independent camera/session groups matter.
 
 ## 2. Label
 
