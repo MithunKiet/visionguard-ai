@@ -2,7 +2,7 @@
 
 ## Current decision
 
-Pilot scope is helmet and safety-vest violations. YOLOv8s is an architecture candidate, **not an approved checkpoint**. No compatible, commercially reviewed production artifact has been selected or downloaded. The owner has no labeled factory dataset or representative capacity images yet. Do not report a measured accuracy or camera budget.
+Pilot scope is helmet and safety-vest violations. YOLOv8s is an architecture candidate, **not an approved checkpoint**. No compatible, commercially reviewed production artifact has been selected or downloaded. The owner has no labeled factory dataset yet. A public-image baseline is now available in [PUBLIC_PPE_BASELINE.md](PUBLIC_PPE_BASELINE.md); those construction photos do not establish target-factory representativeness. Do not report a measured accuracy or camera budget.
 
 The owner's Windows report verifies CUDA computation on an RTX 2000 Ada Laptop GPU (8188 MiB), PyTorch 2.6.0+cu124 and Python 3.11.9. This supports proceeding to model execution tests; it says nothing about PPE accuracy or sustained camera capacity.
 
