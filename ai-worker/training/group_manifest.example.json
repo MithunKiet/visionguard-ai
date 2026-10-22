@@ -1,0 +1,8 @@
+{
+  "classes": ["helmet", "no_helmet", "vest", "no_vest", "gloves", "no_gloves", "safety_shoes", "no_safety_shoes", "person"],
+  "frames": [
+    {"image": "images/camera-a.jpg", "label": "labels/camera-a.txt", "camera_id": "factory-a-camera-1", "session_id": "day-01"},
+    {"image": "images/camera-b.jpg", "label": "labels/camera-b.txt", "camera_id": "factory-a-camera-2", "session_id": "day-01"},
+    {"image": "images/camera-c.jpg", "label": "labels/camera-c.txt", "camera_id": "factory-b-camera-1", "session_id": "day-02"}
+  ]
+}

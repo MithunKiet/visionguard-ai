@@ -57,8 +57,8 @@ Retain an artifact record containing:
 4. Run [WINDOWS_GPU.md](WINDOWS_GPU.md)'s capacity sweep with representative stills and retain all reports. No label is needed for timing, but these stills cannot substitute for accuracy evaluation.
 5. Run an authorized site pilot for person association, consecutive-frame voting, missed alerts, false alerts, camera freshness and sustained combined load. Promote only after the acceptance evidence and rollback artifact are reviewed.
 
-## Existing training workflow hazards
+## Training safeguards
 
-`training/prepare_dataset.py` randomly splits individual images; it does not preserve camera/session groups or detect near-duplicate leakage. Do not use that split as independent factory acceptance evidence. Establish group-separated train/development/held-out sets before training.
+The preparation CLI now requires a manifest and partitions whole cameras by default, or camera/session pairs with explicit `--group-by session`. Exact duplicate image bytes and invalid/missing labels are rejected. Near-duplicates, incorrect group metadata and synchronized views of the same event still require human review. The held-out test split must remain sealed during tuning.
 
-`training/train.py` currently uses a reusable run directory and automatically copies `best.pt` to `models/yolov8s-ppe.pt`. Do not run it against an active worker checkout. Use a disposable isolated training checkout and retain the candidate separately; completing training is not approval to replace active weights. Separating training output from explicit model promotion is remaining implementation work.
+Training now requires trusted local base weights plus a reviewed hash, creates a unique candidate run, evaluates its saved best checkpoint on the development split and writes hashes/metrics without copying anything into the runtime model path. Separate held-out accuracy, capacity, license review and explicit deployment remain required. See [MODEL_TRAINING.md](MODEL_TRAINING.md) for the changed CLI; the old `--source` random-image workflow is removed.

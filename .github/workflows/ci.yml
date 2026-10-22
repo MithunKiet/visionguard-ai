@@ -43,9 +43,9 @@ jobs:
       # Exercise validation and queue logic without the GPU inference stack.
       - name: Install test dependencies
         run: |
-          pip install pytest pytest-asyncio pydantic-settings structlog ruff httpx numpy==1.26.4 opencv-python-headless==4.10.0.84 prometheus-client==0.21.1 Pillow==12.3.0 aio-pika==9.4.3 minio==7.2.11
+          pip install pytest pytest-asyncio pydantic-settings structlog ruff httpx numpy==1.26.4 opencv-python-headless==4.10.0.84 prometheus-client==0.21.1 Pillow==12.3.0 PyYAML==6.0.2 aio-pika==9.4.3 minio==7.2.11
       - name: Lint (ruff)
-        run: ruff check src/pipeline/ppe_validator.py src/pipeline/types.py src/pipeline/detector.py src/pipeline/batch_detector.py src/pipeline/camera_worker.py src/pipeline/frame_reader.py src/pipeline/capture_process.py src/main.py src/events src/health src/capacity src/config src/validation tests
+        run: ruff check src/pipeline/ppe_validator.py src/pipeline/types.py src/pipeline/detector.py src/pipeline/batch_detector.py src/pipeline/camera_worker.py src/pipeline/frame_reader.py src/pipeline/capture_process.py src/main.py src/events src/health src/capacity src/config src/validation training tests
       - name: Tests
         run: pytest
 

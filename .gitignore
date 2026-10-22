@@ -72,3 +72,4 @@ frontend/playwright-report/
 # Private real-camera validation inputs and generated evidence
 /validation-data/
 /validation-results/
+/ai-worker/training/candidates/

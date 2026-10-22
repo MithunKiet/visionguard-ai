@@ -1,77 +1,64 @@
-# PPE Model Training Guide
+# PPE candidate training and grouped dataset preparation
 
-The production AI worker requires a trusted, fine-tuned PPE checkpoint, its reviewed SHA-256 and CUDA. Missing production weights fail startup; demo/remote fallback is forbidden in production.
+Training produces a candidate, never a deployed model. Production requires trusted nine-class weights, reviewed SHA-256 and CUDA; missing weights fail startup. See [PPE_MODEL_SELECTION.md](PPE_MODEL_SELECTION.md) before choosing a base model or collecting data. No factory model has been trained or approved by the synthetic tests for these scripts.
 
-Read [PPE_MODEL_SELECTION.md](PPE_MODEL_SELECTION.md) before using this legacy training workflow. Its random image split is not an independent factory evaluation split, and `train.py` automatically copies weights into the runtime path. Run training only in an isolated checkout until explicit candidate promotion is implemented. A completed training run does not approve deployment.
+## Prepare independent data
 
-## 1. Collect footage
+Collect authorized examples spanning intended cameras, lighting, distances, crowding and occlusions. Label visible positive and explicit absence classes using the exact production order:
 
-Pull frames from the actual factory cameras the model will run on — training
-on internet PPE datasets alone will not survive your lighting, angles, and
-uniforms. Cover:
+| ID | Class |
+| --- | --- |
+| 0 | helmet |
+| 1 | no_helmet |
+| 2 | vest |
+| 3 | no_vest |
+| 4 | gloves |
+| 5 | no_gloves |
+| 6 | safety_shoes |
+| 7 | no_safety_shoes |
+| 8 | person |
 
-- All shifts (day, evening, night/IR)
-- Occlusion: workers behind machines, partial views, crowds
-- All PPE states: worn correctly, missing, worn incorrectly
+YOLO TXT rows contain class ID and normalized center-x, center-y, width, height. Empty files explicitly declare no supported objects; missing files are errors. Do not manufacture glove/shoe labels to fit a helmet/vest-only dataset. Exact class names alone do not establish trained capability or annotation quality.
 
-The historical planning estimate was 500–2,000 labeled images per class; this is not a statistical sufficiency or production acceptance guarantee. Coverage and independent camera/session groups matter.
+Copy `ai-worker/training/group_manifest.example.json` into an ignored directory such as `validation-data/training-source/manifest.json`. Replace its illustrative records with your images, labels, camera IDs and session IDs; paths must stay within the manifest directory. Install the worker's inference/training dependencies (including Pillow and PyYAML) in an isolated environment. From the repository root:
 
-## 2. Label
-
-Use any YOLO-format labeling tool (Label Studio, CVAT, Roboflow). The class
-order **must match** `PPE_CLASSES` in `ai-worker/src/pipeline/detector.py`:
-
-| ID | Class | ID | Class |
-|---|---|---|---|
-| 0 | helmet | 4 | gloves |
-| 1 | no_helmet | 5 | no_gloves |
-| 2 | vest | 6 | safety_shoes |
-| 3 | no_vest | 7 | no_safety_shoes |
-| | | 8 | person |
-
-Label **both** positive and negative classes — the validator alerts on
-`no_*` detections, so "no_helmet" must be an explicitly trained class, not
-just the absence of "helmet".
-
-## 3. Prepare the dataset
-
-```bash
-cd ai-worker/training
-python prepare_dataset.py --source ./raw_labeled --out ./datasets/ppe --val-split 0.2
-cp dataset.yaml.example dataset.yaml   # then set `path:` to ./datasets/ppe
+```sh
+python ai-worker/training/prepare_dataset.py \
+  --manifest validation-data/training-source/manifest.json \
+  --out validation-data/prepared-ppe --group-by camera \
+  --val-split 0.2 --test-split 0.2 --seed 42
 ```
 
-## 4. Train
+Default camera grouping assigns all sessions of one camera to one partition. For a deliberately within-camera experiment, explicitly choose `--group-by session`; each `(camera_id, session_id)` pair stays together. That mode does not establish performance on unseen cameras. At least three groups and nonempty train/val/test partitions are required. Fractions apply to **group counts**, not image counts; rounding and a minimum one group per evaluation partition can change realized proportions. `split-report.json` records actual group/frame counts and per-frame assignments/hashes.
 
-```bash
-pip install ultralytics
-python train.py --model yolov8s.pt --epochs 100 --device 0
-# CPU-only machine: python train.py --device cpu (slow; use a GPU box or Colab)
+The new CLI replaces `--source`; old random per-image splitting is not retained as a fallback. Input checks reject malformed/corrupt images, missing/invalid labels, duplicate identical annotations, reused label paths, exact duplicate image bytes, incorrect class order and path escapes before creating output. Deterministic grouping depends on the same inputs and seed. These checks do not find all near-duplicates, cross-camera views of the same event, incorrect metadata, annotation errors or missing class coverage. Review those separately and keep related events in a single group when collecting data.
+
+Output must be a new directory. The tool does not merge or overwrite datasets. It produces `images/{train,val,test}`, corresponding labels, `dataset.yaml` and a completion `split-report.json`. Numeric destination names avoid source-basename collisions. Copied contents are checked against the pre-copy hashes. An I/O failure may leave incomplete output; without a valid completion report, discard that directory and rerun to a new destination. Keep all private images and reports outside source control.
+
+## Train a candidate
+
+Use a trusted local base `.pt` and independently reviewed SHA-256. A hash of an unknown download is not trust or commercial-use approval. The CLI no longer downloads a default base model implicitly:
+
+```sh
+python ai-worker/training/train.py \
+  --model /local/trusted/yolov8s.pt --model-sha256 EXPECTED_SHA256 \
+  --data validation-data/prepared-ppe/dataset.yaml \
+  --epochs 100 --imgsz 640 --batch 4 --device 0
 ```
 
-The script validates after training, prints mAP, and copies `best.pt` to
-`ai-worker/models/yolov8s-ppe.pt` automatically.
+Batch size 4 is only an example, not a claim that a particular GPU can train this workload. Choose it from available memory and monitor training. The owner-reported CUDA smoke does not measure training or inference capacity.
 
-## 5. Validation gate (before production)
+Each run receives a unique directory under ignored `ai-worker/training/candidates/ppe-<uuid>/`. Training validates the supplied dataset class order and checkpoint hash, then evaluates the saved `weights/best.pt` on **val**, not the final in-memory epoch. `candidate.json` records base/candidate hashes, dataset YAML hash, requested training parameters and development mAP. A YAML hash does not fingerprint the underlying images; retain the preparation report and immutable source dataset alongside the candidate. Failed runs can leave partial artifacts and are not completed candidates.
 
-From `AI_MASTER_CONTEXT.md` Section 17 — all must pass **on real footage from
-the target factory's cameras**, not the training val split:
+Optional `--export-onnx` exports next to candidate weights; it does not install that export into the runtime. `production_approved=false`, `runtime_weights_updated=false` and `held_out_test_evaluated=false` remain explicit. No active model is replaced, no worker restart is triggered and no model-updated event is sent. Use an isolated training environment; this workflow does not add a training process timeout or resource scheduler.
 
-- [ ] Helmet detection accuracy ≥ 85% (target ≥ 90% after iteration)
-- [ ] False positive rate ≤ 5% over a full shift of footage
-- [ ] Inference ≥ 10 FPS per stream on the deployment GPU
+## Review and separately deploy
 
-If accuracy falls short, first check **camera placement** against Section 18
-(3–5 m height, 30–45° tilt, ≥ 1080p @ 15 FPS, ≥ 150 LUX) — placement problems
-degrade accuracy more than model problems.
+Keep the test split sealed through model selection and threshold tuning. Before a separate, deliberate deployment:
 
-## 6. Deploy
+1. Review model/data licensing, label conventions and class/condition coverage.
+2. Measure independent factory per-class precision/recall and errors using [REAL_CAMERA_VALIDATION.md](REAL_CAMERA_VALIDATION.md); do not report development mAP as held-out acceptance. Adapt the held-out test files into that evaluator's manifest with retained camera/session/condition metadata.
+3. Run [MODEL_READINESS.md](MODEL_READINESS.md) and [WINDOWS_GPU.md](WINDOWS_GPU.md) or the deployment-hardware benchmark with the candidate hash.
+4. Complete the [factory pilot acceptance](FACTORY_PILOT_ACCEPTANCE.md), retaining previous weights/hash and a rollback plan before changing runtime settings.
 
-```bash
-# The worker loads the model at startup:
-docker compose restart ai-worker
-# Expect in logs: detector.loading model=models/yolov8s-ppe.pt, ppe_mode=True
-```
-
-Version retired models in the MinIO `models/` bucket
-(`models/yolo/v1.x/weights.pt`) so any deployment can be rolled back.
+No universal image count, mAP threshold or fixed camera distance proves production suitability. Set per-class/condition targets and sampling requirements before inspecting held-out results. A five-class helmet/vest model still requires a supported-class contract change before it can replace the current nine-class production detector.
