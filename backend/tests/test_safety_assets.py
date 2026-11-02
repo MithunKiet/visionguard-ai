@@ -111,6 +111,17 @@ async def test_monitoring_requires_reference_and_scope_is_enforced(setup, storag
         "camera_id": s.places[0].camera.public_id, "asset_code": f"FE-{uuid4().hex[:8]}", "name": "Extinguisher"})
     asset = created.json()["data"]
     assert asset["monitoring_status"] == "Disabled" and not asset["has_reference"]
+    assert asset["asset_type"] == "FIRE_EXTINGUISHER"  # Default kept for earlier API clients.
+    dustbin = await s.client.post("/api/v1/safety-assets", headers=headers(s), json={
+        "camera_id": s.places[0].camera.public_id, "asset_type": "DUSTBIN", "asset_code": f"DB-{uuid4().hex[:8]}", "name": "Bin"})
+    assert dustbin.status_code == 200 and dustbin.json()["data"]["asset_type"] == "DUSTBIN"
+    unknown = await s.client.post("/api/v1/safety-assets", headers=headers(s), json={
+        "camera_id": s.places[0].camera.public_id, "asset_type": "FORKLIFT", "asset_code": "X-1", "name": "Unknown"})
+    assert unknown.status_code == 422
+    retyped = await s.client.put(f"/api/v1/safety-assets/{asset['id']}", headers=headers(s),
+                                 json={"version": asset["version"], "asset_type": "FIRST_AID_BOX"})
+    assert retyped.status_code == 200 and retyped.json()["data"]["asset_type"] == "FIRST_AID_BOX"
+    asset = retyped.json()["data"]
     early = await s.client.put(f"/api/v1/safety-assets/{asset['id']}", headers=headers(s),
                                json={"version": asset["version"], "monitoring_enabled": True})
     assert early.status_code == 422
@@ -183,6 +194,7 @@ async def test_incidents_dedupe_alert_attach_evidence_and_clear(setup, storage):
     detail = await s.client.get(f"/api/v1/alerts/{alert.public_id}", headers=headers(s))
     assert detail.json()["data"]["safety_asset"]["asset_id"] == asset["id"]
     assert detail.json()["data"]["safety_asset"]["has_snapshot"]
+    assert detail.json()["data"]["safety_asset"]["asset_type"] == "FIRE_EXTINGUISHER"
     listed = await s.client.get("/api/v1/safety-assets", headers=headers(s))
     assert next(a for a in listed.json()["data"] if a["id"] == asset["id"])["open_incident"]["kind"] == "AREA_CHANGED"
     await _route_event("events.asset_restored", _event(s, asset["id"], snapshot_key=None))

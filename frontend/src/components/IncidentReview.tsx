@@ -7,6 +7,7 @@ import { useAuthStore } from "../store/authStore";
 import { SeverityChip, StatusChip } from "./SeverityChip";
 import { CorrectiveAction } from "./CorrectiveAction";
 import { AuthImage } from "./AuthImage";
+import { assetTypeLabel } from "./assetTypes";
 
 export interface Incident {
   id: string;
@@ -25,7 +26,7 @@ export interface Incident {
   zone_name?: string | null;
   camera_name?: string | null;
   review_history?: { id: string; from_status: string; to_status: string; comment: string | null; reviewer_name: string | null; created_on: string | null; event_type?: string; details?: { description?: string } }[];
-  safety_asset?: { asset_id: string; asset_code: string; name: string; incident_id: string; kind: string;
+  safety_asset?: { asset_id: string; asset_code: string; asset_type: string; name: string; incident_id: string; kind: string;
     similarity: number | null; has_snapshot: boolean; detected_at: string; cleared_at: string | null } | null;
 }
 
@@ -106,17 +107,17 @@ export function IncidentReview({ id, onClose }: { id: string; onClose: () => voi
           <Divider />
           <Typography variant="h6">Evidence</Typography>
           {incident.safety_asset && <>
-            <Typography variant="body2">Asset: {incident.safety_asset.asset_code} · {incident.safety_asset.name}</Typography>
+            <Typography variant="body2">Asset: {incident.safety_asset.asset_code} · {assetTypeLabel(incident.safety_asset.asset_type)} · {incident.safety_asset.name}</Typography>
             <Typography variant="body2">Latest change detected: {date(incident.safety_asset.detected_at)}
               {incident.safety_asset.similarity != null && ` · similarity to reference ${(incident.safety_asset.similarity * 100).toFixed(0)}%`}
               {incident.safety_asset.cleared_at && ` · area matched the reference again at ${date(incident.safety_asset.cleared_at)}`}</Typography>
             <Typography variant="body2" color="text.secondary">
               {incident.safety_asset.kind === "VIEW_CHANGED"
-                ? "The camera view no longer matches the reference (moved, covered or dark). The extinguisher could not be checked."
-                : "The extinguisher area no longer matches its reference photo. It may be missing, moved or blocked — confirm on site."}
+                ? "The camera view no longer matches the reference (moved, covered or dark). The asset could not be checked."
+                : "The asset area no longer matches its reference photo. The asset may be missing, moved or blocked — confirm on site."}
             </Typography>
             {incident.safety_asset.has_snapshot
-              ? <AuthImage path={`/safety-assets/${incident.safety_asset.asset_id}/incidents/${incident.safety_asset.incident_id}/snapshot`} alt="Safety asset evidence" />
+              ? <AuthImage path={`/safety-assets/${incident.safety_asset.asset_id}/incidents/${incident.safety_asset.incident_id}/snapshot`} alt="Monitored asset evidence" />
               : <Alert severity="info">No snapshot was recorded for this incident.</Alert>}
           </>}
           {!incident.violation_id && !incident.safety_asset && <Typography color="text.secondary">This incident has no linked violation snapshot.</Typography>}

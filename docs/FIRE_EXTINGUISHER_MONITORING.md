@@ -1,7 +1,20 @@
-# Fire Extinguisher Asset Monitoring (Phase A)
+# Asset Monitoring (Phase A, fire extinguisher first)
 
-Migration **0027** adds per-asset fire extinguisher records and model-free
-change monitoring on cameras that already run PPE detection.
+Migration **0027** adds per-asset records and model-free change monitoring on
+cameras that already run PPE detection. The UI calls this **Asset Monitoring**
+(`/asset-monitoring`; the old `/safety-assets` route redirects there).
+
+Monitoring does not depend on the asset type. It checks whether a fixed asset
+is still in its proper place. `asset_type` labels the asset and its alerts and
+is one of a fixed list: `FIRE_EXTINGUISHER` (the API default, for earlier
+clients), `DUSTBIN`, `FIRST_AID_BOX`, `EMERGENCY_EXIT_SIGN` or `OTHER`. The list
+lives in `backend/src/modules/assets/api/schemas.py` and
+`frontend/src/components/assetTypes.ts`; keep both in sync. Adding a type needs
+no migration.
+
+The API path (`/api/v1/safety-assets`), the tables and the alert types
+(`SAFETY_ASSET_*`) keep their original names for compatibility. The rest of
+this document uses the fire extinguisher as the example asset.
 
 ## What it detects — and what it does not
 
@@ -18,8 +31,9 @@ Do not present Phase A as an extinguisher detector.
 
 ## Setup flow
 
-1. **Safety assets → Add fire extinguisher.** Choose the camera that sees it and
-   enter a code (unique per enterprise among live assets, e.g. `FE-001`).
+1. **Asset Monitoring → Add asset.** Choose the asset type and the camera that
+   sees it, then enter a code (unique per enterprise among live assets, e.g.
+   `FE-001` or `DB-001`).
 2. **Capture from camera.** The API reads one frame through the same disposable,
    12-second, two-per-event-loop child used for connection probes. Credentials
    travel on stdin only. The JPEG (≤1920 px wide) is stored privately in the
