@@ -111,9 +111,11 @@ class WorkerSchedulingRepository:
         return assignments
 
     async def assignment_rows(self, worker_pk: int):
-        # One joined query replaces the previous six lookups per camera.
+        # One joined query replaces the previous six lookups per camera; the
+        # monitored safety assets ride along as a correlated JSON column.
+        from src.modules.assets.application.policy import camera_assets_column
         return (await self._db.execute(select(
-            Camera, Enterprise.public_id, Factory.public_id, Zone.public_id, ZoneConfig,
+            Camera, Enterprise.public_id, Factory.public_id, Zone.public_id, ZoneConfig, camera_assets_column(),
         ).join(AIWorker, AIWorker.id == Camera.worker_id)
           .join(Enterprise, Enterprise.id == Camera.enterprise_id)
           .join(Factory, Factory.id == Camera.factory_id)

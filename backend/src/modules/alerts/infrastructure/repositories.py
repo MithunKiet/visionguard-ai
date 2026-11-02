@@ -98,7 +98,24 @@ class AlertRepository:
             .where(AlertHistory.alert_id.in_(visible))
             .order_by(AlertHistory.created_at.asc(), AlertHistory.id.asc())
         )).all()
+        from src.shared.database.models import AssetIncident, SafetyAsset
+        # Safety-asset alerts carry evidence on their latest incident, not a violation.
+        asset_row = (await self._db.execute(
+            select(SafetyAsset.public_id, SafetyAsset.asset_code, SafetyAsset.name,
+                   AssetIncident.public_id, AssetIncident.kind, AssetIncident.similarity,
+                   AssetIncident.snapshot_key.is_not(None), AssetIncident.detected_at, AssetIncident.cleared_at)
+            .join(SafetyAsset, SafetyAsset.id == AssetIncident.asset_id)
+            .where(AssetIncident.alert_id.in_(visible))
+            .order_by(AssetIncident.detected_at.desc(), AssetIncident.id.desc()).limit(1)
+        )).one_or_none()
+        safety_asset = None if asset_row is None else {
+            "asset_id": asset_row[0], "asset_code": asset_row[1], "name": asset_row[2],
+            "incident_id": asset_row[3], "kind": asset_row[4], "similarity": asset_row[5],
+            "has_snapshot": asset_row[6], "detected_at": asset_row[7].isoformat(),
+            "cleared_at": asset_row[8].isoformat() if asset_row[8] else None,
+        }
         return {
+            "safety_asset": safety_asset,
             "factory_name": location[0] if location else None,
             "zone_name": location[1] if location else None,
             "camera_name": location[2] if location else None,

@@ -54,22 +54,7 @@ class ConfigService:
         config.updated_at = datetime.now(timezone.utc)
 
         new = await self.to_dict(self._db, config)
-        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
-        self._db.add(ConfigHistory(
-            enterprise_id=ent_pk,
-            zone_id=config.zone_id,
-            created_by=str(changed_by),
-            old_config=old,
-            new_config=new,
-            change_reason=change_reason,
-        ))
-        event_id = str(uuid4())
-        self._db.add(ConfigDelivery(
-            event_id=event_id, enterprise_id=ent_pk, zone_id=config.zone_id, version=config.version,
-            payload={"event_id": event_id, "timestamp": config.updated_at.isoformat(),
-                "event": "zone_config_updated", "enterprise_id": str(enterprise_id),
-                "zone_id": str(zone_id), "config": new},
-        ))
+        await self._record_version(config, enterprise_id, zone_id, old, new, changed_by, change_reason)
         await self._db.commit()
 
         from src.modules.audit.application.services import AuditService
@@ -88,6 +73,45 @@ class ConfigService:
         log.info("config.zone_updated", zone_id=str(zone_id), version=new["version"],
                  fields=list(applied))
         return new
+
+    async def bump_for_assets(self, zone_pk: int, enterprise_id: str, changed_by: str, change_reason: str) -> int:
+        """Version the zone policy after a safety-asset change. The caller
+        commits, so the asset row and its delivery are atomic."""
+        config = (await self._db.execute(select(ZoneConfig).where(ZoneConfig.zone_id == zone_pk)
+            .with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
+        if not config:
+            raise NotFoundException("ZoneConfig", str(zone_pk))
+        old = await self.to_dict(self._db, config)
+        config.version = (config.version or 1) + 1
+        config.updated_by = str(changed_by)
+        config.updated_at = datetime.now(timezone.utc)
+        new = await self.to_dict(self._db, config)
+        await self._record_version(config, enterprise_id, new["zone_id"], old, new, changed_by, change_reason)
+        return config.version
+
+    async def _record_version(self, config, enterprise_id, zone_id, old, new, changed_by, change_reason) -> None:
+        # Every delivered policy carries the zone's complete monitored-asset
+        # list: a worker replaces its whole config on apply, so a threshold
+        # save without assets would silently stop asset monitoring.
+        from src.modules.assets.application.policy import zone_asset_policy
+        await self._db.flush()
+        assets = await zone_asset_policy(self._db, config.zone_id)
+        ent_pk = await to_pk(self._db, Enterprise, enterprise_id)
+        self._db.add(ConfigHistory(
+            enterprise_id=ent_pk,
+            zone_id=config.zone_id,
+            created_by=str(changed_by),
+            old_config=old,
+            new_config=new,
+            change_reason=change_reason,
+        ))
+        event_id = str(uuid4())
+        self._db.add(ConfigDelivery(
+            event_id=event_id, enterprise_id=ent_pk, zone_id=config.zone_id, version=config.version,
+            payload={"event_id": event_id, "timestamp": config.updated_at.isoformat(),
+                "event": "zone_config_updated", "enterprise_id": str(enterprise_id),
+                "zone_id": str(zone_id), "config": {**new, "assets": assets}},
+        ))
 
     async def get_history(self, zone_id: str, enterprise_id: str, limit: int = 50) -> list[dict]:
         ent_pk = await to_pk(self._db, Enterprise, enterprise_id)

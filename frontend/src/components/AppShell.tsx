@@ -28,6 +28,7 @@ import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import LogoutIcon from "@mui/icons-material/Logout";
 import CircleIcon from "@mui/icons-material/Circle";
+import FireExtinguisherIcon from "@mui/icons-material/FireExtinguisher";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
 import { useLiveFeed } from "../hooks/useWebSocket";
@@ -48,6 +49,7 @@ const NAV = [
   { to: "/departments", label: "Departments", icon: <ApartmentIcon /> },
   { to: "/zones", label: "Zones", icon: <MapIcon /> },
   { to: "/cameras", label: "Cameras", icon: <VideocamIcon /> },
+  { to: "/safety-assets", label: "Safety assets", icon: <FireExtinguisherIcon /> },
   { to: "/live", label: "Live Grid", icon: <GridViewIcon /> },
   { to: "/violations", label: "Violations", icon: <WarningIcon /> },
   { to: "/alerts", label: "Alerts", icon: <NotificationsActiveIcon /> },
@@ -98,7 +100,7 @@ export function AppShell() {
 
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification(`VisionGuard Alert — ${latest.data.severity}`, {
-        body: `${latest.data.alert_type?.replace("PPE_VIOLATION_", "").replace("_", " ")} · ${latest.data.alert_number}`,
+        body: `${latest.data.alert_type?.replace("PPE_VIOLATION_", "").replace(/_/g, " ")} · ${latest.data.alert_number}`,
         tag: key,
       });
     }

@@ -93,6 +93,8 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(shifts_router, prefix="/api/v1")
     app.include_router(maintenance_router, prefix="/api/v1")
     app.include_router(ppe_types_router, prefix="/api/v1")
+    from src.modules.assets.api.routes import router as safety_assets_router
+    app.include_router(safety_assets_router, prefix="/api/v1")
 
     # Phase 3 — Enterprise
     from src.modules.analytics.api.routes import router as analytics_router

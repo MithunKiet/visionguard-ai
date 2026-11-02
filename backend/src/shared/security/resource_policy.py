@@ -17,6 +17,7 @@ _MODELS = {
     "shift_id": m.Shift, "maintenance_id": m.CameraMaintenance,
     "recipient_id": m.NotificationRecipient, "worker_id": m.AIWorker,
     "alert_id": m.Alert, "violation_id": m.PPEViolation,
+    "asset_id": m.SafetyAsset, "incident_id": m.AssetIncident,
 }
 
 

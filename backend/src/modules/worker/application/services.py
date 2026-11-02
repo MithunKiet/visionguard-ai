@@ -84,7 +84,7 @@ class WorkerService:
         """
         rows = await WorkerSchedulingRepository(db).assignment_rows(worker_db_id)
         result = []
-        for cam, enterprise_id, factory_id, zone_id, config in rows:
+        for cam, enterprise_id, factory_id, zone_id, config, assets in rows:
             result.append({
                 "id": str(cam.public_id),
                 "camera_id": str(cam.public_id),
@@ -113,6 +113,7 @@ class WorkerService:
                     "max_occupancy": config.max_occupancy if config else None,
                     "version": config.version if config else 1,
                     "config_version": config.version if config else 1,
+                    "assets": assets or [],
                 } if config else None,
             })
         return result
