@@ -42,7 +42,7 @@ Every table follows the BaseEntity pattern:
 - All foreign keys use internal integer ids for performance; only repository code at the literal SQL boundary translates a `public_id` to/from the internal integer (helpers in `backend/src/shared/database/pid.py`: `to_pk`, `to_public_id`, `to_pks`).
 - Exception: `identity.user_roles` is a pure link table, not a BaseEntity — composite PK of `user_public_id`/`role_public_id` directly (no surrogate id, no audit columns). Protocol tables such as event receipts and `worker.camera_leases` also use explicit keys; lease tokens/generations are retained ownership history, not user-managed entities.
 
-Current migration head: **0026**.
+Current migration head: **0027**.
 
 ## Multi-tenancy
 
@@ -93,6 +93,8 @@ Flow 6 adds verified PostgreSQL/object bundles and isolated restore drills; see 
 Flow 7 adds bounded CSV camera preview/import and durable replay receipts (migration 0026); see [docs/CAMERA_ONBOARDING.md](docs/CAMERA_ONBOARDING.md). Preserve scoped validation, per-enterprise inventory serialization, atomic audit/receipt/camera writes and explicit activation: imported cameras have is_active=false and no worker until activation opens admission. Credentials must not enter preview, receipts, logs or process arguments. Connection probes use disposable children with a 12-second timeout and two concurrent probes per API event loop. This does not validate PPE accuracy or production camera capacity.
 
 Flow 8 adds opt-in server-side camera pagination and literal name/code search. The Cameras UI requests 50 rows, resets search to page one and recovers after inventory shrinkage. Keep no-parameter legacy list behavior for existing clients and apply identical scope/filter predicates to counts and rows. No schema change; head remains 0026. See docs/CAMERA_ONBOARDING.md for pagination consistency limits.
+
+Fire extinguisher Phase A (migration 0027) adds `assets.safety_assets`/`asset_incidents`, reference capture through the disposable probe child, ROI marking and model-free reference-fingerprint change monitoring in the worker; see [docs/FIRE_EXTINGUISHER_MONITORING.md](docs/FIRE_EXTINGUISHER_MONITORING.md). It reports "area changed" or "camera view changed", never missing/displaced/obstructed. Every zone policy delivery must carry the zone's monitored-asset list, and the backend/worker fingerprint modules must stay byte-identical. Restored areas clear incidents but never close alerts. Phase B (extinguisher detection model) and real-camera accuracy remain unmeasured.
 
 PPE accuracy follow-up: the owner confirmed no labeled dataset is available. `evaluate-ppe-windows.cmd <manifest> --check-dataset` now validates local six-class trial data and reports coverage without model weights/inference. Preserve explicit unmeasured/unapproved flags; synthetic regression fixtures do not establish accuracy. See docs/PPE_ACCURACY_EVALUATION.md for collection, labeling, split independence and acceptance steps. Actual labeled factory evaluation remains blocked on data, not completed.
 

@@ -110,6 +110,13 @@ async def _route_event(routing_key: str, body: dict) -> None:
     if routing_key in ppe_keys:
         await _handle_ppe_violation(routing_key, body)
         return
+    from src.modules.assets.application.events import INCIDENT_ROUTES, handle_asset_incident, handle_asset_status
+    if routing_key in INCIDENT_ROUTES:
+        await handle_asset_incident(routing_key, body)
+        return
+    if routing_key == "events.asset_status_updated":
+        await handle_asset_status(body)
+        return
 
     plain_handlers = {
         "events.occupancy_updated":       _handle_occupancy_updated,

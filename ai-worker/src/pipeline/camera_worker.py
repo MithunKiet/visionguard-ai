@@ -8,6 +8,7 @@ import numpy as np
 from src.pipeline.frame_reader import FrameReader
 from src.pipeline.batch_detector import BatchDetector, DetectionExpired
 from src.pipeline.ppe_validator import PPEValidator
+from src.pipeline.asset_monitor import AssetMonitor
 from src.events.publisher import publish, publish_incident
 from src.config.settings import settings
 from src.config.ownership import event_ownership, lease_valid, lease_clock
@@ -66,6 +67,7 @@ class CameraWorker:
         # inference one image at a time.
         self._detector = detector
         self._validator = PPEValidator()
+        self._assets = AssetMonitor(self.zone_config["assets"])
         self._failure_count = 0
         self._isolated = False
         self._last_occupancy_count: int | None = None
@@ -134,6 +136,10 @@ class CameraWorker:
         result["ppe_required"] = sorted((required - {k for k, v in self.ppe_overrides.items() if v is False}) |
                                        {k for k, v in self.ppe_overrides.items() if v is True})
         result["version"] = config.get("version", config.get("config_version", 1))
+        # Pushes carry the whole zone's assets; HTTP carries this camera's slice.
+        result["assets"] = sorted((a for a in config.get("assets") or []
+                                   if isinstance(a, dict) and a.get("camera_id") == self.camera_id),
+                                  key=lambda a: str(a.get("asset_id")))
         return result
 
     def apply_zone_config(self, new_config: dict) -> None:
@@ -143,6 +149,7 @@ class CameraWorker:
         self._last_successful_inference = None
         self._policy_revision += 1
         self._validator = PPEValidator()
+        self._assets = AssetMonitor(self.zone_config["assets"], previous=self._assets)
         fps = new_config.get("frame_sample_fps")
         if fps:
             self._reader.set_sample_fps(fps)
@@ -287,6 +294,31 @@ class CameraWorker:
 
         if not discard_if_invalid("before_event"):
             await self._publish_occupancy(detections, timestamp=observed_at)
+        await self._check_assets(frame, detections, observed_at, discard_if_invalid)
+
+    async def _check_assets(self, frame, detections, observed_at, discard_if_invalid) -> None:
+        """Fixed-asset checks reuse this frame and its person boxes; no extra inference."""
+        now = time.monotonic()
+        monitor = self._assets
+        if not monitor.due(now) or discard_if_invalid("before_event"):
+            return
+        person_threshold = self.zone_config.get("person_threshold", 0.70)
+        persons = [d.bbox for d in detections if d.class_name == "person" and d.confidence >= person_threshold]
+        transitions, statuses = monitor.evaluate(frame, persons, now)
+        base = {"camera_id": self.camera_id, "enterprise_id": self.enterprise_id, "factory_id": self.factory_id,
+                "zone_id": self.zone_id, "config_version": self.zone_config.get("version", 1), "timestamp": observed_at}
+        for transition in transitions:
+            if discard_if_invalid("before_event"):
+                return
+            route = transition.pop("route")
+            if route == "events.asset_restored":
+                await self._publish(route, {**base, **transition})
+            else:
+                await self._publish_incident(route, {**base, **transition}, frame)
+            log.warning("camera_worker.asset_transition", camera_id=self.camera_id,
+                        asset_id=transition["asset_id"], event=transition["event"])
+        if statuses and not discard_if_invalid("before_event"):
+            await self._publish("events.asset_status_updated", {**base, "event": "asset_status_updated", "assets": statuses})
 
     async def _publish_occupancy(self, detections: list, *, timestamp=None) -> None:
         """Person count per frame → occupancy_updated on change or heartbeat,

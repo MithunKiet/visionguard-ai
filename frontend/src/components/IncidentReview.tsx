@@ -6,6 +6,7 @@ import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
 import { SeverityChip, StatusChip } from "./SeverityChip";
 import { CorrectiveAction } from "./CorrectiveAction";
+import { AuthImage } from "./AuthImage";
 
 export interface Incident {
   id: string;
@@ -24,6 +25,8 @@ export interface Incident {
   zone_name?: string | null;
   camera_name?: string | null;
   review_history?: { id: string; from_status: string; to_status: string; comment: string | null; reviewer_name: string | null; created_on: string | null; event_type?: string; details?: { description?: string } }[];
+  safety_asset?: { asset_id: string; asset_code: string; name: string; incident_id: string; kind: string;
+    similarity: number | null; has_snapshot: boolean; detected_at: string; cleared_at: string | null } | null;
 }
 
 interface Evidence {
@@ -102,7 +105,21 @@ export function IncidentReview({ id, onClose }: { id: string; onClose: () => voi
           </Typography>
           <Divider />
           <Typography variant="h6">Evidence</Typography>
-          {!incident.violation_id && <Typography color="text.secondary">This incident has no linked violation snapshot.</Typography>}
+          {incident.safety_asset && <>
+            <Typography variant="body2">Asset: {incident.safety_asset.asset_code} · {incident.safety_asset.name}</Typography>
+            <Typography variant="body2">Latest change detected: {date(incident.safety_asset.detected_at)}
+              {incident.safety_asset.similarity != null && ` · similarity to reference ${(incident.safety_asset.similarity * 100).toFixed(0)}%`}
+              {incident.safety_asset.cleared_at && ` · area matched the reference again at ${date(incident.safety_asset.cleared_at)}`}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {incident.safety_asset.kind === "VIEW_CHANGED"
+                ? "The camera view no longer matches the reference (moved, covered or dark). The extinguisher could not be checked."
+                : "The extinguisher area no longer matches its reference photo. It may be missing, moved or blocked — confirm on site."}
+            </Typography>
+            {incident.safety_asset.has_snapshot
+              ? <AuthImage path={`/safety-assets/${incident.safety_asset.asset_id}/incidents/${incident.safety_asset.incident_id}/snapshot`} alt="Safety asset evidence" />
+              : <Alert severity="info">No snapshot was recorded for this incident.</Alert>}
+          </>}
+          {!incident.violation_id && !incident.safety_asset && <Typography color="text.secondary">This incident has no linked violation snapshot.</Typography>}
           {incident.violation_id && evidence.isLoading && <Typography role="status">Loading evidence…</Typography>}
           {incident.violation_id && evidence.isError && <Alert severity="warning">Evidence could not be loaded. Refresh to retry; do not treat missing evidence as confirmation.</Alert>}
           {incident.violation_id && !evidence.isError && evidence.data && <>

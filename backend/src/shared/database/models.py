@@ -566,6 +566,77 @@ class CameraMaintenance(BaseEntity):
     next_due_date       = Column(Date, nullable=True)
 
 
+# ─── Safety Assets ────────────────────────────────────────────────────────────
+
+class SafetyAsset(BaseEntity):
+    """A fixed safety asset (fire extinguisher) watched through one camera ROI.
+
+    The ROI is normalized to the camera frame (0..1). Fingerprints are derived
+    from the stored reference still and travel to the worker inside the zone
+    policy, so a reference change is versioned like any other config change."""
+    __tablename__ = "safety_assets"
+    __table_args__ = (
+        CheckConstraint("check_interval_seconds BETWEEN 10 AND 3600", name="ck_safety_assets_interval"),
+        CheckConstraint("change_after_seconds BETWEEN 30 AND 86400", name="ck_safety_assets_change_after"),
+        CheckConstraint("similarity_threshold > 0 AND similarity_threshold < 1", name="ck_safety_assets_threshold"),
+        Index("ix_safety_assets_camera", "camera_id"),
+        Index("ix_safety_assets_zone", "zone_id"),
+        {"schema": "assets"},
+    )
+
+    enterprise_id       = Column(BigInteger, ForeignKey("enterprises.id"), nullable=False)
+    factory_id          = Column(BigInteger, ForeignKey("factories.id"), nullable=False)
+    zone_id             = Column(BigInteger, ForeignKey("zones.id"), nullable=False)
+    camera_id           = Column(BigInteger, ForeignKey("cameras.id"), nullable=False)
+    asset_code          = Column(String(50), nullable=False)
+    asset_type          = Column(String(50), nullable=False, default="FIRE_EXTINGUISHER")
+    name                = Column(String(200), nullable=False)
+    location_desc       = Column(String(300))
+    roi_x               = Column(Float)
+    roi_y               = Column(Float)
+    roi_width           = Column(Float)
+    roi_height          = Column(Float)
+    reference_key       = Column(String(500))
+    reference_sha256    = Column(String(64))
+    reference_width     = Column(Integer)
+    reference_height    = Column(Integer)
+    reference_captured_at = Column(DateTime(timezone=True))
+    roi_fingerprint     = Column(Text)
+    scene_fingerprint   = Column(Text)
+    check_interval_seconds = Column(Integer, nullable=False, default=60)
+    change_after_seconds   = Column(Integer, nullable=False, default=300)
+    similarity_threshold   = Column(Float, nullable=False, default=0.6)
+    monitoring_enabled  = Column(Boolean, nullable=False, default=False)
+    # Last worker observation (telemetry); never substitutes for an incident.
+    last_state          = Column(String(30))
+    last_similarity     = Column(Float)
+    last_checked_at     = Column(DateTime(timezone=True))
+    version             = Column(Integer, nullable=False, default=1)
+
+
+class AssetIncident(BaseEntity):
+    """One sustained worker observation (area/view change) with its evidence."""
+    __tablename__ = "asset_incidents"
+    __table_args__ = (
+        Index("ix_asset_incidents_asset", "asset_id", "detected_at"),
+        Index("ix_asset_incidents_alert", "alert_id"),
+        {"schema": "assets"},
+    )
+
+    enterprise_id       = Column(BigInteger, ForeignKey("enterprises.id"), nullable=False)
+    asset_id            = Column(BigInteger, ForeignKey("assets.safety_assets.id"), nullable=False)
+    camera_id           = Column(BigInteger, ForeignKey("cameras.id"), nullable=False)
+    alert_id            = Column(BigInteger, ForeignKey("alerts.alerts.id"), nullable=True)
+    event_id            = Column(String(36), nullable=False, unique=True)
+    kind                = Column(String(30), nullable=False)
+    similarity          = Column(Float)
+    scene_similarity    = Column(Float)
+    snapshot_key        = Column(String(500))
+    config_version      = Column(Integer)
+    detected_at         = Column(DateTime(timezone=True), nullable=False)
+    cleared_at          = Column(DateTime(timezone=True))
+
+
 # ─── Onboarding ───────────────────────────────────────────────────────────────
 
 class SetupProgress(BaseEntity):

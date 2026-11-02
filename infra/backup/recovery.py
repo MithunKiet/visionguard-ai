@@ -442,6 +442,14 @@ async def references(connection, buckets):
             buckets["reports"],
             "SELECT DISTINCT object_key AS key, NULL::text AS sha256, NULL::bigint AS size FROM reports.reports WHERE status = 'Completed' AND object_key IS NOT NULL",
         ),
+        (
+            buckets["snapshots"],
+            "SELECT DISTINCT reference_key AS key, reference_sha256 AS sha256, NULL::bigint AS size FROM assets.safety_assets WHERE reference_key IS NOT NULL",
+        ),
+        (
+            buckets["snapshots"],
+            "SELECT DISTINCT snapshot_key AS key, NULL::text AS sha256, NULL::bigint AS size FROM assets.asset_incidents WHERE snapshot_key IS NOT NULL AND snapshot_key <> ''",
+        ),
     ]
     for bucket, query in queries:
         async for row in connection.cursor(query):

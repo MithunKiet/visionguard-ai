@@ -22,6 +22,7 @@ log = structlog.get_logger()
 DURABLE_ROUTES = {f"events.{name}" for name in (
     "helmet_missing_detected", "vest_missing_detected", "gloves_missing_detected", "shoes_missing_detected",
     "mask_missing_detected", "low_confidence_violation", "overcrowding_detected", "camera_spec_mismatch",
+    "asset_area_changed", "asset_view_changed", "asset_restored",
 )}
 _connection = None
 _exchange = None
