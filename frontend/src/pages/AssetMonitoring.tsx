@@ -10,9 +10,10 @@ import { useAuthStore } from "../store/authStore";
 import { AuthImage } from "../components/AuthImage";
 import { RoiEditor, roiValid, type Roi } from "../components/RoiEditor";
 import { SearchableSelect } from "../components/SearchableSelect";
+import { ASSET_TYPES, assetTypeLabel } from "../components/assetTypes";
 
 interface SafetyAsset {
-  id: string; asset_code: string; name: string; location_desc: string | null;
+  id: string; asset_code: string; asset_type: string; name: string; location_desc: string | null;
   zone_name: string; camera_id: string; camera_name: string; roi: Roi | null;
   has_reference: boolean; reference_captured_at: string | null;
   check_interval_seconds: number; change_after_seconds: number; similarity_threshold: number;
@@ -45,7 +46,7 @@ export function StatusChip({ status }: { status: string }) {
   return <Chip size="small" label={entry.label} color={entry.color} />;
 }
 
-export function SafetyAssets() {
+export function AssetMonitoring() {
   const canManage = useAuthStore(s => s.user?.roles.some(role => MANAGE_ROLES.includes(role)));
   const [page, setPage] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
@@ -65,24 +66,25 @@ export function SafetyAssets() {
 
   return <Stack spacing={3}>
     <Stack direction="row" justifyContent="space-between" alignItems="center">
-      <Typography variant="h5" fontWeight={700}>Safety assets</Typography>
-      {canManage && <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>Add fire extinguisher</Button>}
+      <Typography variant="h5" fontWeight={700}>Asset Monitoring</Typography>
+      {canManage && <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>Add asset</Button>}
     </Stack>
     <Alert severity="info">
-      Monitoring compares each extinguisher's area with its reference photo. It reports that the area changed;
-      it cannot tell whether the extinguisher is missing, moved or blocked. Review the evidence photo before acting.
-      Accuracy on your cameras has not been measured.
+      Each asset (fire extinguisher, dustbin, first-aid box…) is checked against its reference photo. Monitoring reports
+      that its area changed; it cannot tell whether the asset is missing, moved or blocked. Review the evidence photo
+      before acting. Accuracy on your cameras has not been measured.
     </Alert>
-    {isError && <Alert severity="error" action={<Button onClick={() => refetch()}>Retry</Button>}>Safety assets unavailable. Previous results are hidden.</Alert>}
+    {isError && <Alert severity="error" action={<Button onClick={() => refetch()}>Retry</Button>}>Assets unavailable. Previous results are hidden.</Alert>}
     <Paper variant="outlined">
       <Table>
         <TableHead><TableRow>
-          <TableCell>Code</TableCell><TableCell>Name</TableCell><TableCell>Zone · Camera</TableCell>
+          <TableCell>Code</TableCell><TableCell>Type</TableCell><TableCell>Name</TableCell><TableCell>Zone · Camera</TableCell>
           <TableCell>Status</TableCell><TableCell>Last check</TableCell><TableCell>Open incident</TableCell><TableCell align="right">Actions</TableCell>
         </TableRow></TableHead>
         <TableBody>
           {(!isError ? data?.rows ?? [] : []).map(asset => <TableRow key={asset.id} hover>
             <TableCell>{asset.asset_code}</TableCell>
+            <TableCell>{assetTypeLabel(asset.asset_type)}</TableCell>
             <TableCell>{asset.name}{asset.location_desc && <Typography variant="caption" display="block">{asset.location_desc}</Typography>}</TableCell>
             <TableCell>{asset.zone_name} · {asset.camera_name}</TableCell>
             <TableCell><StatusChip status={asset.monitoring_status} /></TableCell>
@@ -90,8 +92,8 @@ export function SafetyAssets() {
             <TableCell>{asset.open_incident ? `${KIND[asset.open_incident.kind] ?? asset.open_incident.kind} since ${date(asset.open_incident.detected_at)}` : "None"}</TableCell>
             <TableCell align="right"><Button size="small" onClick={() => setSelected(asset.id)}>{canManage ? "Configure" : "View"}</Button></TableCell>
           </TableRow>)}
-          {!isLoading && !isError && (data?.rows ?? []).length === 0 && <TableRow><TableCell colSpan={7}>
-            <Typography variant="body2" color="text.secondary">No safety assets registered in your scope.</Typography>
+          {!isLoading && !isError && (data?.rows ?? []).length === 0 && <TableRow><TableCell colSpan={8}>
+            <Typography variant="body2" color="text.secondary">No monitored assets registered in your scope.</Typography>
           </TableCell></TableRow>}
         </TableBody>
       </Table>
@@ -105,7 +107,8 @@ export function SafetyAssets() {
 
 function AddAssetDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const client = useQueryClient();
-  const [form, setForm] = useState({ camera_id: "", asset_code: "", name: "", location_desc: "" });
+  const [form, setForm] = useState({ asset_type: "FIRE_EXTINGUISHER", camera_id: "", asset_code: "", name: "", location_desc: "" });
+  const typeLabel = assetTypeLabel(form.asset_type).toLowerCase();
   const cameras = useQuery({ queryKey: ["cameras-for-assets"], queryFn: async () => (await api.get("/cameras")).data.data as any[] });
   const create = useMutation({
     mutationFn: async () => (await api.post("/safety-assets", { ...form, location_desc: form.location_desc || null })).data.data as SafetyAsset,
@@ -113,21 +116,25 @@ function AddAssetDialog({ onClose, onCreated }: { onClose: () => void; onCreated
   });
   const ready = form.camera_id && form.asset_code.trim() && form.name.trim();
   return <Dialog open onClose={() => { if (!create.isPending) onClose(); }} fullWidth maxWidth="sm">
-    <DialogTitle>Add fire extinguisher</DialogTitle>
+    <DialogTitle>Add asset</DialogTitle>
     <DialogContent dividers>
       <Stack spacing={2}>
         {create.isError && <Alert severity="error">{message(create.error, "The asset could not be saved.")}</Alert>}
         {cameras.isError && <Alert severity="error">Cameras could not be loaded.</Alert>}
-        <SearchableSelect label="Camera that sees this extinguisher" required value={form.camera_id}
+        <TextField select label="Asset type" required value={form.asset_type} SelectProps={{ native: true }}
+          onChange={e => setForm({ ...form, asset_type: e.target.value })}>
+          {Object.entries(ASSET_TYPES).map(([value, type]) => <option key={value} value={value}>{type.label}</option>)}
+        </TextField>
+        <SearchableSelect label={`Camera that sees this ${typeLabel}`} required value={form.camera_id}
           options={(cameras.data ?? []).map(c => ({ id: c.id, label: `${c.name} (${c.code})` }))}
           onChange={camera_id => setForm({ ...form, camera_id })} />
-        <TextField label="Asset code" required placeholder="FE-001" value={form.asset_code} inputProps={{ maxLength: 50 }}
-          onChange={e => setForm({ ...form, asset_code: e.target.value })} />
-        <TextField label="Name" required placeholder="CO2 extinguisher, welding bay" value={form.name} inputProps={{ maxLength: 200 }}
+        <TextField label="Asset code" required placeholder={`${ASSET_TYPES[form.asset_type]?.codePrefix ?? "AS"}-001`} value={form.asset_code}
+          inputProps={{ maxLength: 50 }} onChange={e => setForm({ ...form, asset_code: e.target.value })} />
+        <TextField label="Name" required placeholder={`${assetTypeLabel(form.asset_type)}, welding bay`} value={form.name} inputProps={{ maxLength: 200 }}
           onChange={e => setForm({ ...form, name: e.target.value })} />
         <TextField label="Location description" value={form.location_desc} inputProps={{ maxLength: 300 }}
           onChange={e => setForm({ ...form, location_desc: e.target.value })} />
-        <Typography variant="body2" color="text.secondary">Monitoring starts only after you capture a reference photo, mark the extinguisher and turn monitoring on.</Typography>
+        <Typography variant="body2" color="text.secondary">Monitoring starts only after you capture a reference photo, mark the {typeLabel} and turn monitoring on.</Typography>
       </Stack>
     </DialogContent>
     <DialogActions>
@@ -159,7 +166,7 @@ function AssetDialog({ id, canManage, onClose }: { id: string; canManage: boolea
   const capture = useMutation({
     mutationFn: async () => (await api.post(`/safety-assets/${id}/reference`)).data.data as SafetyAsset,
     onMutate: () => setSaved(""),
-    onSuccess: async () => { setSaved("Reference photo captured. Check the marked area still covers the extinguisher."); setDraft(null); await refresh(); },
+    onSuccess: async () => { setSaved("Reference photo captured. Check the marked area still covers the asset."); setDraft(null); await refresh(); },
   });
   const save = useMutation({
     mutationFn: async () => {
@@ -177,7 +184,7 @@ function AssetDialog({ id, canManage, onClose }: { id: string; canManage: boolea
   const canMonitor = !!asset?.has_reference && roiValid(draft?.roi ?? null);
 
   return <Dialog open onClose={() => { if (!busy) onClose(); }} fullWidth maxWidth="md">
-    <DialogTitle>{asset ? `${asset.asset_code} · ${asset.name}` : "Safety asset"}</DialogTitle>
+    <DialogTitle>{asset ? `${asset.asset_code} · ${assetTypeLabel(asset.asset_type)} · ${asset.name}` : "Monitored asset"}</DialogTitle>
     <DialogContent dividers>
       <Stack spacing={2}>
         {detail.isLoading && <Typography role="status">Loading asset…</Typography>}
@@ -198,7 +205,7 @@ function AssetDialog({ id, canManage, onClose }: { id: string; canManage: boolea
             {canManage && <Button disabled={busy} onClick={() => capture.mutate()}>{capture.isPending ? "Capturing…" : asset.has_reference ? "Recapture from camera" : "Capture from camera"}</Button>}
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            Capture when the extinguisher is in place, nothing blocks it and lighting is normal. Reference captured: {date(asset.reference_captured_at)}
+            Capture when the {assetTypeLabel(asset.asset_type).toLowerCase()} is in its proper place, nothing blocks it and lighting is normal. Reference captured: {date(asset.reference_captured_at)}
           </Typography>
           <RoiEditor imagePath={referencePath} value={draft.roi} disabled={!canManage || busy} onChange={roi => setDraft({ ...draft, roi })} />
           <Divider />
