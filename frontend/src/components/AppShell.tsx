@@ -28,7 +28,7 @@ import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import LogoutIcon from "@mui/icons-material/Logout";
 import CircleIcon from "@mui/icons-material/Circle";
-import FireExtinguisherIcon from "@mui/icons-material/FireExtinguisher";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
 import { useLiveFeed } from "../hooks/useWebSocket";
@@ -49,7 +49,7 @@ const NAV = [
   { to: "/departments", label: "Departments", icon: <ApartmentIcon /> },
   { to: "/zones", label: "Zones", icon: <MapIcon /> },
   { to: "/cameras", label: "Cameras", icon: <VideocamIcon /> },
-  { to: "/safety-assets", label: "Safety assets", icon: <FireExtinguisherIcon /> },
+  { to: "/asset-monitoring", label: "Asset Monitoring", icon: <FactCheckIcon /> },
   { to: "/live", label: "Live Grid", icon: <GridViewIcon /> },
   { to: "/violations", label: "Violations", icon: <WarningIcon /> },
   { to: "/alerts", label: "Alerts", icon: <NotificationsActiveIcon /> },

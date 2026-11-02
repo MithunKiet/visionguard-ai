@@ -38,13 +38,13 @@ export function RoiEditor({ imagePath, value, onChange, disabled }: {
     if (!Number.isNaN(next[field])) onChange(next);
   };
 
-  if (!imagePath) return <Alert severity="info">Capture a reference photo first, then mark the extinguisher on it.</Alert>;
+  if (!imagePath) return <Alert severity="info">Capture a reference photo first, then mark the asset on it.</Alert>;
   if (loading) return <CircularProgress size={24} role="status" aria-label="Loading reference photo" />;
   if (error || !url) return <Alert severity="warning">Reference photo could not be loaded. Retry later.</Alert>;
 
   return <Stack spacing={1}>
     <Typography variant="body2" color="text.secondary">
-      Drag a box tightly around the extinguisher. Include its mounting point; avoid walkways where people stand.
+      Drag a box tightly around the asset where it should be. Avoid walkways where people stand.
     </Typography>
     <Box ref={frame} sx={{ position: "relative", userSelect: "none", touchAction: "none", cursor: disabled ? "default" : "crosshair", lineHeight: 0 }}
       onPointerDown={event => {

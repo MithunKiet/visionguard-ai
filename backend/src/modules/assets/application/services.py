@@ -104,7 +104,7 @@ class AssetService:
             raise NotFoundException("Camera", body.camera_id)
         asset = SafetyAsset(enterprise_id=camera.enterprise_id, factory_id=camera.factory_id, zone_id=camera.zone_id,
             camera_id=camera.id, asset_code=body.asset_code.strip(), name=body.name.strip(),
-            location_desc=body.location_desc, asset_type="FIRE_EXTINGUISHER",
+            location_desc=body.location_desc, asset_type=body.asset_type,
             check_interval_seconds=body.check_interval_seconds, change_after_seconds=body.change_after_seconds,
             similarity_threshold=body.similarity_threshold, monitoring_enabled=False,
             created_by=self.user.user_id, version=1)
@@ -142,7 +142,7 @@ class AssetService:
                     image = decode_jpeg(await self._verified_reference(asset))
                     asset.roi_fingerprint = fingerprint.encode(fingerprint.roi_fingerprint(image, self._roi(asset)))
             policy_changed = True
-        for field in ("name", "location_desc", "check_interval_seconds", "change_after_seconds",
+        for field in ("asset_type", "name", "location_desc", "check_interval_seconds", "change_after_seconds",
                       "similarity_threshold", "monitoring_enabled"):
             if field in changes and changes[field] is not None:
                 if field in _POLICY_FIELDS and getattr(asset, field) != changes[field]:
@@ -275,7 +275,8 @@ class AssetService:
 
     @staticmethod
     def _audit_fields(asset):
-        return {"asset_code": asset.asset_code, "name": asset.name, "location_desc": asset.location_desc,
+        return {"asset_code": asset.asset_code, "asset_type": asset.asset_type, "name": asset.name,
+                "location_desc": asset.location_desc,
                 "roi": None if asset.roi_x is None else [asset.roi_x, asset.roi_y, asset.roi_width, asset.roi_height],
                 "reference_sha256": asset.reference_sha256,
                 "check_interval_seconds": asset.check_interval_seconds,
@@ -292,6 +293,7 @@ class AssetService:
 def incident_dict(incident, asset, alert_id=None, alert_number=None, alert_status=None):
     return {
         "id": incident.public_id, "asset_id": asset.public_id, "asset_code": asset.asset_code,
+        "asset_type": asset.asset_type,
         "kind": incident.kind, "similarity": incident.similarity, "scene_similarity": incident.scene_similarity,
         "has_snapshot": incident.snapshot_key is not None, "config_version": incident.config_version,
         "detected_at": incident.detected_at.isoformat(),

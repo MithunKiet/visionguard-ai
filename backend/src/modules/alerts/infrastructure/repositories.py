@@ -103,7 +103,8 @@ class AlertRepository:
         asset_row = (await self._db.execute(
             select(SafetyAsset.public_id, SafetyAsset.asset_code, SafetyAsset.name,
                    AssetIncident.public_id, AssetIncident.kind, AssetIncident.similarity,
-                   AssetIncident.snapshot_key.is_not(None), AssetIncident.detected_at, AssetIncident.cleared_at)
+                   AssetIncident.snapshot_key.is_not(None), AssetIncident.detected_at, AssetIncident.cleared_at,
+                   SafetyAsset.asset_type)
             .join(SafetyAsset, SafetyAsset.id == AssetIncident.asset_id)
             .where(AssetIncident.alert_id.in_(visible))
             .order_by(AssetIncident.detected_at.desc(), AssetIncident.id.desc()).limit(1)
@@ -113,6 +114,7 @@ class AlertRepository:
             "incident_id": asset_row[3], "kind": asset_row[4], "similarity": asset_row[5],
             "has_snapshot": asset_row[6], "detected_at": asset_row[7].isoformat(),
             "cleared_at": asset_row[8].isoformat() if asset_row[8] else None,
+            "asset_type": asset_row[9],
         }
         return {
             "safety_asset": safety_asset,

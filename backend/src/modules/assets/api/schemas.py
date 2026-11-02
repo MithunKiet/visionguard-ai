@@ -1,4 +1,10 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+# Monitoring is type-agnostic (reference comparison); the type labels the
+# asset and its alerts. Keep in sync with ASSET_TYPES in the frontend page.
+AssetType = Literal["FIRE_EXTINGUISHER", "DUSTBIN", "FIRST_AID_BOX", "EMERGENCY_EXIT_SIGN", "OTHER"]
 
 
 class Roi(BaseModel):
@@ -11,6 +17,8 @@ class Roi(BaseModel):
 
 class CreateSafetyAssetRequest(BaseModel):
     camera_id: str = Field(min_length=36, max_length=36)
+    # Defaults to the original single type so earlier API clients keep working.
+    asset_type: AssetType = "FIRE_EXTINGUISHER"
     asset_code: str = Field(min_length=1, max_length=50)
     name: str = Field(min_length=1, max_length=200)
     location_desc: str | None = Field(None, max_length=300)
@@ -21,6 +29,7 @@ class CreateSafetyAssetRequest(BaseModel):
 
 class UpdateSafetyAssetRequest(BaseModel):
     version: int = Field(ge=1)
+    asset_type: AssetType | None = None
     name: str | None = Field(None, min_length=1, max_length=200)
     location_desc: str | None = Field(None, max_length=300)
     roi: Roi | None = None
