@@ -12,6 +12,8 @@ Enterprise-grade, multi-tenant Factory Safety Monitoring SaaS platform. **Produc
 - Treat this as an enterprise production application, not a prototype.
 - When proposing a change of any real size: explain why, explain the impact, list affected files, explain the risks — and wait for approval before implementing large refactors.
 
+- **Before implementing anything, read [docs/CCTV_DOC_ADOPTION_ROADMAP.md](docs/CCTV_DOC_ADOPTION_ROADMAP.md).** If the work matches an item there, update its status, date, PR and change log when done. Mark "Done" only when its real-site acceptance is met; otherwise use "Built, not site-validated".
+
 ## Naming convention
 
 **Always snake_case** for DB columns, Python identifiers, and schema-facing fields — never PascalCase or camelCase. This applies to every new migration, model column, and Pydantic field.
